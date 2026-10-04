@@ -46,6 +46,28 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var isActive: Bool { status == .active }
 }
 
+extension ActiveRouteLock {
+    /// Persistenter Urlaubskorridor nach Split: Slowenien ohne Autobahn,
+    /// ab der kroatischen Grenze wieder mit Autobahn.
+    static func croatiaSplit(now: Date = Date()) -> ActiveRouteLock {
+        ActiveRouteLock(
+            id: UUID(), title: "Kroatien", destinationName: "Split, Kroatien",
+            destination: .init(latitude: 43.5081, longitude: 16.4402),
+            waypoints: [
+                .init(id: "sentilj", name: "Šentilj / Spielfeld",
+                      coordinate: .init(latitude: 46.7006, longitude: 15.6350), required: true,
+                      optionsAfter: .init(avoidTolls: true, avoidHighways: true)),
+                .init(id: "macelj", name: "Macelj (kroatische Grenze)",
+                      coordinate: .init(latitude: 46.1955, longitude: 15.6908), required: true,
+                      optionsAfter: .init(avoidTolls: false, avoidHighways: false))
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000, corridorPoints: nil, visitedWaypointIDs: [],
+            status: .active, createdAt: now, updatedAt: now
+        )
+    }
+}
+
 @MainActor
 final class RouteLockStore: ObservableObject {
     static let shared = RouteLockStore()

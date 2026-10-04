@@ -3,6 +3,16 @@ import XCTest
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testCroatiaPresetKeepsMandatorySloveniaRules() {
+        let lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        XCTAssertEqual(lock.title, "Kroatien")
+        XCTAssertEqual(lock.destinationName, "Split, Kroatien")
+        XCTAssertEqual(lock.waypoints.map(\.id), ["sentilj", "macelj"])
+        XCTAssertTrue(lock.waypoints[0].required)
+        XCTAssertEqual(lock.waypoints[0].optionsAfter, .init(avoidTolls: true, avoidHighways: true))
+        XCTAssertEqual(lock.waypoints[1].optionsAfter, .init(avoidTolls: false, avoidHighways: false))
+    }
+
     func testActiveTripSurvivesStoreRecreationWithSegmentRules() throws {
         let suite = "RoutePersistenceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

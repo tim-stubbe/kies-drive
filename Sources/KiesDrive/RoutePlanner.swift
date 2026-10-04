@@ -147,6 +147,20 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         await restoreActiveTripIfNeeded(from: current, settings: settings)
     }
 
+    func installCroatiaSplitTripLock() {
+        let lock = ActiveRouteLock.croatiaSplit()
+        routeLockStore.save(lock)
+        activeRouteLock = lock
+        destinationText = lock.destinationName
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
+        item.name = lock.destinationName
+        destination = item
+        didAttemptAutomaticRestore = false
+        stopNavigation()
+        legs = []
+        alternatives = []
+    }
+
     func updateLockedRouteOptions(waypointID: String?, avoidTolls: Bool?, avoidHighways: Bool?) {
         routeLockStore.update { lock in
             if let waypointID, let index = lock.waypoints.firstIndex(where: { $0.id == waypointID }) {

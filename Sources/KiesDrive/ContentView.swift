@@ -74,6 +74,7 @@ struct DriveContentView: View {
             if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
             Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
         }
+        .onOpenURL(perform: handleProvisioningURL)
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
         .sheet(isPresented: $showRouteDetails) {
@@ -82,6 +83,24 @@ struct DriveContentView: View {
                     .navigationTitle("Routendetails")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { Button("Fertig") { showRouteDetails = false } }
+            }
+        }
+    }
+
+    private func handleProvisioningURL(_ url: URL) {
+        guard url.scheme == "kiesdrive", url.host == "provision",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+        if let token = values["token"], !token.isEmpty {
+            DeviceTokenStore.shared.setToken(token)
+        }
+        if values["trip"] == "croatia-split" {
+            planner.installCroatiaSplitTripLock()
+            showSettings = false
+            if let current = location.location?.coordinate {
+                Task { await planner.restoreActiveTrip(from: current, settings: settings) }
             }
         }
     }
@@ -571,6 +590,10 @@ struct DriveSettingsView: View {
                     Toggle("Sprachansagen", isOn: $settings.voiceGuidance)
                     Picker("Kraftstoff", selection: $settings.fuel) { ForEach(FuelKind.allCases) { Text($0.label).tag($0) } }
                     Picker("Kartendarstellung", selection: $settings.mapAppearance) { ForEach(DriveMapAppearance.allCases) { Text($0.label).tag($0) } }
+                    Button("Kroatien-Trip nach Split fest aktivieren") {
+                        planner.installCroatiaSplitTripLock()
+                        dismiss()
+                    }
                 }
                 Section("Langstrecke & Fahrzeug") {
                     Stepper("Zieltempo auf geeigneten freien Abschnitten: \(Int(settings.targetSpeedKmh)) km/h", value: $settings.targetSpeedKmh, in: 100...220, step: 10)

@@ -7,6 +7,7 @@
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
 <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>kiesdrive</string></array></dict></array>
 <key>NSLocationWhenInUseUsageDescription</key><string>Kies Drive benötigt deinen Standort für Routen, Navigation und Tankstellen entlang des Weges.</string>
 <key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>Kies Drive benötigt deinen Standort auch bei gesperrtem Bildschirm, damit Navigation und Ansagen über CarPlay weiterlaufen.</string>
 <key>UIBackgroundModes</key><array><string>location</string></array>
