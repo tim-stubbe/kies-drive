@@ -5,6 +5,13 @@ import KiesDriveCore
 @MainActor
 final class DriveSettings: ObservableObject {
     static let shared = DriveSettings()
+    static let standaloneBaseURL = "http://100.72.226.91:18080"
+    private static let legacyBaseURLs: Set<String> = [
+        "https://100.72.226.91:8000",
+        "http://100.72.226.91:8000",
+        "https://192.168.178.65:8000",
+        "http://192.168.178.65:8000",
+    ]
     @Published var baseURL: String { didSet { UserDefaults.standard.set(baseURL, forKey: "drive.baseURL") } }
     @Published var fuel: FuelKind { didSet { UserDefaults.standard.set(fuel.rawValue, forKey: "drive.fuel") } }
     @Published var avoidTolls: Bool { didSet { UserDefaults.standard.set(avoidTolls, forKey: "drive.avoidTolls") } }
@@ -20,7 +27,15 @@ final class DriveSettings: ObservableObject {
     @Published var targetSpeedKmh: Double { didSet { UserDefaults.standard.set(targetSpeedKmh, forKey: "drive.targetSpeedKmh") } }
 
     private init() {
-        baseURL = UserDefaults.standard.string(forKey: "drive.baseURL") ?? "https://100.72.226.91:8000"
+        let savedBaseURL = UserDefaults.standard.string(forKey: "drive.baseURL")
+        if let savedBaseURL, !Self.legacyBaseURLs.contains(savedBaseURL) {
+            baseURL = savedBaseURL
+        } else {
+            // Kies Drive is now an independent TrueNAS app. Migrate existing
+            // installations away from the former monolithic Kies endpoint.
+            baseURL = Self.standaloneBaseURL
+            UserDefaults.standard.set(Self.standaloneBaseURL, forKey: "drive.baseURL")
+        }
         fuel = FuelKind(rawValue: UserDefaults.standard.string(forKey: "drive.fuel") ?? "diesel") ?? .diesel
         avoidTolls = UserDefaults.standard.object(forKey: "drive.avoidTolls") as? Bool ?? true
         avoidHighways = UserDefaults.standard.object(forKey: "drive.avoidHighways") as? Bool ?? false
@@ -123,6 +138,13 @@ enum DriveAPI {
         let payload = try await data(for: try request(path: "/api/navigation/remote/commands"))
         let decoder = JSONDecoder()
         return try decoder.decode(DriveRemoteCommandEnvelope.self, from: payload).commands
+    }
+
+    /// Lightweight authenticated end-to-end check used by the settings UI.
+    /// Reading the command queue has no side effects and verifies both the
+    /// standalone service and the device token.
+    static func testConnection() async throws {
+        _ = try await remoteCommands()
     }
 
     static func completeRemoteCommand(_ id: Int, ok: Bool, message: String?) async throws {

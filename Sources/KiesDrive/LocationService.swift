@@ -2,7 +2,7 @@ import Foundation
 @preconcurrency import CoreLocation
 
 @MainActor
-final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
+final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     /// Gemeinsame Instanz für die SwiftUI-Oberfläche und die CarPlay-Szene.
     static let shared = LocationService()
 

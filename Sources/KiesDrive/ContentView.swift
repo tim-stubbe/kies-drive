@@ -523,6 +523,11 @@ struct DriveSettingsView: View {
     @ObservedObject private var settings = DriveSettings.shared
     @ObservedObject private var tokens = DeviceTokenStore.shared
     @State private var token = ""
+    @State private var connectionStatus: ConnectionStatus = .idle
+
+    fileprivate enum ConnectionStatus {
+        case idle, testing, success, failed(String)
+    }
 
     var body: some View {
         NavigationStack {
@@ -531,6 +536,34 @@ struct DriveSettingsView: View {
                     TextField("Server-Adresse", text: $settings.baseURL)
                     SecureField(tokens.token == nil ? "Geräte-Token" : "Neuer Geräte-Token (optional)", text: $token)
                     Button("Token sicher speichern") { if !token.isEmpty { tokens.setToken(token); token = "" } }
+                    Button {
+                        connectionStatus = .testing
+                        Task {
+                            do {
+                                try await DriveAPI.testConnection()
+                                connectionStatus = .success
+                            } catch {
+                                connectionStatus = .failed(error.localizedDescription)
+                            }
+                        }
+                    } label: {
+                        Label(connectionStatus.isTesting ? "Verbindung wird geprüft …" : "Verbindung testen",
+                              systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .disabled(connectionStatus.isTesting || !settings.isReady)
+
+                    switch connectionStatus {
+                    case .idle:
+                        EmptyView()
+                    case .testing:
+                        ProgressView()
+                    case .success:
+                        Label("Kies-Drive-Server und Geräte-Token funktionieren.", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    case .failed(let message):
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                    }
                 }
                 Section("Route") {
                     Toggle("Vignetten und Maut vermeiden", isOn: $settings.avoidTolls)
@@ -575,6 +608,13 @@ struct DriveSettingsView: View {
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 420)
         #endif
+    }
+}
+
+private extension DriveSettingsView.ConnectionStatus {
+    var isTesting: Bool {
+        if case .testing = self { return true }
+        return false
     }
 }
 
