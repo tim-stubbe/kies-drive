@@ -57,6 +57,7 @@ targets:
       - target: KiesDriveMac
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Contents/MacOS/Kies Drive"
         BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:

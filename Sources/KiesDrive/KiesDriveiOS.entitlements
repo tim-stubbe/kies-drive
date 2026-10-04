@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- CarPlay-Zugriff (Tankstellen-Kategorie) - muss von Apple pro Team
+	<!-- Native CarPlay-Navigation - muss von Apple pro Team
 	     freigegeben werden (developer.apple.com/contact/carplay), sonst
 	     läuft die App nur im Xcode-CarPlay-Simulator, nicht auf echten
 	     Head-Units. -->
-	<key>com.apple.developer.carplay-fueling</key>
+	<key>com.apple.developer.carplay-maps</key>
 	<true/>
 </dict>
 </plist>
