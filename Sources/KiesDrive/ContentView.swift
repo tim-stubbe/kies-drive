@@ -40,6 +40,9 @@ struct DriveContentView: View {
             guard let newValue else { return }
             if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
             Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
+            #if os(iOS)
+            if planner.isNavigating { followCurrentLocation() }
+            #endif
         }
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
@@ -73,6 +76,7 @@ struct DriveContentView: View {
             guard let newValue else { return }
             if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
             Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
+            if planner.isNavigating { followCurrentLocation() }
         }
         .onOpenURL(perform: handleProvisioningURL)
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
@@ -103,6 +107,10 @@ struct DriveContentView: View {
                 Task { await planner.restoreActiveTrip(from: current, settings: settings) }
             }
         }
+    }
+
+    private func followCurrentLocation() {
+        position = .userLocation(followsHeading: true, fallback: .automatic)
     }
 
     private var mobileSearchCard: some View {
@@ -182,7 +190,7 @@ struct DriveContentView: View {
                     Spacer()
                     Button("Los") {
                         planner.startNavigation()
-                        position = .userLocation(followsHeading: true, fallback: .automatic)
+                        followCurrentLocation()
                     }
                     .font(.headline).buttonStyle(.borderedProminent).controlSize(.large)
                 }
@@ -416,10 +424,23 @@ struct DriveContentView: View {
 
     private var mapBase: some View {
         Map(position: $position) {
-            UserAnnotation()
+            if planner.isNavigating, let coordinate = location.location?.coordinate {
+                Annotation("Mein Auto", coordinate: coordinate, anchor: .center) {
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(9)
+                        .background(.blue.gradient, in: Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .shadow(radius: 4)
+                }
+            } else {
+                UserAnnotation()
+            }
             if let destination = planner.destination { Marker(item: destination) }
             ForEach(Array(planner.legs.enumerated()), id: \.offset) { _, leg in
-                MapPolyline(leg.polyline).stroke(.blue, lineWidth: 7)
+                MapPolyline(leg.polyline)
+                    .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             }
             ForEach(planner.stations) { station in
                 Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
@@ -431,6 +452,20 @@ struct DriveContentView: View {
             }
         }
         .mapControls { MapCompass(); MapScaleView(); MapUserLocationButton() }
+        .overlay(alignment: .bottomTrailing) {
+            #if os(iOS)
+            if planner.isNavigating {
+                Button(action: followCurrentLocation) {
+                    Image(systemName: "car.fill")
+                        .font(.title3.bold()).padding(13)
+                        .background(.ultraThickMaterial, in: Circle())
+                        .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+                }
+                .accessibilityLabel("Navigation auf mein Auto zentrieren")
+                .padding(.trailing, 14).padding(.bottom, 14)
+            }
+            #endif
+        }
         .overlay(alignment: .topLeading) {
             if let coordinate = location.location?.coordinate,
                let limit = planner.currentSpeedLimit(near: coordinate) {
