@@ -62,7 +62,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         activeRouteLock = routeLockStore.activeLock
         if let lock = activeRouteLock {
             destinationText = lock.destinationName
-            destination = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
+            item.name = lock.destinationName
+            destination = item
         }
     }
 
