@@ -1,0 +1,14 @@
+services:
+  kies-drive:
+    image: ghcr.io/tim-stubbe/kies-drive:latest
+    container_name: kies-drive
+    restart: unless-stopped
+    ports:
+      - "18080:8080"
+    environment:
+      KIES_BASE_URL: ${KIES_BASE_URL:-https://100.72.226.91:8000}
+      KIES_DEVICE_TOKEN: ${KIES_DEVICE_TOKEN:?set KIES_DEVICE_TOKEN}
+      KIES_DRIVE_DEVICE_TOKEN: ${KIES_DRIVE_DEVICE_TOKEN:?set KIES_DRIVE_DEVICE_TOKEN}
+      KIES_DRIVE_MCP_TOKEN: ${KIES_DRIVE_MCP_TOKEN:?set KIES_DRIVE_MCP_TOKEN}
+    volumes:
+      - ./data:/data
