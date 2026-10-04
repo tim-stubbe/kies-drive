@@ -78,6 +78,9 @@ struct DriveContentView: View {
             Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
             if planner.isNavigating { followCurrentLocation() }
         }
+        .onChange(of: planner.isNavigating) { _, navigating in
+            if navigating { followCurrentLocation() }
+        }
         .onOpenURL(perform: handleProvisioningURL)
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
