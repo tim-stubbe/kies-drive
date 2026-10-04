@@ -19,4 +19,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/tim-stubbe/kies-drive:latest
+          tags: |
+            ghcr.io/tim-stubbe/kies-drive:latest
+            ghcr.io/tim-stubbe/kies-drive:${{ github.sha }}
