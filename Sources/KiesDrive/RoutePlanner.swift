@@ -139,7 +139,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard let lock = routeLockStore.activeLock, lock.isActive else { return }
         activeRouteLock = lock
         destinationText = lock.destinationName
-        destination = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
+        item.name = lock.destinationName
+        destination = item
         await calculate(from: current, settings: settings)
         if !legs.isEmpty { startNavigation() }
     }
