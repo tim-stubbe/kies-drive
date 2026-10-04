@@ -40,6 +40,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var longTripPlan: LongTripPlan?
     @Published var isNavigating = false
     @Published var activeRouteLock: ActiveRouteLock?
+    @Published var routeSearchQuery = ""
+    @Published var routeSearchResults: [MKMapItem] = []
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
 
@@ -210,6 +212,68 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if let coordinate { request.region = .init(center: coordinate, latitudinalMeters: 100_000, longitudinalMeters: 100_000) }
         do { suggestions = try await MKLocalSearch(request: request).start().mapItems }
         catch { errorMessage = "Zielsuche fehlgeschlagen: \(error.localizedDescription)" }
+    }
+
+    /// Sucht POIs entlang der bereits berechneten Route statt nur am aktuellen
+    /// Standort. Wenige Suchregionen und ein enger Korridor vermeiden Umwege.
+    func searchAlongRoute(_ query: String) async {
+        guard !legs.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        routeSearchQuery = query
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
+        let searchPoints = evenlySpaced(routeCoordinates, maximum: 5)
+        var matches: [String: MKMapItem] = [:]
+        await withTaskGroup(of: [MKMapItem].self) { group in
+            for point in searchPoints {
+                group.addTask {
+                    let request = MKLocalSearch.Request()
+                    request.naturalLanguageQuery = query
+                    request.region = .init(center: point, latitudinalMeters: 120_000, longitudinalMeters: 120_000)
+                    return (try? await MKLocalSearch(request: request).start().mapItems) ?? []
+                }
+            }
+            for await items in group {
+                for item in items {
+                    let c = item.placemark.coordinate
+                    matches["\(item.name ?? ""):\(c.latitude):\(c.longitude)"] = item
+                }
+            }
+        }
+        let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        routeSearchResults = matches.values.compactMap { item -> (MKMapItem, Int, Double)? in
+            let point = CLLocation(latitude: item.placemark.coordinate.latitude, longitude: item.placemark.coordinate.longitude)
+            guard let nearest = routePoints.enumerated().min(by: {
+                $0.element.distance(from: point) < $1.element.distance(from: point)
+            }) else { return nil }
+            let detour = nearest.element.distance(from: point)
+            guard detour <= 5_000 else { return nil }
+            return (item, nearest.offset, detour)
+        }
+        .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 < $1.1 }
+        .prefix(12).map(\.0)
+    }
+
+    func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
+        guard var lock = routeLockStore.activeLock else { return }
+        let coordinate = item.placemark.coordinate
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 240) }
+        func progress(_ coordinate: CLLocationCoordinate2D) -> Int {
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            return routeCoordinates.enumerated().min(by: {
+                CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude).distance(from: location) <
+                CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude).distance(from: location)
+            })?.offset ?? routeCoordinates.count
+        }
+        let insertionProgress = progress(coordinate)
+        let index = lock.waypoints.firstIndex { progress($0.coordinate.clLocationCoordinate) > insertionProgress } ?? lock.waypoints.endIndex
+        let inheritedOptions = index == 0 ? lock.defaultOptions : (lock.waypoints[index - 1].optionsAfter ?? lock.defaultOptions)
+        lock.waypoints.insert(.init(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
+                                    coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                                    required: true, optionsAfter: inheritedOptions), at: index)
+        routeLockStore.save(lock)
+        activeRouteLock = lock
+        routeSearchResults = []
+        await calculate(from: start, settings: settings)
+        if !legs.isEmpty { startNavigation() }
     }
 
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings) async {

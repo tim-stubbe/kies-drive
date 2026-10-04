@@ -154,6 +154,7 @@ struct DriveContentView: View {
     @ViewBuilder
     private var mobileBottomCard: some View {
         if planner.isNavigating {
+            VStack(spacing: 10) {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(formatArrival(planner.totalTravelTime)).font(.title2.bold()).foregroundStyle(.green)
@@ -163,6 +164,9 @@ struct DriveContentView: View {
                 Spacer()
                 Button("Trip beenden", role: .destructive) { planner.completeActiveTrip() }
                     .buttonStyle(.bordered)
+            }
+            Button("Auf Route suchen", systemImage: "fork.knife") { showRouteDetails = true }
+                .font(.subheadline.weight(.semibold))
             }
             .padding(.horizontal, 18).padding(.vertical, 14)
             .background(.ultraThickMaterial)
@@ -257,6 +261,26 @@ struct DriveContentView: View {
             }
 
             if !planner.legs.isEmpty {
+                Section("Auf Route suchen") {
+                    HStack {
+                        TextField("z. B. McDonald’s", text: $planner.routeSearchQuery)
+                            .onSubmit { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
+                        Button("Suchen") { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
+                    }
+                    ForEach(planner.routeSearchResults, id: \.self) { item in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(item.name ?? "Zwischenstopp")
+                                Text(item.placemark.title ?? "").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Hinzufügen", systemImage: "plus.circle.fill") {
+                                guard let start = location.location?.coordinate else { return }
+                                Task { await planner.addRouteStop(item, from: start, settings: settings) }
+                            }
+                        }
+                    }
+                }
                 Section("Route") {
                     Label(formatDistance(planner.totalDistance), systemImage: "road.lanes")
                     Label(formatTime(planner.totalTravelTime), systemImage: "clock")

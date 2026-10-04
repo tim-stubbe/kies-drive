@@ -141,6 +141,11 @@ final class DriveRemoteBridge {
             planner.replaceRouteLockForRemoteDestination(waypoints: waypoints)
             await planner.calculate(from: current, settings: settings)
             planner.startNavigation()
+        case "add_route_stop":
+            guard let query = command.arguments["query"]?.string else { throw DriveRemoteError.destinationNotFound }
+            await planner.searchAlongRoute(query)
+            guard let item = planner.routeSearchResults.first else { throw DriveRemoteError.destinationNotFound }
+            await planner.addRouteStop(item, from: current, settings: settings)
         default:
             throw DriveRemoteError.unknownCommand
         }

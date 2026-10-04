@@ -78,6 +78,7 @@ TOOLS = [
         ("get_speed", "Geschwindigkeit lesen"), ("get_active_route", "Aktive Route und Trip-Lock lesen"),
         ("get_next_maneuver", "Nächsten Navigationsschritt lesen"), ("set_destination", "Ziel und Pflichtpunkte setzen"),
         ("set_route_options", "Routenvorgaben ändern"), ("restore_route", "Persistente Route wiederherstellen"),
+        ("add_route_stop", "POI wie McDonald's mit geringem Umweg als Zwischenstopp hinzufügen"),
     ]
 ]
 
@@ -101,7 +102,7 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
                 keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
                 value = {"active_route": state.get("active_route"), "route_lock": state.get("route_lock")} if name == "get_active_route" else state.get(keys.get(name, ""))
                 data = {"value": value, "updated_at": row["updated_at"] if row else None}
-            elif name in {"set_destination", "set_route_options", "restore_route"}:
+            elif name in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
                 cur = conn.execute("INSERT INTO commands(command,arguments,created_at) VALUES(?,?,?)", (name, json.dumps(args), datetime.now(timezone.utc).isoformat()))
                 data = {"accepted": True, "command_id": cur.lastrowid}
             else:
