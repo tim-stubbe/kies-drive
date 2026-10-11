@@ -62,17 +62,6 @@ struct DriveContentView: View {
                     mobileSearchCard
                 }
                 Spacer()
-                Button {
-                    settings.voiceGuidance.toggle()
-                    planner.setVoiceGuidanceEnabled(settings.voiceGuidance)
-                } label: {
-                    Image(systemName: settings.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                        .font(.title2.bold())
-                        .frame(width: 46, height: 46)
-                        .background(.white.opacity(0.18), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(settings.voiceGuidance ? "Sprachansagen ausschalten" : "Sprachansagen einschalten")
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
@@ -251,17 +240,27 @@ struct DriveContentView: View {
                         Text(formatDistance(distance)).font(.title2.bold())
                     }
                     Text(planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen")
-                        .font(.system(size: 25, weight: .bold)).lineLimit(3).minimumScaleFactor(0.72)
+                        .font(.system(size: 22, weight: .bold)).lineLimit(2).minimumScaleFactor(0.75)
                 }
                 Spacer()
+                Button {
+                    settings.voiceGuidance.toggle()
+                    planner.setVoiceGuidanceEnabled(settings.voiceGuidance)
+                } label: {
+                    Image(systemName: settings.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.title3.bold()).frame(width: 42, height: 42)
+                        .background(.white.opacity(0.18), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(settings.voiceGuidance ? "Sprachansagen ausschalten" : "Sprachansagen einschalten")
             }
             if planner.isRecalculating {
                 Label("Neue Route wird gesucht", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.semibold)).opacity(0.9)
             }
         }
-        .foregroundStyle(.white).padding(18)
-        .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .foregroundStyle(.white).padding(14)
+        .background(Color(red: 0.10, green: 0.68, blue: 0.29), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
     #endif
@@ -452,10 +451,14 @@ struct DriveContentView: View {
 
     @ViewBuilder
     private var map: some View {
-        switch settings.mapAppearance {
-        case .standard: mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
-        case .satellite: mapBase.mapStyle(.imagery(elevation: .realistic))
-        case .hybrid: mapBase.mapStyle(.hybrid(elevation: .realistic, showsTraffic: true))
+        if planner.isNavigating {
+            mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
+        } else {
+            switch settings.mapAppearance {
+            case .standard: mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
+            case .satellite: mapBase.mapStyle(.imagery(elevation: .realistic))
+            case .hybrid: mapBase.mapStyle(.hybrid(elevation: .realistic, showsTraffic: true))
+            }
         }
     }
 
@@ -477,13 +480,17 @@ struct DriveContentView: View {
             if let destination = planner.destination { Marker(item: destination) }
             ForEach(Array(planner.legs.enumerated()), id: \.offset) { _, leg in
                 MapPolyline(leg.polyline)
-                    .stroke(.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                MapPolyline(leg.polyline)
+                    .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
-            ForEach(planner.stations) { station in
-                Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
-                    VStack(spacing: 2) {
-                        Image(systemName: "fuelpump.fill").padding(8).background(.green, in: Circle()).foregroundStyle(.white)
-                        Text(String(format: "%.3f", station.price)).font(.caption.bold()).padding(.horizontal, 5).background(.regularMaterial, in: Capsule())
+            if !planner.isNavigating {
+                ForEach(planner.stations) { station in
+                    Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "fuelpump.fill").padding(8).background(.green, in: Circle()).foregroundStyle(.white)
+                            Text(String(format: "%.3f", station.price)).font(.caption.bold()).padding(.horizontal, 5).background(.regularMaterial, in: Capsule())
+                        }
                     }
                 }
             }
@@ -493,7 +500,12 @@ struct DriveContentView: View {
             if position.positionedByUser { isFollowingLocation = false }
         }
         #endif
-        .mapControls { MapCompass(); MapScaleView(); MapUserLocationButton() }
+        .mapControls {
+            MapCompass(); MapScaleView()
+            #if os(macOS)
+            MapUserLocationButton()
+            #endif
+        }
         .overlay(alignment: .bottomTrailing) {
             #if os(iOS)
             if planner.isNavigating {
@@ -514,7 +526,9 @@ struct DriveContentView: View {
                     }
                     .accessibilityLabel("Navigation auf mein Auto zentrieren")
                 }
-                .padding(.trailing, 14).padding(.bottom, 14)
+                // Die untere ETA-Karte liegt als Safe-Area-Inset über der
+                // Karte; genügend Abstand hält beide Knöpfe immer sichtbar.
+                .padding(.trailing, 14).padding(.bottom, 190)
             }
             #endif
         }

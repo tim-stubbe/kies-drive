@@ -6,9 +6,10 @@ final class RoutePersistenceTests: XCTestCase {
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")
-        XCTAssertEqual(lock.waypoints.map(\.id), ["wurzenpass-road"])
+        XCTAssertEqual(lock.waypoints.map(\.id), ["a1-dugopolje", "wurzenpass-road"])
         XCTAssertTrue(lock.waypoints[0].required)
-        XCTAssertEqual(lock.waypoints[0].coordinate.latitude, 46.521944, accuracy: 0.0001)
+        XCTAssertEqual(lock.waypoints[0].coordinate.latitude, 43.59603, accuracy: 0.0001)
+        XCTAssertEqual(lock.waypoints[1].coordinate.latitude, 46.521944, accuracy: 0.0001)
     }
 
     func testCroatiaPresetKeepsMandatorySloveniaRules() {

@@ -55,6 +55,9 @@ extension ActiveRouteLock {
             id: UUID(), title: "Heimfahrt über Wurzenpass", destinationName: "Hochheim am Main",
             destination: .init(latitude: 50.0147, longitude: 8.3522),
             waypoints: [
+                .init(id: "a1-dugopolje", name: "A1 Auffahrt Dugopolje",
+                      coordinate: .init(latitude: 43.59603, longitude: 16.57081), required: true,
+                      optionsAfter: .init(avoidTolls: false, avoidHighways: false)),
                 .init(id: "wurzenpass-road", name: "Wurzenpass (B109)",
                       coordinate: .init(latitude: 46.521944, longitude: 13.7525), required: true,
                       optionsAfter: .init(avoidTolls: false, avoidHighways: false))
