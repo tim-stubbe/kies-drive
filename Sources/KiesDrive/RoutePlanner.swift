@@ -78,6 +78,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     var route: MKRoute? { legs.first }
     var totalDistance: Double { legs.reduce(0) { $0 + $1.distance } }
     var totalTravelTime: TimeInterval { legs.reduce(0) { $0 + $1.expectedTravelTime } }
+    var completeRouteMapRect: MKMapRect? {
+        guard !legs.isEmpty else { return nil }
+        return legs.reduce(MKMapRect.null) { $0.union($1.polyline.boundingMapRect) }
+    }
 
     func startNavigation() {
         guard !legs.isEmpty else { return }
@@ -317,8 +321,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 // MapKit kennt keine mehrgliedrigen Routen als ein einziges Objekt.
                 // Daher Teilstrecken sequentiell (Start→wp1→wp2→…→Ziel) berechnen.
                 let waypoints: [MKMapItem] = lockedWaypoints.isEmpty
-                    ? viaStations.map { MKMapItem(placemark: MKPlacemark(coordinate: $0.coordinate)) }
-                    : lockedWaypoints.map { MKMapItem(placemark: MKPlacemark(coordinate: $0.coordinate.clLocationCoordinate)) }
+                    ? viaStations.map {
+                        let item = MKMapItem(placemark: MKPlacemark(coordinate: $0.coordinate))
+                        item.name = $0.brand.isEmpty ? $0.name : $0.brand
+                        return item
+                    }
+                    : lockedWaypoints.map {
+                        let item = MKMapItem(placemark: MKPlacemark(coordinate: $0.coordinate.clLocationCoordinate))
+                        item.name = $0.name
+                        return item
+                    }
                 let allStops = [startItem] + waypoints + [destination]
 
                 var newLegs: [MKRoute] = []

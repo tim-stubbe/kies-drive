@@ -12,6 +12,7 @@ struct DriveContentView: View {
     @State private var showJarvis = false
     @State private var selectedStation: FuelStation?
     @State private var showRouteDetails = false
+    @State private var isFollowingLocation = true
 
     var body: some View {
         #if os(iOS)
@@ -41,7 +42,7 @@ struct DriveContentView: View {
             if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
             Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
             #if os(iOS)
-            if planner.isNavigating { followCurrentLocation() }
+            if planner.isNavigating && isFollowingLocation { followCurrentLocation() }
             #endif
         }
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
@@ -119,7 +120,13 @@ struct DriveContentView: View {
     }
 
     private func followCurrentLocation() {
+        isFollowingLocation = true
         position = .userLocation(followsHeading: true, fallback: .automatic)
+    }
+
+    private func showCompleteRoute() {
+        isFollowingLocation = false
+        if let rect = planner.completeRouteMapRect { position = .rect(rect) }
     }
 
     private var mobileSearchCard: some View {
@@ -216,7 +223,7 @@ struct DriveContentView: View {
                 }
                 Task {
                     await planner.calculate(from: start, settings: settings)
-                    if let route = planner.route { position = .rect(route.polyline.boundingMapRect) }
+                    showCompleteRoute()
                 }
             } label: {
                 Label(planner.isLoading ? "Route wird berechnet …" : "Route berechnen", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
@@ -278,7 +285,7 @@ struct DriveContentView: View {
                     guard let start = location.location?.coordinate else { planner.errorMessage = "Standort ist noch nicht verfügbar."; return }
                     Task {
                         await planner.calculate(from: start, settings: settings)
-                        if let route = planner.route { position = .rect(route.polyline.boundingMapRect) }
+                        showCompleteRoute()
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -468,17 +475,32 @@ struct DriveContentView: View {
                 }
             }
         }
+        #if os(iOS)
+        .onMapCameraChange(frequency: .onEnd) { _ in
+            if position.positionedByUser { isFollowingLocation = false }
+        }
+        #endif
         .mapControls { MapCompass(); MapScaleView(); MapUserLocationButton() }
         .overlay(alignment: .bottomTrailing) {
             #if os(iOS)
             if planner.isNavigating {
-                Button(action: followCurrentLocation) {
-                    Image(systemName: "car.fill")
-                        .font(.title3.bold()).padding(13)
-                        .background(.ultraThickMaterial, in: Circle())
-                        .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+                VStack(spacing: 10) {
+                    Button(action: showCompleteRoute) {
+                        Image(systemName: "map.fill")
+                            .font(.title3.bold()).padding(13)
+                            .background(.ultraThickMaterial, in: Circle())
+                            .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+                    }
+                    .accessibilityLabel("Gesamte Route anzeigen")
+                    Button(action: followCurrentLocation) {
+                        Image(systemName: isFollowingLocation ? "location.fill" : "location")
+                            .font(.title3.bold()).padding(13)
+                            .foregroundStyle(isFollowingLocation ? .blue : .primary)
+                            .background(.ultraThickMaterial, in: Circle())
+                            .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+                    }
+                    .accessibilityLabel("Navigation auf mein Auto zentrieren")
                 }
-                .accessibilityLabel("Navigation auf mein Auto zentrieren")
                 .padding(.trailing, 14).padding(.bottom, 14)
             }
             #endif

@@ -8,7 +8,7 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")
         XCTAssertEqual(lock.waypoints.map(\.id), ["wurzenpass-road"])
         XCTAssertTrue(lock.waypoints[0].required)
-        XCTAssertEqual(lock.waypoints[0].coordinate.latitude, 46.5177, accuracy: 0.0001)
+        XCTAssertEqual(lock.waypoints[0].coordinate.latitude, 46.521944, accuracy: 0.0001)
     }
 
     func testCroatiaPresetKeepsMandatorySloveniaRules() {

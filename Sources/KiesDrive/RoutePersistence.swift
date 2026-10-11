@@ -56,7 +56,7 @@ extension ActiveRouteLock {
             destination: .init(latitude: 50.0147, longitude: 8.3522),
             waypoints: [
                 .init(id: "wurzenpass-road", name: "Wurzenpass (B109)",
-                      coordinate: .init(latitude: 46.5177, longitude: 13.7515), required: true,
+                      coordinate: .init(latitude: 46.521944, longitude: 13.7525), required: true,
                       optionsAfter: .init(avoidTolls: false, avoidHighways: false))
             ],
             defaultOptions: .init(avoidTolls: false, avoidHighways: false),
