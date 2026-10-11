@@ -47,6 +47,24 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
 }
 
 extension ActiveRouteLock {
+    /// Heimfahrt nach Hochheim am Main. Der Punkt liegt direkt auf der B109
+    /// auf der Wurzenpasshoehe und erzwingt damit die Umfahrung des
+    /// Karawankentunnels, ohne eine Ortsmitte als Zwischenziel anzufahren.
+    static func hochheimViaWurzenpass(now: Date = Date()) -> ActiveRouteLock {
+        ActiveRouteLock(
+            id: UUID(), title: "Heimfahrt über Wurzenpass", destinationName: "Hochheim am Main",
+            destination: .init(latitude: 50.0147, longitude: 8.3522),
+            waypoints: [
+                .init(id: "wurzenpass-road", name: "Wurzenpass (B109)",
+                      coordinate: .init(latitude: 46.5177, longitude: 13.7515), required: true,
+                      optionsAfter: .init(avoidTolls: false, avoidHighways: false))
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000, corridorPoints: nil, visitedWaypointIDs: [],
+            status: .active, createdAt: now, updatedAt: now
+        )
+    }
+
     /// Persistenter Urlaubskorridor nach Split: Slowenien ohne Autobahn,
     /// ab der kroatischen Grenze wieder mit Autobahn.
     static func croatiaSplit(now: Date = Date()) -> ActiveRouteLock {

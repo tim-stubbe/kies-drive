@@ -109,6 +109,12 @@ struct DriveContentView: View {
             if let current = location.location?.coordinate {
                 Task { await planner.restoreActiveTrip(from: current, settings: settings) }
             }
+        } else if values["trip"] == "hochheim-wurzenpass" {
+            planner.installHochheimViaWurzenpassTripLock()
+            showSettings = false
+            if let current = location.location?.coordinate {
+                Task { await planner.restoreActiveTrip(from: current, settings: settings) }
+            }
         }
     }
 
@@ -223,18 +229,26 @@ struct DriveContentView: View {
     }
 
     private var navigationInstructionCard: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "arrow.turn.up.right")
-                .font(.system(size: 34, weight: .bold)).frame(width: 48)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(planner.lastAnnouncement ?? planner.nextInstruction ?? "Route folgen")
-                    .font(.title3.bold()).lineLimit(2)
-                if planner.isRecalculating { Text("Route wird neu berechnet …").font(.caption) }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+                Image(systemName: "arrow.turn.up.right")
+                    .font(.system(size: 46, weight: .bold)).frame(width: 58)
+                VStack(alignment: .leading, spacing: 2) {
+                    if let distance = planner.nextManeuverDistance {
+                        Text(formatDistance(distance)).font(.title2.bold())
+                    }
+                    Text(planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen")
+                        .font(.system(size: 25, weight: .bold)).lineLimit(3).minimumScaleFactor(0.72)
+                }
+                Spacer()
             }
-            Spacer()
+            if planner.isRecalculating {
+                Label("Neue Route wird gesucht", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption.weight(.semibold)).opacity(0.9)
+            }
         }
-        .foregroundStyle(.white).padding(16)
-        .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .foregroundStyle(.white).padding(18)
+        .background(Color.green.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
     #endif

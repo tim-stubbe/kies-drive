@@ -42,6 +42,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var activeRouteLock: ActiveRouteLock?
     @Published var routeSearchQuery = ""
     @Published var routeSearchResults: [MKMapItem] = []
+    @Published var nextManeuverInstruction: String?
+    @Published var nextManeuverDistance: CLLocationDistance?
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
 
@@ -52,6 +54,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private let synthesizer = AVSpeechSynthesizer()
     private var announcedStepKeys: Set<String> = []
     private var offRouteStrikes = 0
+    private var lastRerouteAt: Date?
     private var stationLoadGeneration = UUID()
     private var didAttemptAutomaticRestore = false
     private static let cacheKey = "drive.offlineRoute"
@@ -155,6 +158,20 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     func installCroatiaSplitTripLock() {
         let lock = ActiveRouteLock.croatiaSplit()
+        routeLockStore.save(lock)
+        activeRouteLock = lock
+        destinationText = lock.destinationName
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
+        item.name = lock.destinationName
+        destination = item
+        didAttemptAutomaticRestore = false
+        stopNavigation()
+        legs = []
+        alternatives = []
+    }
+
+    func installHochheimViaWurzenpassTripLock() {
+        let lock = ActiveRouteLock.hochheimViaWurzenpass()
         routeLockStore.save(lock)
         activeRouteLock = lock
         destinationText = lock.destinationName
@@ -367,10 +384,36 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// neu berechnen.
     func updateProgress(at location: CLLocation, settings: DriveSettings) {
         guard isNavigating, let route = legs.first else { return }
+        updateNextManeuver(at: location, route: route)
         markReachedWaypoints(at: location, settings: settings)
         checkSpeedLimit(at: location.coordinate, speedMps: location.speed)
         if settings.voiceGuidance { announceNextStep(near: location.coordinate, in: route) }
-        checkForDeviation(from: location.coordinate, route: route, settings: settings)
+        checkForDeviation(from: location, route: route, settings: settings)
+    }
+
+    private func updateNextManeuver(at location: CLLocation, route: MKRoute) {
+        let allSteps = Array(route.steps.enumerated())
+        let usable = allSteps.filter { $0.offset > 0 && !$0.element.instructions.isEmpty }
+        guard !usable.isEmpty else {
+            nextManeuverInstruction = "Route folgen"
+            nextManeuverDistance = nil
+            return
+        }
+        let current = allSteps.min { lhs, rhs in
+            Self.distance(from: location.coordinate, to: lhs.element.polyline) <
+            Self.distance(from: location.coordinate, to: rhs.element.polyline)
+        }
+        guard let current else { return }
+        // Die Anweisung des aktuellen Segments wurde bereits ausgeführt; groß
+        // angezeigt wird der nächste noch kommende Abbiegepunkt.
+        let upcoming = usable.first { $0.offset > current.offset } ?? usable.last!
+        let step = upcoming.element
+        nextManeuverInstruction = step.instructions
+        nextManeuverDistance = location.distance(from: CLLocation(
+            latitude: step.polyline.coordinate.latitude,
+            longitude: step.polyline.coordinate.longitude
+        ))
+        lastAnnouncement = step.instructions
     }
 
     private func markReachedWaypoints(at location: CLLocation, settings: DriveSettings) {
@@ -425,24 +468,44 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// Zählt aufeinanderfolgende Positionsmeldungen weit abseits der Route und
     /// löst nach ein paar Treffern (nicht schon beim ersten GPS-Ausreißer) eine
     /// automatische Neuberechnung ab der aktuellen Position aus.
-    private func checkForDeviation(from coordinate: CLLocationCoordinate2D, route: MKRoute, settings: DriveSettings) {
+    private func checkForDeviation(from location: CLLocation, route: MKRoute, settings: DriveSettings) {
         guard !isLoading, !isRecalculating else { return }
-        let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let samples = sample(route.polyline, maximum: 120)
-        let nearest = samples.map { here.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) }.min() ?? 0
-        if nearest > 80 {
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
+        if let lastRerouteAt, Date().timeIntervalSince(lastRerouteAt) < 45 { return }
+        let nearest = Self.distance(from: location.coordinate, to: route.polyline)
+        if nearest > 150 {
             offRouteStrikes += 1
         } else {
             offRouteStrikes = 0
         }
-        guard offRouteStrikes >= 3 else { return }
+        guard offRouteStrikes >= 8 else { return }
         offRouteStrikes = 0
+        lastRerouteAt = Date()
         Task {
             isRecalculating = true
             lastAnnouncement = "Route wird neu berechnet …"
-            await calculate(from: coordinate, settings: settings)
+            await calculate(from: location.coordinate, settings: settings)
             isRecalculating = false
         }
+    }
+
+    /// Kleinster Abstand zu jedem echten Liniensegment. Die frühere Stichprobe
+    /// erzeugte auf langen Routen kilometerweite Lücken und damit Dauer-Rerouting.
+    private static func distance(from coordinate: CLLocationCoordinate2D, to polyline: MKPolyline) -> CLLocationDistance {
+        guard polyline.pointCount > 0 else { return .greatestFiniteMagnitude }
+        let target = MKMapPoint(coordinate)
+        let points = polyline.points()
+        if polyline.pointCount == 1 { return target.distance(to: points[0]) }
+        var best = CLLocationDistance.greatestFiniteMagnitude
+        for index in 0..<(polyline.pointCount - 1) {
+            let a = points[index], b = points[index + 1]
+            let dx = b.x - a.x, dy = b.y - a.y
+            let lengthSquared = dx * dx + dy * dy
+            let t = lengthSquared == 0 ? 0 : max(0, min(1, ((target.x - a.x) * dx + (target.y - a.y) * dy) / lengthSquared))
+            let projected = MKMapPoint(x: a.x + t * dx, y: a.y + t * dy)
+            best = min(best, target.distance(to: projected))
+        }
+        return best
     }
 
     /// Lädt Tempolimits für abgetastete Routenpunkte (OpenStreetMap/Overpass).
