@@ -62,6 +62,17 @@ struct DriveContentView: View {
                     mobileSearchCard
                 }
                 Spacer()
+                Button {
+                    settings.voiceGuidance.toggle()
+                    planner.setVoiceGuidanceEnabled(settings.voiceGuidance)
+                } label: {
+                    Image(systemName: settings.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.title2.bold())
+                        .frame(width: 46, height: 46)
+                        .background(.white.opacity(0.18), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(settings.voiceGuidance ? "Sprachansagen ausschalten" : "Sprachansagen einschalten")
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)

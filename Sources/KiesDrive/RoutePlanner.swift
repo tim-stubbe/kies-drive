@@ -99,6 +99,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         speedWarning = false
     }
 
+    func setVoiceGuidanceEnabled(_ enabled: Bool) {
+        if !enabled { synthesizer.stopSpeaking(at: .immediate) }
+    }
+
     /// Beendet den Trip bewusst. Ein normales Stoppen/Pausieren der Navigation
     /// loescht den Lock dagegen nicht, damit Rast und App-Neustart sicher sind.
     func completeActiveTrip() {
