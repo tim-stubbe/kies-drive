@@ -124,11 +124,6 @@ struct DriveContentView: View {
         position = .userLocation(followsHeading: true, fallback: .automatic)
     }
 
-    private func showCompleteRoute() {
-        isFollowingLocation = false
-        if let rect = planner.completeRouteMapRect { position = .rect(rect) }
-    }
-
     private var mobileSearchCard: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -259,6 +254,13 @@ struct DriveContentView: View {
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
     #endif
+
+    private func showCompleteRoute() {
+        #if os(iOS)
+        isFollowingLocation = false
+        #endif
+        if let rect = planner.completeRouteMapRect { position = .rect(rect) }
+    }
 
     private var routePanel: some View {
         List {
