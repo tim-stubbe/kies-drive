@@ -58,12 +58,20 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var stationLoadGeneration = UUID()
     private var didAttemptAutomaticRestore = false
     private static let cacheKey = "drive.offlineRoute"
+    private static let forcedHomeTripKey = "drive.forcedHomeTrip.dugopoljeWurzenpass.v1"
     private let routeLockStore = RouteLockStore.shared
 
     override init() {
         super.init()
         synthesizer.delegate = self
         offlineRoute = Self.loadCache()
+        // Einmalige, versionierte Migration fuer die ausdrücklich festgelegte
+        // Heimfahrt. Sie greift auch dann, wenn iOS einen URL-Fernstart wegen
+        // gesperrtem Bildschirm ablehnt.
+        if !UserDefaults.standard.bool(forKey: Self.forcedHomeTripKey) {
+            routeLockStore.save(.hochheimViaWurzenpass())
+            UserDefaults.standard.set(true, forKey: Self.forcedHomeTripKey)
+        }
         activeRouteLock = routeLockStore.activeLock
         if let lock = activeRouteLock {
             destinationText = lock.destinationName
@@ -304,7 +312,6 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings) async {
         guard let destination else { return }
         isLoading = true; errorMessage = nil; stations = []
-        defer { isLoading = false }
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
             let lock = routeLockStore.activeLock
@@ -355,12 +362,22 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
             announcedStepKeys = []
             offRouteStrikes = 0
-            await loadStations(fuel: settings.fuel)
-            await loadSpeedLimits()
-            await loadTollCost(from: start)
-            buildLongTripPlan(settings: settings)
             cacheForOffline()
-        } catch { errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)" }
+            // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
+            // duerfen Navigation und UI nicht mehr blockieren.
+            isLoading = false
+            Task { [weak self] in
+                guard let self else { return }
+                await self.loadStations(fuel: settings.fuel)
+                await self.loadSpeedLimits()
+                await self.loadTollCost(from: start)
+                self.buildLongTripPlan(settings: settings)
+                self.cacheForOffline()
+            }
+        } catch {
+            isLoading = false
+            errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)"
+        }
     }
 
     /// Speichert die aktuell berechnete Route + Tankstellenliste lokal, damit

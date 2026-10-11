@@ -218,10 +218,13 @@ struct DriveContentView: View {
                 }
                 Task {
                     await planner.calculate(from: start, settings: settings)
-                    showCompleteRoute()
+                    if !planner.legs.isEmpty {
+                        planner.startNavigation()
+                        followCurrentLocation()
+                    }
                 }
             } label: {
-                Label(planner.isLoading ? "Route wird berechnet …" : "Route berechnen", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                Label(planner.isLoading ? "Route wird berechnet …" : "Route starten", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
