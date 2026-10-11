@@ -60,6 +60,12 @@ extension ActiveRouteLock {
                       optionsAfter: .init(avoidTolls: false, avoidHighways: false)),
                 .init(id: "wurzenpass-road", name: "Wurzenpass (B109)",
                       coordinate: .init(latitude: 46.521944, longitude: 13.7525), required: true,
+                      optionsAfter: .init(avoidTolls: false, avoidHighways: false)),
+                .init(id: "katschberg-b99", name: "Katschbergpass (B99)",
+                      coordinate: .init(latitude: 47.0583, longitude: 13.6153), required: true,
+                      optionsAfter: .init(avoidTolls: false, avoidHighways: true)),
+                .init(id: "obertauern-b99", name: "Radstädter Tauernpass / Obertauern (B99)",
+                      coordinate: .init(latitude: 47.2494, longitude: 13.5592), required: true,
                       optionsAfter: .init(avoidTolls: false, avoidHighways: false))
             ],
             defaultOptions: .init(avoidTolls: false, avoidHighways: false),

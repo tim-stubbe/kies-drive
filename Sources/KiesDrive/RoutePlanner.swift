@@ -58,7 +58,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var stationLoadGeneration = UUID()
     private var didAttemptAutomaticRestore = false
     private static let cacheKey = "drive.offlineRoute"
-    private static let forcedHomeTripKey = "drive.forcedHomeTrip.dugopoljeWurzenpass.v1"
+    private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
     private let routeLockStore = RouteLockStore.shared
 
     override init() {
