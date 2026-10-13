@@ -9,8 +9,6 @@ if [ -n "${CONTROL_PLANE_API_KEY:-}" ] && [ -n "${CONTROL_PLANE_TUNNEL_ID:-}" ];
   tunnel-client run \
     --control-plane.tunnel-id "$CONTROL_PLANE_TUNNEL_ID" \
     --mcp.server-url "url=http://127.0.0.1:8080/mcp,channel=main" \
-    --mcp.extra-headers "Authorization: env:KIES_DRIVE_MCP_AUTHORIZATION" \
-    --mcp.discovery-extra-headers "Authorization: env:KIES_DRIVE_MCP_AUTHORIZATION" \
     --mcp.startup-wait-timeout 30s \
     --health.listen-addr 0.0.0.0:18181 &
   tunnel_pid=$!

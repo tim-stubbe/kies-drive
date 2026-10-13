@@ -19,9 +19,6 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-      # Temporary bridge until the MCP tunnel supports browser-based OAuth.
-      # This is an account session created by /auth/login, never a device token.
-      KIES_DRIVE_MCP_AUTHORIZATION: ${KIES_DRIVE_MCP_AUTHORIZATION:-}
       CONTROL_PLANE_API_KEY: ${CONTROL_PLANE_API_KEY:-}
       CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID:-}
     volumes:

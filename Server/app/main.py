@@ -3,23 +3,28 @@ from __future__ import annotations
 import json
 import os
 import re
+import base64
+import hashlib
+import secrets
 import sqlite3
 import time
+from html import escape
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 import pyotp
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 from .auth import (PASSWORD_HASHER, authenticated_user, consume_password_reset, create_password_reset,
                    consume_recovery_code, create_recovery_codes, create_session, create_verification,
                    initialise_auth_schema, normalise_email, send_verification_email,
                    password_reset_html, send_password_reset_email,
-                   totp_matches, utcnow, validate_password, verification_html,
+                   token_hash, totp_matches, utcnow, validate_password, verification_html,
                    verify_email_token, verify_password)
 
 app = FastAPI(title="Kies Drive", version="1.0.0")
@@ -93,6 +98,156 @@ def current_user(authorization: str | None) -> sqlite3.Row:
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "kies-drive"}
+
+
+def public_url(request: Request) -> str:
+    configured = os.getenv("KIES_DRIVE_PUBLIC_URL", "").strip().rstrip("/")
+    return configured or str(request.base_url).rstrip("/")
+
+
+def valid_oauth_redirect(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    if parsed.fragment or parsed.username or parsed.password:
+        return False
+    return bool(parsed.scheme == "https" and parsed.netloc) or (
+        parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}
+    )
+
+
+@app.get("/.well-known/oauth-authorization-server")
+def oauth_metadata(request: Request):
+    base = public_url(request)
+    return {
+        "issuer": base,
+        "authorization_endpoint": f"{base}/oauth/authorize",
+        "token_endpoint": f"{base}/oauth/token",
+        "registration_endpoint": f"{base}/oauth/register",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "scopes_supported": ["mcp"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none"],
+    }
+
+
+@app.get("/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource/mcp")
+def oauth_resource_metadata(request: Request):
+    base = public_url(request)
+    return {"resource": f"{base}/mcp", "authorization_servers": [base],
+            "bearer_methods_supported": ["header"]}
+
+
+@app.post("/oauth/register", status_code=201)
+async def oauth_register(request: Request):
+    rate_limit(f"oauth-register:{request.client.host if request.client else 'unknown'}",
+               maximum=20, window=3600)
+    payload = await request.json()
+    redirect_uris = payload.get("redirect_uris") if isinstance(payload, dict) else None
+    if not isinstance(redirect_uris, list) or not redirect_uris or len(redirect_uris) > 8 or not all(
+        isinstance(uri, str) and valid_oauth_redirect(uri) for uri in redirect_uris
+    ):
+        raise HTTPException(400, "Ungültige OAuth-Weiterleitungsadresse.")
+    client_id = secrets.token_urlsafe(24)
+    client_name = str(payload.get("client_name") or "ChatGPT MCP")[:100]
+    with db() as conn:
+        conn.execute("INSERT INTO oauth_clients(client_id,client_name,redirect_uris,created_at) VALUES(?,?,?,?)",
+                     (client_id, client_name, json.dumps(redirect_uris), utcnow().isoformat()))
+    return {"client_id": client_id, "client_name": client_name, "redirect_uris": redirect_uris,
+            "token_endpoint_auth_method": "none"}
+
+
+def oauth_client_redirect(client_id: str, redirect_uri: str) -> sqlite3.Row | None:
+    with db() as conn:
+        client = conn.execute("SELECT * FROM oauth_clients WHERE client_id=?", (client_id,)).fetchone()
+    if not client or redirect_uri not in json.loads(client["redirect_uris"]):
+        return None
+    return client
+
+
+@app.get("/oauth/authorize", response_class=HTMLResponse)
+def oauth_authorize(request: Request, response_type: str, client_id: str, redirect_uri: str,
+                    code_challenge: str, code_challenge_method: str, state: str | None = None):
+    client = oauth_client_redirect(client_id, redirect_uri)
+    if response_type != "code" or code_challenge_method != "S256" or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", code_challenge):
+        raise HTTPException(400, "Diese OAuth-Anfrage wird nicht unterstützt.")
+    if not client:
+        raise HTTPException(400, "OAuth-Client oder Weiterleitungsadresse ist ungültig.")
+    nonce = secrets.token_urlsafe(32)
+    with db() as conn:
+        conn.execute("DELETE FROM oauth_login_requests WHERE expires_at<?", (utcnow().isoformat(),))
+        conn.execute("INSERT INTO oauth_login_requests VALUES(?,?,?,?,?,?)", (
+            token_hash(nonce), client_id, redirect_uri, state, code_challenge,
+            datetime.fromtimestamp(utcnow().timestamp() + 600, timezone.utc).isoformat(),
+        ))
+    return HTMLResponse(f"""<!doctype html><html lang=\"de\"><meta name=\"viewport\" content=\"width=device-width\"><title>Kies Drive verbinden</title>
+    <body style=\"margin:0;background:#103d32;color:#103d32;font:17px -apple-system;padding:28px\"><main style=\"max-width:480px;margin:8vh auto;background:#f7f0df;padding:28px;border-radius:28px\">
+    <h1>Kies Drive verbinden</h1><p><b>{escape(client['client_name'])}</b> darf nach deiner Bestätigung Fahrdaten lesen und freigegebene Routenaktionen senden.</p>
+    <form method=\"post\"><input type=\"hidden\" name=\"nonce\" value=\"{escape(nonce, quote=True)}\">
+    <input name=\"email\" type=\"email\" required autocomplete=\"email\" placeholder=\"E-Mail-Adresse\" style=\"box-sizing:border-box;width:100%;font:inherit;padding:14px;margin:6px 0;border-radius:12px;border:1px solid #bbb\">
+    <input name=\"password\" type=\"password\" required autocomplete=\"current-password\" placeholder=\"Passwort\" style=\"box-sizing:border-box;width:100%;font:inherit;padding:14px;margin:6px 0;border-radius:12px;border:1px solid #bbb\">
+    <input name=\"totp_code\" autocomplete=\"one-time-code\" placeholder=\"2FA- oder Wiederherstellungscode (falls aktiv)\" style=\"box-sizing:border-box;width:100%;font:inherit;padding:14px;margin:6px 0;border-radius:12px;border:1px solid #bbb\">
+    <button style=\"width:100%;font:600 17px -apple-system;padding:14px;margin-top:12px;border:0;border-radius:14px;background:#103d32;color:white\">Verbinden</button></form></main></body></html>""")
+
+
+@app.post("/oauth/authorize")
+async def oauth_authorize_submit(request: Request):
+    fields = {key: values[0] for key, values in parse_qs((await request.body()).decode("utf-8")).items()}
+    nonce = fields.get("nonce", "")
+    with db() as conn:
+        login = conn.execute("SELECT * FROM oauth_login_requests WHERE nonce_hash=? AND expires_at>?",
+                             (token_hash(nonce), utcnow().isoformat())).fetchone()
+        if not login:
+            raise HTTPException(400, "Die Anmeldeanfrage ist abgelaufen.")
+        email = normalise_email(fields.get("email", ""))
+        rate_limit(f"oauth-login:{request.client.host if request.client else 'unknown'}:{email}")
+        user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        if not user or not user["email_verified_at"] or not verify_password(
+            user["password_hash"], fields.get("password", "")
+        ):
+            raise HTTPException(401, "Anmeldedaten oder Bestätigungscode sind ungültig.")
+        supplied = fields.get("totp_code", "")
+        if user["totp_secret"] and not (
+            totp_matches(user["totp_secret"], supplied)
+            or consume_recovery_code(conn, user["id"], supplied)
+        ):
+            raise HTTPException(401, "Anmeldedaten oder Bestätigungscode sind ungültig.")
+        raw_code = secrets.token_urlsafe(32)
+        conn.execute("INSERT INTO oauth_authorization_codes VALUES(?,?,?,?,?,?,NULL)", (
+            token_hash(raw_code), user["id"], login["client_id"], login["redirect_uri"],
+            login["code_challenge"], datetime.fromtimestamp(utcnow().timestamp() + 300, timezone.utc).isoformat(),
+        ))
+        conn.execute("DELETE FROM oauth_login_requests WHERE nonce_hash=?", (token_hash(nonce),))
+    query = {"code": raw_code}
+    if login["state"] is not None:
+        query["state"] = login["state"]
+    separator = "&" if "?" in login["redirect_uri"] else "?"
+    return RedirectResponse(f"{login['redirect_uri']}{separator}{urlencode(query)}", status_code=303)
+
+
+@app.post("/oauth/token")
+async def oauth_token(request: Request, response: Response):
+    fields = {key: values[0] for key, values in parse_qs((await request.body()).decode("utf-8")).items()}
+    if fields.get("grant_type") != "authorization_code":
+        raise HTTPException(400, "Nicht unterstützter OAuth-Grant.")
+    code, verifier = fields.get("code", ""), fields.get("code_verifier", "")
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    with db() as conn:
+        row = conn.execute("SELECT * FROM oauth_authorization_codes WHERE code_hash=? AND used_at IS NULL AND expires_at>?",
+                           (token_hash(code), utcnow().isoformat())).fetchone()
+        if not row or row["client_id"] != fields.get("client_id") or row["redirect_uri"] != fields.get("redirect_uri") or not secrets.compare_digest(row["code_challenge"], challenge):
+            raise HTTPException(400, "OAuth-Code oder PKCE-Prüfung ist ungültig.")
+        conn.execute("UPDATE oauth_authorization_codes SET used_at=? WHERE code_hash=?",
+                     (utcnow().isoformat(), token_hash(code)))
+        access_token, expires_at = create_session(conn, row["user_id"])
+    expires_in = max(0, int((datetime.fromisoformat(expires_at) - utcnow()).total_seconds()))
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return {"access_token": access_token, "token_type": "Bearer", "expires_in": expires_in,
+            "scope": "mcp"}
 
 
 @app.post("/auth/register", status_code=202)
@@ -353,7 +508,13 @@ TOOLS = [
 
 @app.post("/mcp")
 async def mcp(request: Request, authorization: str | None = Header(None)):
-    user = current_user(authorization)
+    try:
+        user = current_user(authorization)
+    except HTTPException as exc:
+        metadata = f"{public_url(request)}/.well-known/oauth-protected-resource"
+        raise HTTPException(exc.status_code, exc.detail, headers={
+            "WWW-Authenticate": f'Bearer resource_metadata="{metadata}"'
+        }) from exc
     body = await request.json()
     method, params, rpc_id = body.get("method"), body.get("params") or {}, body.get("id")
     if method == "initialize":

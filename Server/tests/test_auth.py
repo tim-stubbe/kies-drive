@@ -1,3 +1,8 @@
+import base64
+import hashlib
+import re
+from urllib.parse import parse_qs, urlparse
+
 import pyotp
 from fastapi.testclient import TestClient
 
@@ -125,3 +130,61 @@ def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, mon
     assert client.get("/auth/me", headers=old_headers).status_code == 401
     assert client.post("/auth/login", json={"email": email, "password": old_password}).status_code == 401
     assert client.post("/auth/login", json={"email": email, "password": new_password}).status_code == 200
+
+
+def test_mcp_oauth_pkce_browser_login(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "oauth.db"))
+    monkeypatch.setenv("KIES_DRIVE_PUBLIC_URL", "https://drive.example.test")
+    verification = {}
+    monkeypatch.setattr(main, "send_verification_email",
+                        lambda email, token: verification.update(email=email, token=token))
+    main.AUTH_ATTEMPTS.clear()
+    client = TestClient(main.app)
+    challenge_response = client.post("/mcp", json={
+        "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}
+    })
+    assert challenge_response.status_code == 401
+    assert "oauth-protected-resource" in challenge_response.headers["www-authenticate"]
+    email, password = "mcp@example.com", "a-secure-mcp-password"
+    client.post("/auth/register", json={"email": email, "password": password})
+    client.get("/auth/verify-email", params={"token": verification["token"]})
+
+    registered = client.post("/oauth/register", json={
+        "client_name": "ChatGPT", "redirect_uris": ["https://chatgpt.com/connector/callback"]
+    })
+    assert registered.status_code == 201
+    client_id = registered.json()["client_id"]
+    verifier = "v" * 64
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    authorize = client.get("/oauth/authorize", params={
+        "response_type": "code", "client_id": client_id,
+        "redirect_uri": "https://chatgpt.com/connector/callback",
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "safe-state",
+    })
+    assert authorize.status_code == 200
+    nonce = re.search(r'name="nonce" value="([^"]+)"', authorize.text).group(1)
+    approved = client.post("/oauth/authorize", data={
+        "nonce": nonce, "email": email, "password": password, "totp_code": ""
+    }, follow_redirects=False)
+    assert approved.status_code == 303
+    redirect = urlparse(approved.headers["location"])
+    query = parse_qs(redirect.query)
+    assert query["state"] == ["safe-state"]
+
+    token = client.post("/oauth/token", data={
+        "grant_type": "authorization_code", "client_id": client_id,
+        "redirect_uri": "https://chatgpt.com/connector/callback",
+        "code": query["code"][0], "code_verifier": verifier,
+    })
+    assert token.status_code == 200
+    access_token = token.json()["access_token"]
+    initialized = client.post("/mcp", headers={"Authorization": f"Bearer {access_token}"}, json={
+        "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}
+    })
+    assert initialized.status_code == 200
+    assert initialized.json()["result"]["serverInfo"]["name"] == "kies-drive"
+    assert client.post("/oauth/token", data={
+        "grant_type": "authorization_code", "client_id": client_id,
+        "redirect_uri": "https://chatgpt.com/connector/callback",
+        "code": query["code"][0], "code_verifier": verifier,
+    }).status_code == 400

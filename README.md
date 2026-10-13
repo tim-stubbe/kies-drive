@@ -10,7 +10,9 @@ nur noch optionale Zusatzdienste wie Jarvis und Tankpreise.
 
 - App: MapKit-Navigation, Pflichtpunkte, Pausen, Mautvergleich, Route-Lock
 - TrueNAS: `ghcr.io/tim-stubbe/kies-drive:latest`, Port `18080`
-- MCP: `https://<truenas>:18080/mcp`
+- MCP: `https://<öffentliche-kies-drive-domain>/mcp`; ChatGPT entdeckt dort
+  automatisch die Browser-Anmeldung mit OAuth 2.1/PKCE. Es muss kein Token
+  kopiert oder im Container hinterlegt werden.
 
 ## CarPlay
 
@@ -27,6 +29,8 @@ install before that approval.
   Nutzer müssen keine Geräte-Tokens eingeben.
 - E-Mail: `KIES_DRIVE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_FROM` sowie je nach
   Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
+  `KIES_DRIVE_PUBLIC_URL` muss die öffentliche HTTPS-Adresse des gesamten
+  Dienstes sein, damit Konto-Bestätigung und MCP-OAuth dieselbe Domain nutzen.
 - Mautrecherche: `SEARXNG_URL` auf die interne URL der SearXNG-Instanz setzen.
   Kies Drive übernimmt nur ausdrücklich als Gesamtmaut bezeichnete Beträge aus
   HTTPS-Quellen; andernfalls bleibt der Preis bewusst unbekannt.

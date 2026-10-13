@@ -88,6 +88,32 @@ def initialise_auth_schema(conn: sqlite3.Connection) -> None:
         used_at TEXT,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS oauth_clients (
+        client_id TEXT PRIMARY KEY,
+        client_name TEXT NOT NULL,
+        redirect_uris TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS oauth_login_requests (
+        nonce_hash TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        state TEXT,
+        code_challenge TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY(client_id) REFERENCES oauth_clients(client_id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
+        code_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        client_id TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        code_challenge TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(client_id) REFERENCES oauth_clients(client_id) ON DELETE CASCADE
+      );
     """)
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "totp_pending_secret" not in columns:
