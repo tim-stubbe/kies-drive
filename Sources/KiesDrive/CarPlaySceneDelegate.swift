@@ -37,7 +37,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func connect(interfaceController: CPInterfaceController, window: CPWindow?) {
         self.interfaceController = interfaceController
         carWindow = window
-        LocationService.shared.setNavigationActive(true)
+        LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
         LocationService.shared.start()
 
         if let window {
@@ -162,7 +162,19 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             items.append(item)
         }
-        for recent in RecentDestinationStore.load().prefix(4) {
+        for favorite in DriveFavoriteStore.load().prefix(4) {
+            let item = CPListItem(text: favorite.name,
+                                  detailText: favorite.subtitle.isEmpty ? "Favorit" : favorite.subtitle,
+                                  image: UIImage(systemName: "heart.fill"))
+            item.handler = { [weak self] _, completion in
+                Task {
+                    await self?.navigate(to: favorite)
+                    completion()
+                }
+            }
+            items.append(item)
+        }
+        for recent in RecentDestinationStore.load().prefix(3) {
             let item = CPListItem(text: recent.name,
                                   detailText: recent.subtitle.isEmpty ? "Letztes Ziel" : recent.subtitle,
                                   image: UIImage(systemName: "clock.arrow.circlepath"))
@@ -226,6 +238,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         guard let start = LocationService.shared.location?.coordinate else { return }
         let item = MKMapItem(placemark: MKPlacemark(coordinate: recent.coordinate))
         item.name = recent.name
+        await navigate(to: item, from: start)
+    }
+
+    private func navigate(to favorite: DriveFavorite) async {
+        guard let start = LocationService.shared.location?.coordinate else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: favorite.coordinate))
+        item.name = favorite.name
         await navigate(to: item, from: start)
     }
 

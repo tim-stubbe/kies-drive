@@ -126,6 +126,18 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(values.first?.name, "Zuhause neu")
     }
 
+    func testFavoritesRoundTripForPhoneAndCarPlay() {
+        let suite = "DriveFavoriteTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let favorites = [
+            DriveFavorite(name: "Büro", subtitle: "Mainz", latitude: 50.01, longitude: 8.27),
+            DriveFavorite(name: "Hotel", subtitle: "Graz", latitude: 47.07, longitude: 15.44)
+        ]
+        DriveFavoriteStore.save(favorites, defaults: defaults)
+        XCTAssertEqual(DriveFavoriteStore.load(defaults: defaults), favorites)
+    }
+
     func testDiagnosticsAreBounded() {
         let suite = "DriveDiagnosticTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

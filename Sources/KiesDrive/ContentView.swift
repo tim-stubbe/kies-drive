@@ -1971,38 +1971,6 @@ private struct AccountWelcomeView: View {
     }
 }
 
-private struct DriveFavorite: Codable, Identifiable {
-    let id: UUID
-    let name: String
-    let subtitle: String
-    let latitude: Double
-    let longitude: Double
-
-    init(id: UUID = UUID(), name: String, subtitle: String, latitude: Double, longitude: Double) {
-        self.id = id
-        self.name = name
-        self.subtitle = subtitle
-        self.latitude = latitude
-        self.longitude = longitude
-    }
-
-    var coordinate: CLLocationCoordinate2D { .init(latitude: latitude, longitude: longitude) }
-}
-
-private enum DriveFavoriteStore {
-    private static let key = "drive.favoriteDestinations"
-
-    static func load() -> [DriveFavorite] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([DriveFavorite].self, from: data)) ?? []
-    }
-
-    static func save(_ favorites: [DriveFavorite]) {
-        guard let data = try? JSONEncoder().encode(favorites) else { return }
-        UserDefaults.standard.set(data, forKey: key)
-    }
-}
-
 private extension Color {
     static let kiesForest = Color(red: 0.08, green: 0.20, blue: 0.16)
     static let kiesIvory = Color(red: 0.97, green: 0.95, blue: 0.89)

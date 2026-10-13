@@ -108,6 +108,38 @@ enum RecentDestinationStore {
     static func clear(defaults: UserDefaults = .standard) { defaults.removeObject(forKey: key) }
 }
 
+struct DriveFavorite: Codable, Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let subtitle: String
+    let latitude: Double
+    let longitude: Double
+
+    init(id: UUID = UUID(), name: String, subtitle: String, latitude: Double, longitude: Double) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    var coordinate: CLLocationCoordinate2D { .init(latitude: latitude, longitude: longitude) }
+}
+
+enum DriveFavoriteStore {
+    private static let key = "drive.favoriteDestinations"
+
+    static func load(defaults: UserDefaults = .standard) -> [DriveFavorite] {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([DriveFavorite].self, from: data)) ?? []
+    }
+
+    static func save(_ favorites: [DriveFavorite], defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(favorites) else { return }
+        defaults.set(data, forKey: key)
+    }
+}
+
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
     case arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
