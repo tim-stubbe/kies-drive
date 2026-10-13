@@ -1534,9 +1534,13 @@ struct DriveSettingsView: View {
                 Section("Navigationsqualität") {
                     let reroutes = diagnosticEvents.filter { $0.kind == .rerouteRequested }.count
                     let failures = diagnosticEvents.filter { $0.kind == .rerouteFailed }.count
+                    let rejectedLocations = diagnosticEvents.filter { $0.kind == .locationRejected }.count
+                    let arrivals = diagnosticEvents.filter { $0.kind == .arrivalReached }.count
                     LabeledContent("Aufgezeichnete Fahrereignisse", value: "\(diagnosticEvents.count)")
                     LabeledContent("Neuberechnungen", value: "\(reroutes)")
                     LabeledContent("Fehlgeschlagen", value: "\(failures)")
+                    LabeledContent("GPS-Ausreißer verworfen", value: "\(rejectedLocations)")
+                    LabeledContent("Ziele sicher erkannt", value: "\(arrivals)")
                     Text("Die Diagnose bleibt lokal auf diesem Gerät und enthält keine vollständige Standortspur.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Diagnose zurücksetzen", role: .destructive) {

@@ -71,6 +71,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var lastLocationRejectionLoggedAt: Date?
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
+    private var speedLimitLoadGeneration = UUID()
+    private var tollLoadGeneration = UUID()
+    private var routeCalculationGeneration = UUID()
     private var didAttemptAutomaticRestore = false
     private static let cacheKey = "drive.offlineRoute"
     private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
@@ -343,7 +346,14 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
-        guard var lock = routeLockStore.activeLock else { return }
+        // A user may add a stop while merely previewing a calculated route,
+        // before tapping Start. Materialise the lock here so the action never
+        // appears to succeed while silently doing nothing.
+        if routeLockStore.activeLock == nil { persistActiveTrip() }
+        guard var lock = routeLockStore.activeLock else {
+            errorMessage = "Zwischenstopp konnte nicht gespeichert werden."
+            return
+        }
         let coordinate = item.placemark.coordinate
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 240) }
         func progress(_ coordinate: CLLocationCoordinate2D) -> Int {
@@ -368,6 +378,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings) async {
         guard let destination else { return }
+        let calculationGeneration = UUID()
+        routeCalculationGeneration = calculationGeneration
         isLoading = true; errorMessage = nil; stations = []
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
@@ -387,6 +399,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let lockedWaypoints = lock?.waypoints.filter { $0.required && !visited.contains($0.id) } ?? []
             if viaStations.isEmpty && lockedWaypoints.isEmpty {
                 let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
+                guard calculationGeneration == routeCalculationGeneration else { return }
                 alternatives = routes
                 legs = routes.first.map { [$0] } ?? []
                 // Request the opposite toll preference for an honest route-level
@@ -396,6 +409,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                     from: startItem, to: destination, settings: settings,
                     alternates: false, avoidTollsOverride: !settings.avoidTolls
                 ).first
+                guard calculationGeneration == routeCalculationGeneration else { return }
             } else {
                 // MapKit kennt keine mehrgliedrigen Routen als ein einziges Objekt.
                 // Daher Teilstrecken sequentiell (Start→wp1→wp2→…→Ziel) berechnen.
@@ -422,6 +436,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                                                             alternates: false, lockedOptions: lockedOptions).first else {
                         throw DriveAPIError.invalidData
                     }
+                    guard calculationGeneration == routeCalculationGeneration else { return }
                     newLegs.append(leg)
                 }
                 legs = newLegs
@@ -440,12 +455,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             Task { [weak self] in
                 guard let self else { return }
                 await self.loadStations(fuel: settings.fuel)
+                guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.loadSpeedLimits()
+                guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.loadTollCost(from: start)
+                guard calculationGeneration == self.routeCalculationGeneration else { return }
                 self.buildLongTripPlan(settings: settings)
                 self.cacheForOffline()
             }
         } catch {
+            guard calculationGeneration == routeCalculationGeneration else { return }
             isLoading = false
             errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)"
         }
@@ -800,9 +819,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// überlasteter Overpass-Dienst nicht die restliche Routenplanung blockiert.
     func loadSpeedLimits() async {
         guard !legs.isEmpty else { speedLimitPoints = []; speedLimits = []; return }
+        let generation = UUID()
+        speedLimitLoadGeneration = generation
         let points = legs.flatMap { sample($0.polyline, maximum: 80) }
+        let limits = (try? await DriveAPI.speedLimits(along: points)) ?? []
+        guard generation == speedLimitLoadGeneration else { return }
         speedLimitPoints = points
-        speedLimits = (try? await DriveAPI.speedLimits(along: points)) ?? []
+        speedLimits = limits
     }
 
     /// Aktuelles Tempolimit für den nächstgelegenen abgetasteten Routenpunkt
@@ -879,11 +902,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func loadTollCost(from start: CLLocationCoordinate2D) async {
         guard let destination else { return }
+        let generation = UUID()
+        tollLoadGeneration = generation
         let origin = String(format: "%.4f, %.4f", start.latitude, start.longitude)
         let destinationName = destination.placemark.title ?? destination.name ?? destinationText
         do {
-            researchedToll = try await DriveAPI.tollCost(origin: origin, destination: destinationName)
+            let toll = try await DriveAPI.tollCost(origin: origin, destination: destinationName)
+            guard generation == tollLoadGeneration else { return }
+            researchedToll = toll
         } catch {
+            guard generation == tollLoadGeneration else { return }
             researchedToll = .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)")
         }
     }
