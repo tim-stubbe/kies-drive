@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
@@ -88,5 +89,38 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(events.count, 100)
         XCTAssertEqual(events.first?.detail, "20")
         XCTAssertEqual(events.last?.detail, "119")
+    }
+
+    func testNavigationLocationPolicyRejectsImpossibleJumpAndStaleFix() {
+        let now = Date()
+        let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                               horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: now.addingTimeInterval(-2))
+        let jump = CLLocation(coordinate: .init(latitude: 51, longitude: 9), altitude: 0,
+                              horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: now.addingTimeInterval(-1))
+        let stale = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                               horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: now.addingTimeInterval(-60))
+        XCTAssertFalse(NavigationLocationPolicy.accepts(jump, after: first, now: now))
+        XCTAssertFalse(NavigationLocationPolicy.accepts(stale, after: nil, now: now))
+    }
+
+    func testNavigationLocationPolicyAcceptsNormalMovement() {
+        let now = Date()
+        let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                               horizontalAccuracy: 8, verticalAccuracy: 5, timestamp: now.addingTimeInterval(-2))
+        let next = CLLocation(coordinate: .init(latitude: 50.0005, longitude: 8), altitude: 0,
+                              horizontalAccuracy: 8, verticalAccuracy: 5, timestamp: now.addingTimeInterval(-1))
+        XCTAssertTrue(NavigationLocationPolicy.accepts(next, after: first, now: now))
+    }
+
+    func testArrivalRequiresAccurateSlowFixNearDestination() {
+        let destination = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let nearAndSlow = CLLocation(coordinate: destination, altitude: 0,
+                                     horizontalAccuracy: 8, verticalAccuracy: 5,
+                                     course: 0, speed: 2, timestamp: Date())
+        let fast = CLLocation(coordinate: destination, altitude: 0,
+                              horizontalAccuracy: 8, verticalAccuracy: 5,
+                              course: 0, speed: 20, timestamp: Date())
+        XCTAssertTrue(NavigationArrivalPolicy.isArrivalFix(nearAndSlow, destination: destination))
+        XCTAssertFalse(NavigationArrivalPolicy.isArrivalFix(fast, destination: destination))
     }
 }

@@ -54,6 +54,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var upcomingManeuverInstructions: [String] = []
     @Published var remainingDistanceMetres: CLLocationDistance = 0
     @Published var remainingTravelTime: TimeInterval = 0
+    @Published var hasArrived = false
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
 
@@ -66,6 +67,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
     private var offRouteStrikes = 0
     private var lastRerouteAt: Date?
+    private var lastAcceptedNavigationLocation: CLLocation?
+    private var lastLocationRejectionLoggedAt: Date?
+    private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
     private var didAttemptAutomaticRestore = false
     private static let cacheKey = "drive.offlineRoute"
@@ -143,6 +147,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !legs.isEmpty else { return }
         persistActiveTrip()
         isNavigating = true
+        hasArrived = false
         resetLiveNavigationProgress()
         lastAnnouncement = nextInstruction ?? "Route gestartet"
         let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
@@ -486,6 +491,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// neu berechnen.
     func updateProgress(at location: CLLocation, settings: DriveSettings) {
         guard isNavigating, !legs.isEmpty else { return }
+        guard NavigationLocationPolicy.accepts(location, after: lastAcceptedNavigationLocation) else {
+            if lastLocationRejectionLoggedAt.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
+                lastLocationRejectionLoggedAt = Date()
+                DriveDiagnosticStore.append(.locationRejected,
+                                            detail: "Genauigkeit \(Int(location.horizontalAccuracy)) m")
+            }
+            return
+        }
+        lastAcceptedNavigationLocation = location
+        if detectArrival(at: location, settings: settings) { return }
         if let progress = liveNavigationProgress(at: location) {
             updateNextManeuver(using: progress)
             if settings.voiceGuidance { announce(progress, at: location) }
@@ -512,6 +527,38 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func resetLiveNavigationProgress() {
         navigationStepCursor = 0
         announcedManeuverStages = [:]
+        offRouteStrikes = 0
+        arrivalStrikes = 0
+        lastAcceptedNavigationLocation = nil
+    }
+
+    @discardableResult
+    private func detectArrival(at location: CLLocation, settings: DriveSettings) -> Bool {
+        guard let coordinate = destination?.placemark.coordinate else { return false }
+        if NavigationArrivalPolicy.isArrivalFix(location, destination: coordinate) {
+            arrivalStrikes += 1
+        } else {
+            arrivalStrikes = 0
+        }
+        guard arrivalStrikes >= NavigationArrivalPolicy.requiredConsecutiveFixes else { return false }
+
+        arrivalStrikes = 0
+        isNavigating = false
+        isRecalculating = false
+        remainingDistanceMetres = 0
+        remainingTravelTime = 0
+        nextManeuverInstruction = "Ziel erreicht"
+        nextManeuverDistance = 0
+        upcomingManeuverInstructions = []
+        lastAnnouncement = "Ziel erreicht"
+        hasArrived = true
+        offRouteStrikes = 0
+        if settings.voiceGuidance { speak("Du hast dein Ziel erreicht.") }
+        routeLockStore.finish()
+        activeRouteLock = nil
+        routeLockStore.clearFinished()
+        DriveDiagnosticStore.append(.arrivalReached, detail: destination?.name ?? destinationText)
+        return true
     }
 
     private func routeSteps() -> [LiveRouteStep] {
