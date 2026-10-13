@@ -116,6 +116,23 @@ enum NavigationSpeechFormatter {
         return sentence("\(distancePrefix(distance)), \(maneuver)")
     }
 
+    /// Combines two very close turns into one final cue. This prevents a
+    /// second maneuver from being announced only after the driver has already
+    /// committed to the wrong lane.
+    static func spokenText(_ instruction: String, distance: CLLocationDistance,
+                           then followingInstruction: String?,
+                           followingDistance: CLLocationDistance?) -> String {
+        let primary = spokenText(instruction, distance: distance)
+        guard let followingInstruction, let followingDistance,
+              followingDistance.isFinite, followingDistance >= 0,
+              followingDistance <= 450 else { return primary }
+        let following = spokenText(followingInstruction)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
+        guard !following.isEmpty else { return primary }
+        let first = primary.trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
+        return "\(first). Danach, \(following)."
+    }
+
     private static func replacing(_ pattern: String, in value: String, with replacement: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return value }
         return regex.stringByReplacingMatches(
@@ -343,6 +360,7 @@ struct OfflineGuidanceProgress: Equatable {
     let distanceToManeuver: CLLocationDistance
     let remainingDistance: CLLocationDistance
     let upcomingInstructions: [String]
+    let followingManeuverDistance: CLLocationDistance?
 }
 
 enum OfflineGuidanceEngine {
@@ -366,18 +384,26 @@ enum OfflineGuidanceEngine {
             return .init(currentStepIndex: selected, maneuverStepIndex: selected,
                          instruction: "Dem Straßenverlauf bis zum Ziel folgen",
                          distanceToManeuver: routeRemaining, remainingDistance: routeRemaining,
-                         upcomingInstructions: ["Dem Straßenverlauf bis zum Ziel folgen"])
+                         upcomingInstructions: ["Dem Straßenverlauf bis zum Ziel folgen"],
+                         followingManeuverDistance: nil)
         }
         let distanceToManeuver = metrics[selected].remainingOnStep +
             steps[(selected + 1)..<maneuver].reduce(0) { $0 + $1.distance }
         let upcoming = steps[maneuver...].map(\.instruction).filter {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+        let followingIndex = steps.indices.dropFirst(maneuver + 1).first(where: {
+            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })
+        let followingDistance = followingIndex.map { index in
+            steps[maneuver..<index].reduce(0) { $0 + $1.distance }
+        }
         return .init(currentStepIndex: selected, maneuverStepIndex: maneuver,
                      instruction: steps[maneuver].instruction,
                      distanceToManeuver: max(0, distanceToManeuver),
                      remainingDistance: routeRemaining,
-                     upcomingInstructions: Array(upcoming.prefix(5)))
+                     upcomingInstructions: Array(upcoming.prefix(5)),
+                     followingManeuverDistance: followingDistance)
     }
 
     private static func distance(from coordinate: CLLocationCoordinate2D,

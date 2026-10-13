@@ -130,6 +130,41 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechChainsOnlyCloseFollowingManeuver() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Rechts abbiegen", distance: 20,
+                then: "links halten Richtung A 66", followingDistance: 180
+            ),
+            "Jetzt, Rechts abbiegen. Danach, Links halten Richtung A 66."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Rechts abbiegen", distance: 20,
+                then: "links halten", followingDistance: 900
+            ),
+            "Jetzt, Rechts abbiegen."
+        )
+    }
+
+    func testOfflineGuidanceMeasuresDistanceBetweenCloseManeuvers() throws {
+        let points = [
+            CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000),
+            CLLocationCoordinate2D(latitude: 50.0010, longitude: 8.0000),
+            CLLocationCoordinate2D(latitude: 50.0020, longitude: 8.0000),
+            CLLocationCoordinate2D(latitude: 50.0030, longitude: 8.0000),
+        ]
+        let steps = [
+            OfflineGuidanceStep(instruction: "", distance: 111, coordinates: [points[0], points[1]]),
+            OfflineGuidanceStep(instruction: "Rechts abbiegen", distance: 111, coordinates: [points[1], points[2]]),
+            OfflineGuidanceStep(instruction: "Links halten", distance: 111, coordinates: [points[2], points[3]]),
+        ]
+        let progress = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: points[0], currentIndex: 0, steps: steps, transitionRadius: 12
+        ))
+        XCTAssertEqual(progress.followingManeuverDistance ?? -1, 111, accuracy: 0.1)
+    }
+
     func testAnnouncementStagesAdaptToRoadSpeed() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 120), .early)
         XCTAssertNil(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 50))

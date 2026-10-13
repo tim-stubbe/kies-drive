@@ -730,7 +730,14 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !completed.contains(stage) else { return }
         announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         let spokenDistance = stage == .now ? min(progress.distanceToManeuver, 35) : progress.distanceToManeuver
-        speak(NavigationSpeechFormatter.spokenText(progress.instruction, distance: spokenDistance))
+        let following = progress.upcomingInstructions.dropFirst().first
+        let speech = stage == .now
+            ? NavigationSpeechFormatter.spokenText(
+                progress.instruction, distance: spokenDistance,
+                then: following, followingDistance: progress.followingManeuverDistance
+            )
+            : NavigationSpeechFormatter.spokenText(progress.instruction, distance: spokenDistance)
+        speak(speech)
         lastAnnouncement = progress.instruction
         DriveDiagnosticStore.append(.maneuverAnnounced,
                                     detail: "\(stage) · \(Int(progress.distanceToManeuver)) m · \(progress.instruction)")
@@ -748,6 +755,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let distance: CLLocationDistance
         let totalRemainingDistance: CLLocationDistance
         let upcomingInstructions: [String]
+        let followingManeuverDistance: CLLocationDistance?
     }
 
     private func resetLiveNavigationProgress() {
@@ -843,11 +851,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let instruction = item.step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
             return instruction.isEmpty ? nil : instruction
         }
+        let followingIndex = steps.indices.dropFirst(maneuverIndex + 1).first(where: {
+            !steps[$0].step.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })
+        let followingDistance = followingIndex.map { index in
+            steps[maneuverIndex..<index].reduce(0) { $0 + $1.step.distance }
+        }
         return LiveNavigationProgress(
             maneuver: steps[maneuverIndex], maneuverFlatIndex: maneuverIndex,
             distance: max(0, distance),
             totalRemainingDistance: routeRemaining,
-            upcomingInstructions: Array(upcoming.prefix(5))
+            upcomingInstructions: Array(upcoming.prefix(5)),
+            followingManeuverDistance: followingDistance
         )
     }
 
@@ -905,7 +920,14 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         // earlier stages complete as well so they cannot be spoken afterwards.
         announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         let spokenDistance: CLLocationDistance = stage == .now ? min(progress.distance, 35) : progress.distance
-        speak(NavigationSpeechFormatter.spokenText(progress.maneuver.step.instructions, distance: spokenDistance))
+        let following = progress.upcomingInstructions.dropFirst().first
+        let speech = stage == .now
+            ? NavigationSpeechFormatter.spokenText(
+                progress.maneuver.step.instructions, distance: spokenDistance,
+                then: following, followingDistance: progress.followingManeuverDistance
+            )
+            : NavigationSpeechFormatter.spokenText(progress.maneuver.step.instructions, distance: spokenDistance)
+        speak(speech)
         lastAnnouncement = progress.maneuver.step.instructions
         DriveDiagnosticStore.append(.maneuverAnnounced,
                                     detail: "\(stage) · \(Int(progress.distance)) m · \(progress.maneuver.step.instructions)")
