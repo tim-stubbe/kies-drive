@@ -594,34 +594,35 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let steps = routeSteps()
         guard !steps.isEmpty else { return nil }
 
-        // Search forward from the last confirmed segment. A small one-step
-        // look-behind tolerates GPS jitter without ever jumping far backwards.
-        let lower = max(0, navigationStepCursor - 1)
-        let upper = min(steps.count - 1, navigationStepCursor + 12)
-        let localRange = lower...upper
-        var currentIndex = localRange.min { lhs, rhs in
-            Self.distance(from: location.coordinate, to: steps[lhs].step.polyline) <
-            Self.distance(from: location.coordinate, to: steps[rhs].step.polyline)
-        } ?? navigationStepCursor
-
-        let localDistance = Self.distance(from: location.coordinate, to: steps[currentIndex].step.polyline)
-        if localDistance > 300,
-           let recovered = steps.indices.min(by: {
-               Self.distance(from: location.coordinate, to: steps[$0].step.polyline) <
-               Self.distance(from: location.coordinate, to: steps[$1].step.polyline)
-           }), recovered >= navigationStepCursor {
-            // Handles returning after a long pause or a large location jump.
-            currentIndex = recovered
+        let metrics = steps.map {
+            NavigationStepMetric(
+                distanceFromRoute: Self.distance(from: location.coordinate, to: $0.step.polyline),
+                remainingOnStep: Self.remainingDistance(from: location.coordinate, on: $0.step.polyline)
+            )
         }
-        navigationStepCursor = max(navigationStepCursor, currentIndex)
-        currentIndex = navigationStepCursor
+        let transitionRadius = max(8, location.horizontalAccuracy * 1.5)
+        navigationStepCursor = NavigationStepSelectionPolicy.selectedIndex(
+            current: min(navigationStepCursor, steps.count - 1), metrics: metrics,
+            transitionRadius: transitionRadius
+        )
+        let currentIndex = navigationStepCursor
+
+        let routeRemaining = max(0, Self.remainingDistance(from: location.coordinate,
+                                                            on: steps[currentIndex].step.polyline)
+            + steps.dropFirst(currentIndex + 1).reduce(0) { $0 + $1.step.distance })
 
         guard let maneuverIndex = steps.indices.dropFirst(currentIndex + 1).first(where: {
             !steps[$0].step.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) else {
-            nextManeuverInstruction = "Ziel erreicht"
-            nextManeuverDistance = 0
-            upcomingManeuverInstructions = []
+            // Being on the final road is not the same as arriving. The
+            // separate multi-fix arrival detector is the only authority that
+            // may show and speak "Ziel erreicht".
+            nextManeuverInstruction = "Dem Straßenverlauf bis zum Ziel folgen"
+            nextManeuverDistance = routeRemaining
+            upcomingManeuverInstructions = ["Dem Straßenverlauf bis zum Ziel folgen"]
+            remainingDistanceMetres = routeRemaining
+            let averageMetresPerSecond = totalDistance / max(totalTravelTime, 1)
+            remainingTravelTime = routeRemaining / max(averageMetresPerSecond, 1)
             return nil
         }
 
@@ -640,9 +641,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         return LiveNavigationProgress(
             maneuver: steps[maneuverIndex], maneuverFlatIndex: maneuverIndex,
             distance: max(0, distance),
-            totalRemainingDistance: max(0, Self.remainingDistance(from: location.coordinate,
-                                                                  on: steps[currentIndex].step.polyline)
-                + steps.dropFirst(currentIndex + 1).reduce(0) { $0 + $1.step.distance }),
+            totalRemainingDistance: routeRemaining,
             upcomingInstructions: Array(upcoming.prefix(5))
         )
     }

@@ -131,4 +131,35 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(response.email, "driver@example.com")
         XCTAssertTrue(response.twoFactorEnabled)
     }
+
+    func testStepSelectionDoesNotJumpToNearbyFutureRamp() {
+        let metrics = [
+            NavigationStepMetric(distanceFromRoute: 4, remainingOnStep: 600),
+            NavigationStepMetric(distanceFromRoute: 2, remainingOnStep: 900),
+            NavigationStepMetric(distanceFromRoute: 3, remainingOnStep: 1_200),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(current: 0, metrics: metrics,
+                                                                    transitionRadius: 10), 0)
+    }
+
+    func testStepSelectionAdvancesSequentiallyAtJunction() {
+        let metrics = [
+            NavigationStepMetric(distanceFromRoute: 5, remainingOnStep: 4),
+            NavigationStepMetric(distanceFromRoute: 6, remainingOnStep: 500),
+            NavigationStepMetric(distanceFromRoute: 3, remainingOnStep: 900),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(current: 0, metrics: metrics,
+                                                                    transitionRadius: 10), 1)
+    }
+
+    func testStepSelectionRecoversForwardAfterLargeLocationGap() {
+        let metrics = [
+            NavigationStepMetric(distanceFromRoute: 700, remainingOnStep: 0),
+            NavigationStepMetric(distanceFromRoute: 550, remainingOnStep: 0),
+            NavigationStepMetric(distanceFromRoute: 7, remainingOnStep: 300),
+            NavigationStepMetric(distanceFromRoute: 20, remainingOnStep: 800),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(current: 0, metrics: metrics,
+                                                                    transitionRadius: 12), 2)
+    }
 }
