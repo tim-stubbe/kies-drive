@@ -89,6 +89,11 @@ struct DriveContentView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             mobileBottomCard
+                // The navigation chrome intentionally keeps its warm ivory
+                // palette in both system appearances. Without a local light
+                // scheme, semantic labels turn white in Dark Mode and lose
+                // all contrast against the ivory surface.
+                .environment(\.colorScheme, .light)
         }
         .onAppear {
             location.start()
@@ -294,6 +299,7 @@ struct DriveContentView: View {
             .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
 
             mobileSearchCard
+                .environment(\.colorScheme, .light)
         }
         .shadow(color: .black.opacity(0.16), radius: 14, y: 6)
     }
