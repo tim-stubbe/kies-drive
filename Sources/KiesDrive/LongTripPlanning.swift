@@ -112,6 +112,19 @@ struct BreakCandidate: Identifiable, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
+enum BreakCandidateFactory {
+    /// Keep an absent provider opening status absent. Treating `nil` as open
+    /// would make an unverified station look safe for a night-time pause.
+    static func fuelStation(_ station: FuelStation, progress: Double,
+                            detourMetres: Double) -> BreakCandidate {
+        BreakCandidate(
+            id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
+            coordinate: station.coordinate, progress: progress,
+            detourMetres: detourMetres, isOpen: station.open, supportsFuel: true
+        )
+    }
+}
+
 enum RouteGeometryProgress {
     /// Converts arbitrary polyline sampling density into real distance
     /// fractions. Dense junction geometry must not count as more trip progress

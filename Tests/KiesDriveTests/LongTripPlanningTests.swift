@@ -63,6 +63,17 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(stop?.explanation.contains("Geöffneter Halt") == true)
     }
 
+    func testFuelStationWithoutOpeningDataRemainsUnverified() {
+        let station = FuelStation(id: "station", name: "Autohof", brand: "", street: "",
+                                  place: "", lat: 50, lon: 8, price: 1.75,
+                                  open: nil, distanceKm: 1)
+        let candidate = BreakCandidateFactory.fuelStation(station, progress: 0.5, detourMetres: 200)
+        XCTAssertNil(candidate.isOpen)
+        let planned = BreakPlanner(maximumContinuousDriving: 2 * 60 * 60)
+            .plan(drivingTime: 4 * 60 * 60, candidates: [candidate]).first
+        XCTAssertTrue(planned?.explanation.contains("Öffnungsstatus") == true)
+    }
+
     func testRouteProgressUsesDistanceRatherThanPointCount() {
         let coordinates = [
             CLLocationCoordinate2D(latitude: 50, longitude: 8),

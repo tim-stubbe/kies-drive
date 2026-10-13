@@ -1,5 +1,4 @@
 import Foundation
-import Foundation
 import CoreLocation
 
 struct FuelStation: Codable, Identifiable, Hashable {

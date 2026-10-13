@@ -1137,11 +1137,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 location.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
             }) else { return nil }
             let detour = location.distance(from: CLLocation(latitude: match.element.latitude, longitude: match.element.longitude))
-            return BreakCandidate(
-                id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
-                coordinate: station.coordinate,
-                progress: routeProgress[match.offset],
-                detourMetres: detour * 2, isOpen: station.open != false, supportsFuel: true
+            return BreakCandidateFactory.fuelStation(
+                station, progress: routeProgress[match.offset], detourMetres: detour * 2
             )
         }
         return (fuelCandidates + amenityBreakCandidates)
