@@ -195,3 +195,12 @@ enum NavigationStepSelectionPolicy {
         return selected
     }
 }
+enum NavigationEstimatePolicy {
+    /// Conservative time to the next maneuver. GPS speed is useful when
+    /// moving, while a 50 km/h fallback avoids absurd zero-second CarPlay ETAs.
+    static func timeToManeuver(distanceMetres: Double, speedMetresPerSecond: Double) -> TimeInterval {
+        guard distanceMetres > 0 else { return 0 }
+        let effectiveSpeed = speedMetresPerSecond > 2 ? min(speedMetresPerSecond, 55) : 13.9
+        return max(1, distanceMetres / effectiveSpeed)
+    }
+}

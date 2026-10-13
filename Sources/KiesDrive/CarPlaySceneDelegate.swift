@@ -8,12 +8,14 @@ import UIKit
 /// CarPlay is only another presentation and control surface for the shared trip.
 @MainActor
 final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate {
+    private enum CameraMode { case follow, overview }
     private var interfaceController: CPInterfaceController?
     private var carWindow: CPWindow?
     private var mapView: MKMapView?
     private var mapTemplate: CPMapTemplate?
     private var navigationSession: CPNavigationSession?
     private var activeTrip: CPTrip?
+    private var cameraMode: CameraMode = .follow
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -121,22 +123,31 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         overview.image = UIImage(systemName: "map")
         let stops = CPMapButton { [weak self] _ in self?.showStops() }
         stops.image = UIImage(systemName: "fork.knife")
-        return [follow, overview, stops]
+        let audio = CPMapButton { button in
+            DriveSettings.shared.voiceGuidance.toggle()
+            button.image = UIImage(systemName: DriveSettings.shared.voiceGuidance
+                                   ? "speaker.wave.2.fill" : "speaker.slash.fill")
+        }
+        audio.image = UIImage(systemName: DriveSettings.shared.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
+        return [follow, overview, stops, audio]
     }
 
     private func followVehicle() {
+        cameraMode = .follow
         mapView?.setUserTrackingMode(.followWithHeading, animated: true)
     }
 
     private func showRouteOverview() {
         guard let mapView, !RoutePlanner.shared.legs.isEmpty else { return }
+        cameraMode = .overview
+        mapView.setUserTrackingMode(.none, animated: false)
         let rect = RoutePlanner.shared.legs.reduce(MKMapRect.null) { $0.union($1.polyline.boundingMapRect) }
         mapView.setVisibleMapRect(rect, edgePadding: .init(top: 90, left: 55, bottom: 90, right: 55), animated: true)
     }
 
     private func showStops() {
         let planner = RoutePlanner.shared
-        let items = planner.stations.prefix(8).map { station in
+        var items = planner.stations.prefix(4).map { station in
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
                                   detailText: String(format: "%.3f € · %.1f km", station.price, station.distanceKm))
             item.handler = { _, completion in
@@ -148,9 +159,52 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             return item
         }
-        let empty = CPListItem(text: "Keine Stopps gefunden", detailText: "Die Suche wird entlang der Route begrenzt.")
-        let list = CPListTemplate(title: "Auf der Route", sections: [CPListSection(items: items.isEmpty ? [empty] : items)])
+        for (title, query, symbol) in [
+            ("McDonald’s entlang der Route", "McDonald's", "m.circle.fill"),
+            ("Essen entlang der Route", "Restaurant", "fork.knife"),
+            ("Rastplätze entlang der Route", "Raststätte Autohof", "cup.and.saucer.fill")
+        ] {
+            let item = CPListItem(text: title, detailText: "Mit kleinem Umweg suchen",
+                                  image: UIImage(systemName: symbol))
+            item.handler = { [weak self] _, completion in
+                Task {
+                    await planner.searchAlongRoute(query)
+                    await MainActor.run {
+                        completion()
+                        self?.showSearchResults(title: title)
+                    }
+                }
+            }
+            items.append(item)
+        }
+        let list = CPListTemplate(title: "Auf der Route", sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(list, animated: true, completion: nil)
+    }
+
+    private func showSearchResults(title: String) {
+        let planner = RoutePlanner.shared
+        let start = LocationService.shared.location?.coordinate
+        let items = planner.routeSearchResults.prefix(10).map { mapItem in
+            let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
+                .compactMap { $0 }.joined(separator: ", ")
+            let item = CPListItem(text: mapItem.name ?? "Zwischenstopp",
+                                  detailText: address.isEmpty ? "Entlang der Route" : address)
+            item.handler = { _, completion in
+                guard let start else { completion(); return }
+                Task {
+                    await planner.addRouteStop(mapItem, from: start, settings: .shared)
+                    await MainActor.run { completion() }
+                }
+            }
+            return item
+        }
+        let visible = items.isEmpty
+            ? [CPListItem(text: "Nichts Passendes gefunden", detailText: "Bitte später erneut versuchen.")]
+            : items
+        interfaceController?.pushTemplate(
+            CPListTemplate(title: title, sections: [CPListSection(items: visible)]),
+            animated: true, completion: nil
+        )
     }
 
     private func redrawRoute() {
@@ -202,9 +256,19 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func updateGuidanceEstimates() {
         guard let session = navigationSession, let maneuver = session.upcomingManeuvers.first else { return }
-        let estimates = travelEstimates()
-        session.updateEstimates(estimates, for: maneuver)
-        if let trip = activeTrip { mapTemplate?.updateEstimates(estimates, for: trip) }
+        session.updateEstimates(maneuverTravelEstimates(), for: maneuver)
+        if let trip = activeTrip { mapTemplate?.updateEstimates(travelEstimates(), for: trip) }
+    }
+
+    private func maneuverTravelEstimates() -> CPTravelEstimates {
+        let distance = max(RoutePlanner.shared.nextManeuverDistance ?? 0, 0)
+        let speed = max(LocationService.shared.location?.speed ?? 0, 0)
+        return CPTravelEstimates(
+            distanceRemaining: Measurement(value: distance, unit: UnitLength.meters),
+            timeRemaining: NavigationEstimatePolicy.timeToManeuver(
+                distanceMetres: distance, speedMetresPerSecond: speed
+            )
+        )
     }
 
     private func travelEstimates() -> CPTravelEstimates {
@@ -216,7 +280,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func updateCamera(for location: CLLocation) {
-        guard RoutePlanner.shared.isNavigating else { return }
+        guard RoutePlanner.shared.isNavigating, cameraMode == .follow else { return }
         let camera = MKMapCamera(lookingAtCenter: location.coordinate, fromDistance: 850, pitch: 55, heading: max(location.course, 0))
         mapView?.setCamera(camera, animated: true)
     }
