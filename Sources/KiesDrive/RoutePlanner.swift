@@ -69,10 +69,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         // Einmalige, versionierte Migration fuer die ausdrücklich festgelegte
         // Heimfahrt. Sie greift auch dann, wenn iOS einen URL-Fernstart wegen
         // gesperrtem Bildschirm ablehnt.
+        #if !targetEnvironment(simulator)
         if !UserDefaults.standard.bool(forKey: Self.forcedHomeTripKey) {
             routeLockStore.save(.hochheimViaWurzenpass())
             UserDefaults.standard.set(true, forKey: Self.forcedHomeTripKey)
         }
+        #endif
         activeRouteLock = routeLockStore.activeLock
         if let lock = activeRouteLock {
             destinationText = lock.destinationName

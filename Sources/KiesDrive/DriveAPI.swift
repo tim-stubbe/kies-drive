@@ -18,6 +18,7 @@ final class DriveSettings: ObservableObject {
     @Published var avoidHighways: Bool { didSet { UserDefaults.standard.set(avoidHighways, forKey: "drive.avoidHighways") } }
     @Published var mapAppearance: DriveMapAppearance { didSet { UserDefaults.standard.set(mapAppearance.rawValue, forKey: "drive.mapAppearance") } }
     @Published var voiceGuidance: Bool { didSet { UserDefaults.standard.set(voiceGuidance, forKey: "drive.voiceGuidance") } }
+    @Published var homeAddress: String { didSet { UserDefaults.standard.set(homeAddress, forKey: "drive.homeAddress") } }
 
     /// Fahrzeugdaten für Reichweiten-/Tankvorschläge.
     /// Einheit: L/100km und Liter.
@@ -39,8 +40,11 @@ final class DriveSettings: ObservableObject {
         fuel = FuelKind(rawValue: UserDefaults.standard.string(forKey: "drive.fuel") ?? "diesel") ?? .diesel
         avoidTolls = UserDefaults.standard.object(forKey: "drive.avoidTolls") as? Bool ?? true
         avoidHighways = UserDefaults.standard.object(forKey: "drive.avoidHighways") as? Bool ?? false
+        // Pure satellite was visually noisy and is intentionally migrated to
+        // the calm road map. Hybrid remains available on demand.
         mapAppearance = DriveMapAppearance(rawValue: UserDefaults.standard.string(forKey: "drive.mapAppearance") ?? "standard") ?? .standard
         voiceGuidance = UserDefaults.standard.object(forKey: "drive.voiceGuidance") as? Bool ?? true
+        homeAddress = UserDefaults.standard.string(forKey: "drive.homeAddress") ?? ""
 
         consumptionLPer100km = UserDefaults.standard.object(forKey: "drive.consumptionLPer100km") as? Double ?? 6.5
         tankCapacityL = UserDefaults.standard.object(forKey: "drive.tankCapacityL") as? Double ?? 50.0

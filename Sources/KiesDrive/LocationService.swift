@@ -20,6 +20,11 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     }
 
     func start() {
+        #if targetEnvironment(simulator)
+        // UI previews use a deterministic camera and must not be blocked by
+        // system permission sheets. Real devices still request full access.
+        return
+        #else
         #if os(iOS)
         // "Always" statt nur "when in use", damit Ansagen und CarPlay-
         // Navigation auch bei gesperrtem Bildschirm weiterlaufen.
@@ -31,6 +36,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #endif
         manager.startUpdatingLocation()
         if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
+        #endif
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

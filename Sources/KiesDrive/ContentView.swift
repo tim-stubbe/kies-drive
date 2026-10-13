@@ -13,6 +13,9 @@ struct DriveContentView: View {
     @State private var selectedStation: FuelStation?
     @State private var showRouteDetails = false
     @State private var isFollowingLocation = true
+    @State private var didCenterInitialLocation = false
+    @State private var showFavorites = false
+    @State private var favorites = DriveFavoriteStore.load()
 
     var body: some View {
         #if os(iOS)
@@ -59,7 +62,7 @@ struct DriveContentView: View {
                 if planner.isNavigating {
                     navigationInstructionCard
                 } else {
-                    mobileSearchCard
+                    mobileHeader
                 }
                 Spacer()
             }
@@ -71,7 +74,13 @@ struct DriveContentView: View {
         }
         .onAppear {
             location.start()
+            #if targetEnvironment(simulator)
+            position = .region(.init(center: .init(latitude: 50.0143, longitude: 8.3522),
+                                     latitudinalMeters: 18_000, longitudinalMeters: 18_000))
+            didCenterInitialLocation = true
+            #else
             if !settings.isReady { showSettings = true }
+            #endif
         }
         .onReceive(location.$location) { newValue in
             guard let newValue else { return }
@@ -80,6 +89,10 @@ struct DriveContentView: View {
             // Respect manual pan/zoom. Following resumes only when the user
             // explicitly taps the location button again.
             if planner.isNavigating && isFollowingLocation { followCurrentLocation(using: newValue) }
+            if !planner.isNavigating && !didCenterInitialLocation {
+                didCenterInitialLocation = true
+                position = .region(.init(center: newValue.coordinate, latitudinalMeters: 18_000, longitudinalMeters: 18_000))
+            }
         }
         .onChange(of: planner.isNavigating) { _, navigating in
             if navigating { followCurrentLocation() }
@@ -87,6 +100,7 @@ struct DriveContentView: View {
         .onOpenURL(perform: handleProvisioningURL)
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
+        .sheet(isPresented: $showFavorites) { favoritesSheet }
         .sheet(isPresented: $showRouteDetails) {
             NavigationStack {
                 routePanel
@@ -95,6 +109,30 @@ struct DriveContentView: View {
                     .toolbar { Button("Fertig") { showRouteDetails = false } }
             }
         }
+    }
+
+    private var mobileHeader: some View {
+        VStack(spacing: 10) {
+            HStack {
+                HStack(spacing: 9) {
+                    Image(systemName: "location.north.circle.fill")
+                        .font(.title2).foregroundStyle(Color.kiesBrass)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("KIES").font(.caption2.weight(.bold)).tracking(2.4)
+                        Text("DRIVE").font(.headline.weight(.semibold))
+                    }
+                }
+                Spacer()
+                Button { showJarvis = true } label: { Image(systemName: "sparkles") }
+                Button { showSettings = true } label: { Image(systemName: "person.crop.circle") }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16).frame(height: 54)
+            .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+
+            mobileSearchCard
+        }
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 6)
     }
 
     private func handleProvisioningURL(_ url: URL) {
@@ -149,8 +187,6 @@ struct DriveContentView: View {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                     }
                 }
-                Button { showJarvis = true } label: { Image(systemName: "sparkles") }
-                Button { showSettings = true } label: { Image(systemName: "person.crop.circle") }
             }
             .font(.title3)
             .padding(.horizontal, 14)
@@ -178,8 +214,7 @@ struct DriveContentView: View {
                 }
             }
         }
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
+        .background(Color.kiesIvory.opacity(0.96), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     @ViewBuilder
@@ -211,6 +246,11 @@ struct DriveContentView: View {
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button { saveCurrentDestinationAsFavorite() } label: {
+                        Image(systemName: isCurrentDestinationFavorite ? "heart.fill" : "heart")
+                            .font(.title3).foregroundStyle(Color.kiesBrass)
+                    }
+                    .buttonStyle(.plain)
                     Button("Los") {
                         planner.startNavigation()
                         followCurrentLocation()
@@ -221,7 +261,7 @@ struct DriveContentView: View {
                     .font(.subheadline.weight(.semibold))
             }
             .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 12)
-            .background(.ultraThickMaterial)
+            .background(Color.kiesIvory)
         } else if planner.destination != nil {
             Button {
                 guard let start = location.location?.coordinate else {
@@ -241,7 +281,112 @@ struct DriveContentView: View {
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
             .disabled(planner.isLoading)
-            .padding(16).background(.ultraThickMaterial)
+            .padding(16).background(Color.kiesIvory)
+        } else {
+            idleDriveCard
+        }
+    }
+
+    private var idleDriveCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Capsule().fill(Color.kiesForest.opacity(0.18)).frame(width: 38, height: 5).frame(maxWidth: .infinity)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Bereit zur Fahrt?").font(.title2.weight(.semibold))
+                    Text("Ein Ziel wählen oder in der Nähe suchen").font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "car.side.fill").font(.title2).foregroundStyle(Color.kiesBrass)
+            }
+            HStack(spacing: 10) {
+                driveQuickAction("Zuhause", icon: "house.fill") { navigateHome() }
+                driveQuickAction("Favoriten", icon: "heart.fill") { showFavorites = true }
+                driveQuickAction("Tanken", icon: "fuelpump.fill") { searchNearby("Tankstelle") }
+                driveQuickAction("Essen", icon: "fork.knife") { searchNearby("Restaurant") }
+            }
+        }
+        .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 18)
+        .background(Color.kiesIvory)
+    }
+
+    private func driveQuickAction(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                Image(systemName: icon).font(.headline).frame(width: 42, height: 42)
+                    .foregroundStyle(Color.kiesIvory)
+                    .background(Color.kiesForest, in: Circle())
+                Text(title).font(.caption2.weight(.semibold)).foregroundStyle(Color.kiesForest)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func searchNearby(_ query: String) {
+        planner.destinationText = query
+        Task { await planner.searchDestination(near: location.location?.coordinate) }
+    }
+
+    private func navigateHome() {
+        guard !settings.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showSettings = true
+            return
+        }
+        planner.destinationText = settings.homeAddress
+        Task { await planner.searchDestination(near: location.location?.coordinate) }
+    }
+
+    private var isCurrentDestinationFavorite: Bool {
+        guard let coordinate = planner.destination?.placemark.coordinate else { return false }
+        return favorites.contains { abs($0.latitude - coordinate.latitude) < 0.00001 && abs($0.longitude - coordinate.longitude) < 0.00001 }
+    }
+
+    private func saveCurrentDestinationAsFavorite() {
+        guard let item = planner.destination else { return }
+        let coordinate = item.placemark.coordinate
+        if let index = favorites.firstIndex(where: { abs($0.latitude - coordinate.latitude) < 0.00001 && abs($0.longitude - coordinate.longitude) < 0.00001 }) {
+            favorites.remove(at: index)
+        } else {
+            favorites.append(.init(name: item.name ?? planner.destinationText,
+                                   subtitle: item.placemark.title ?? "",
+                                   latitude: coordinate.latitude, longitude: coordinate.longitude))
+        }
+        DriveFavoriteStore.save(favorites)
+    }
+
+    private var favoritesSheet: some View {
+        NavigationStack {
+            Group {
+                if favorites.isEmpty {
+                    ContentUnavailableView("Noch keine Favoriten", systemImage: "heart",
+                                           description: Text("Tippe bei einem gewählten Ziel auf das Herz."))
+                } else {
+                    List {
+                        ForEach(favorites) { favorite in
+                            Button {
+                                let item = MKMapItem(placemark: MKPlacemark(coordinate: favorite.coordinate))
+                                item.name = favorite.name
+                                planner.destination = item
+                                planner.destinationText = favorite.name
+                                showFavorites = false
+                            } label: {
+                                Label {
+                                    VStack(alignment: .leading) {
+                                        Text(favorite.name).foregroundStyle(.primary)
+                                        Text(favorite.subtitle).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                } icon: { Image(systemName: "heart.fill").foregroundStyle(Color.kiesBrass) }
+                            }
+                        }
+                        .onDelete { offsets in
+                            favorites.remove(atOffsets: offsets)
+                            DriveFavoriteStore.save(favorites)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Favoriten")
+            .toolbar { Button("Fertig") { showFavorites = false } }
         }
     }
 
@@ -505,7 +650,6 @@ struct DriveContentView: View {
         } else {
             switch settings.mapAppearance {
             case .standard: mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
-            case .satellite: mapBase.mapStyle(.imagery(elevation: .realistic))
             case .hybrid: mapBase.mapStyle(.hybrid(elevation: .realistic, showsTraffic: true))
             }
         }
@@ -759,6 +903,8 @@ struct DriveSettingsView: View {
                     }
                 }
                 Section("Route") {
+                    TextField("Adresse für Zuhause", text: $settings.homeAddress)
+                        .textContentType(.fullStreetAddress)
                     Toggle("Vignetten und Maut vermeiden", isOn: $settings.avoidTolls)
                     Toggle("Autobahnen vermeiden", isOn: $settings.avoidHighways)
                     Toggle("Sprachansagen", isOn: $settings.voiceGuidance)
@@ -806,6 +952,44 @@ struct DriveSettingsView: View {
         .frame(minWidth: 420, minHeight: 420)
         #endif
     }
+}
+
+private struct DriveFavorite: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let subtitle: String
+    let latitude: Double
+    let longitude: Double
+
+    init(id: UUID = UUID(), name: String, subtitle: String, latitude: Double, longitude: Double) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    var coordinate: CLLocationCoordinate2D { .init(latitude: latitude, longitude: longitude) }
+}
+
+private enum DriveFavoriteStore {
+    private static let key = "drive.favoriteDestinations"
+
+    static func load() -> [DriveFavorite] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([DriveFavorite].self, from: data)) ?? []
+    }
+
+    static func save(_ favorites: [DriveFavorite]) {
+        guard let data = try? JSONEncoder().encode(favorites) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+}
+
+private extension Color {
+    static let kiesForest = Color(red: 0.08, green: 0.20, blue: 0.16)
+    static let kiesIvory = Color(red: 0.97, green: 0.95, blue: 0.89)
+    static let kiesBrass = Color(red: 0.69, green: 0.53, blue: 0.25)
 }
 
 private extension DriveSettingsView.ConnectionStatus {

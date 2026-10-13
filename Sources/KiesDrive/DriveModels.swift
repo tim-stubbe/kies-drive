@@ -41,12 +41,11 @@ enum FuelKind: String, CaseIterable, Identifiable {
 }
 
 enum DriveMapAppearance: String, CaseIterable, Identifiable {
-    case standard, satellite, hybrid
+    case standard, hybrid
     var id: String { rawValue }
     var label: String {
         switch self {
         case .standard: "Standard"
-        case .satellite: "Satellit"
         case .hybrid: "Hybrid"
         }
     }
