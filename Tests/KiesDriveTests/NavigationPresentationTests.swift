@@ -83,6 +83,17 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechNormalisesCompactRoadNamesAndUnsafeCharacters() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("\u{FFFC} ↗ A66 • B40 – Richtung Köln (E40)"),
+            "A 66, B 40, Richtung Köln, E 40."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Der BAB3 Richtung Passau folgen"),
+            "Der Autobahn 3 Richtung Passau folgen."
+        )
+    }
+
     func testSpeechInstructionUsesImmediateCueNearManeuver() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("links abbiegen", distance: 20),

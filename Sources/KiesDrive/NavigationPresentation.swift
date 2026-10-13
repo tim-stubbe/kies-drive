@@ -49,7 +49,7 @@ struct NavigationManeuverPresentation: Equatable {
             exitLabel = nil
         }
 
-        let roadPattern = #"(?i)\b(?:A|B|L|K)\s?[0-9]{1,4}[a-z]?\b"#
+        let roadPattern = #"(?i)\b(?:A|B|E|L|K)\s?[0-9]{1,4}[a-z]?\b"#
         if let regex = try? NSRegularExpression(pattern: roadPattern),
            let match = regex.firstMatch(in: instruction, range: NSRange(instruction.startIndex..., in: instruction)),
            let range = Range(match.range, in: instruction) {
@@ -81,8 +81,27 @@ enum NavigationSpeechFormatter {
             .replacingOccurrences(of: "↗", with: " ")
             .replacingOccurrences(of: "↖", with: " ")
             .replacingOccurrences(of: "←", with: " ")
+            .replacingOccurrences(of: "•", with: ", ")
+            .replacingOccurrences(of: "·", with: ", ")
+            .replacingOccurrences(of: "–", with: ", ")
+            .replacingOccurrences(of: "—", with: ", ")
+            .replacingOccurrences(of: "(", with: ", ")
+            .replacingOccurrences(of: ")", with: " ")
 
         text = replacing(#"(?i)\bStr\."#, in: text, with: "Straße")
+        text = replacing(#"(?i)\bBAB\s*([0-9]{1,3})\b"#, in: text, with: "Autobahn $1")
+        // Force a small spoken pause between road class and number. Compact
+        // forms such as A66 or B40 otherwise sound like arbitrary words on
+        // some installed German voices.
+        text = replacing(#"(?i)\b([ABELK])\s*([0-9]{1,4})([a-z]?)\b"#,
+                         in: text, with: "$1 $2$3")
+        text = replacing(#"(?i)\bkm\s*/\s*h\b"#, in: text, with: "Kilometer pro Stunde")
+        text = text.unicodeScalars.map { scalar -> String in
+            if CharacterSet.controlCharacters.contains(scalar) ||
+                CharacterSet.illegalCharacters.contains(scalar) ||
+                CharacterSet.symbols.contains(scalar) { return " " }
+            return String(scalar)
+        }.joined()
         text = replacing(#"\s+"#, in: text, with: " ")
         text = replacing(#"\s*[,;:]\s*"#, in: text, with: ", ")
         text = text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
