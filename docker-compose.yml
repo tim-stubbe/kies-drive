@@ -10,6 +10,7 @@ services:
       # Optional legacy bridge for fuel/speed/Jarvis until those providers are
       # moved too. Account login and the direct SearXNG toll search need no token.
       KIES_DEVICE_TOKEN: ${KIES_DEVICE_TOKEN:-}
+      KIES_VERIFY_TLS: ${KIES_VERIFY_TLS:-true}
       SEARXNG_URL: ${SEARXNG_URL:-}
       KIES_DRIVE_PUBLIC_URL: ${KIES_DRIVE_PUBLIC_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}

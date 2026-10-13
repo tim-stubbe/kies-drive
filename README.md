@@ -33,5 +33,6 @@ install before that approval.
 - Die optionale Anbindung an den bisherigen Kies-Dienst bleibt ausschließlich
   serverseitig über `KIES_BASE_URL` und das optionale `KIES_DEVICE_TOKEN`
   gekapselt. Ohne dieses Legacy-Token starten Konto, MCP und Mautsuche trotzdem.
+  TLS wird dabei standardmäßig geprüft (`KIES_VERIFY_TLS=true`).
 
 Secrets werden ausschließlich in TrueNAS als Umgebungsvariablen gesetzt.

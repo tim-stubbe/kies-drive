@@ -31,6 +31,9 @@ def db() -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript("""
       CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS commands (id INTEGER PRIMARY KEY AUTOINCREMENT, command TEXT NOT NULL, arguments TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', result TEXT, created_at TEXT NOT NULL);
@@ -391,7 +394,8 @@ async def kies_proxy(path: str, request: Request, authorization: str | None = He
     if not legacy_token:
         raise HTTPException(503, "Der optionale Kies-Zusatzdienst ist nicht eingerichtet.")
     headers = {"X-Kies-Device-Token": legacy_token}
-    async with httpx.AsyncClient(verify=False, timeout=30) as client:
+    verify_tls = os.getenv("KIES_VERIFY_TLS", "true").lower() != "false"
+    async with httpx.AsyncClient(verify=verify_tls, timeout=30) as client:
         upstream = await client.request(request.method, f"{KIES_BASE_URL}/api/navigation/{path}", params=request.query_params,
                                         content=await request.body(), headers=headers)
     return Response(upstream.content, status_code=upstream.status_code, media_type=upstream.headers.get("content-type"))
@@ -405,7 +409,8 @@ async def jarvis_proxy(request: Request, authorization: str | None = Header(None
     if not legacy_token:
         raise HTTPException(503, "Der optionale Kies-Assistent ist nicht eingerichtet.")
     headers = {"X-Kies-Device-Token": legacy_token}
-    async with httpx.AsyncClient(verify=False, timeout=30) as client:
+    verify_tls = os.getenv("KIES_VERIFY_TLS", "true").lower() != "false"
+    async with httpx.AsyncClient(verify=verify_tls, timeout=30) as client:
         upstream = await client.post(
             f"{KIES_BASE_URL}/api/jarvis/chat",
             content=await request.body(),
