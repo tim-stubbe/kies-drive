@@ -3,6 +3,35 @@ import XCTest
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testInsertedStopKeepsRouteOrderAndInheritedSegmentRules() {
+        let now = Date(timeIntervalSince1970: 1)
+        let avoidMotorway = LockedRouteOptions(avoidTolls: false, avoidHighways: true)
+        var lock = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Home",
+            destination: .init(latitude: 0, longitude: 100),
+            waypoints: [
+                .init(id: "first", name: "First", coordinate: .init(latitude: 0, longitude: 20),
+                      required: true, optionsAfter: avoidMotorway),
+                .init(id: "last", name: "Last", coordinate: .init(latitude: 0, longitude: 80),
+                      required: true, optionsAfter: nil),
+            ],
+            defaultOptions: .init(avoidTolls: true, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil, visitedWaypointIDs: ["fuel"],
+            status: .active, createdAt: now, updatedAt: now
+        )
+        lock.insertWaypoint(
+            .init(id: "fuel", name: "Fuel", coordinate: .init(latitude: 0, longitude: 50),
+                  required: true, optionsAfter: nil),
+            progress: { Int($0.longitude) }
+        )
+
+        XCTAssertEqual(lock.waypoints.map(\.id), ["first", "fuel", "last"])
+        XCTAssertEqual(lock.waypoints[1].optionsAfter, avoidMotorway)
+        XCTAssertFalse(lock.visitedWaypointIDs?.contains("fuel") == true)
+        lock.removeWaypoint(id: "fuel")
+        XCTAssertEqual(lock.waypoints.map(\.id), ["first", "last"])
+    }
+
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")

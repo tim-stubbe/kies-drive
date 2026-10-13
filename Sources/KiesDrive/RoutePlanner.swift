@@ -353,11 +353,24 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         // before tapping Start. Materialise the lock here so the action never
         // appears to succeed while silently doing nothing.
         if routeLockStore.activeLock == nil { persistActiveTrip() }
-        guard var lock = routeLockStore.activeLock else {
+        guard routeLockStore.activeLock != nil else {
             errorMessage = "Zwischenstopp konnte nicht gespeichert werden."
             return
         }
         let coordinate = item.placemark.coordinate
+        insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
+                             coordinate: coordinate)
+        routeSearchResults = []
+        await calculate(from: start, settings: settings)
+        if !legs.isEmpty { startNavigation() }
+    }
+
+    /// Every user-selected stop is written into the persistent trip lock. This
+    /// avoids the former split-brain state where fuel stops lived only in
+    /// `viaStations` and disappeared whenever mandatory route points existed.
+    private func insertLockedWaypoint(id: String, name: String, coordinate: CLLocationCoordinate2D) {
+        guard var lock = routeLockStore.activeLock,
+              !lock.waypoints.contains(where: { $0.id == id }) else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 240) }
         func progress(_ coordinate: CLLocationCoordinate2D) -> Int {
             let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -366,17 +379,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude).distance(from: location)
             })?.offset ?? routeCoordinates.count
         }
-        let insertionProgress = progress(coordinate)
-        let index = lock.waypoints.firstIndex { progress($0.coordinate.clLocationCoordinate) > insertionProgress } ?? lock.waypoints.endIndex
-        let inheritedOptions = index == 0 ? lock.defaultOptions : (lock.waypoints[index - 1].optionsAfter ?? lock.defaultOptions)
-        lock.waypoints.insert(.init(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
-                                    coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-                                    required: true, optionsAfter: inheritedOptions), at: index)
+        lock.insertWaypoint(.init(
+            id: id, name: name,
+            coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
+            required: true, optionsAfter: nil
+        ), progress: { progress($0.clLocationCoordinate) })
         routeLockStore.save(lock)
         activeRouteLock = lock
-        routeSearchResults = []
-        await calculate(from: start, settings: settings)
-        if !legs.isEmpty { startNavigation() }
     }
 
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings) async {
@@ -1055,8 +1064,17 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
         if let index = viaStations.firstIndex(where: { $0.id == station.id }) {
             viaStations.remove(at: index)
+            routeLockStore.update { lock in
+                lock.removeWaypoint(id: station.id)
+            }
+            activeRouteLock = routeLockStore.activeLock
         } else {
             viaStations.append(station)
+            if routeLockStore.activeLock == nil { persistActiveTrip() }
+            insertLockedWaypoint(
+                id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
+                coordinate: station.coordinate
+            )
         }
         await calculate(from: start, settings: settings)
     }
@@ -1071,6 +1089,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             viaStations.sort { lhs, rhs in
                 (progressByID[lhs.id] ?? 1) < (progressByID[rhs.id] ?? 1)
             }
+            if routeLockStore.activeLock == nil { persistActiveTrip() }
+            insertLockedWaypoint(
+                id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
+                coordinate: station.coordinate
+            )
             await calculate(from: start, settings: settings)
         } else {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))

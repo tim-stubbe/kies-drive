@@ -47,6 +47,31 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
 }
 
 extension ActiveRouteLock {
+    /// Inserts a stop in driven-route order while preserving the routing rules
+    /// of the segment it splits. Fuel, food and arbitrary POIs therefore cannot
+    /// silently bypass a locked Slovenia or mountain-pass constraint.
+    mutating func insertWaypoint(_ waypoint: LockedWaypoint,
+                                 progress: (DriveCoordinate) -> Int) {
+        guard !waypoints.contains(where: { $0.id == waypoint.id }) else { return }
+        let insertionProgress = progress(waypoint.coordinate)
+        let index = waypoints.firstIndex { progress($0.coordinate) > insertionProgress }
+            ?? waypoints.endIndex
+        let inheritedOptions = index == 0
+            ? defaultOptions
+            : (waypoints[index - 1].optionsAfter ?? defaultOptions)
+        var inserted = waypoint
+        inserted.optionsAfter = inheritedOptions
+        waypoints.insert(inserted, at: index)
+        visitedWaypointIDs?.removeAll { $0 == waypoint.id }
+        updatedAt = Date()
+    }
+
+    mutating func removeWaypoint(id: String) {
+        waypoints.removeAll { $0.id == id }
+        visitedWaypointIDs?.removeAll { $0 == id }
+        updatedAt = Date()
+    }
+
     /// Determines mandatory points already passed along the persisted route
     /// corridor. This prevents a restored trip from routing back to Croatia or
     /// Slovenia after a longer break farther north. The result is intentionally
