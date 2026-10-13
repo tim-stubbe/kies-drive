@@ -35,6 +35,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func connect(interfaceController: CPInterfaceController, window: CPWindow?) {
         self.interfaceController = interfaceController
         carWindow = window
+        LocationService.shared.setNavigationActive(true)
         LocationService.shared.start()
 
         if let window {
@@ -75,6 +76,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         navigationSession = nil
         activeTrip = nil
         cancellables.removeAll()
+        LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
     private func observeDriveState() {

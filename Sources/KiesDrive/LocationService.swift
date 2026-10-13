@@ -10,12 +10,13 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     @Published var heading: CLHeading?
     @Published var authorization: CLAuthorizationStatus = .notDetermined
     private let manager = CLLocationManager()
+    private var started = false
 
     override init() {
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        manager.distanceFilter = 8
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        manager.distanceFilter = 25
         manager.activityType = .automotiveNavigation
         #if os(iOS)
         manager.headingFilter = 3
@@ -30,17 +31,31 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // system permission sheets. Real devices still request full access.
         return
         #else
+        guard !started else { return }
+        started = true
         #if os(iOS)
         // "Always" statt nur "when in use", damit Ansagen und CarPlay-
         // Navigation auch bei gesperrtem Bildschirm weiterlaufen.
         manager.requestAlwaysAuthorization()
-        manager.allowsBackgroundLocationUpdates = true
-        manager.pausesLocationUpdatesAutomatically = false
+        manager.allowsBackgroundLocationUpdates = false
+        manager.pausesLocationUpdatesAutomatically = true
         #else
         manager.requestAlwaysAuthorization()
         #endif
         manager.startUpdatingLocation()
         if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
+        #endif
+    }
+
+    /// Uses full navigation GPS only during guidance. While browsing/searching
+    /// a lower update rate is sufficient and avoids running the receiver at
+    /// maximum power for the whole time the app is open.
+    func setNavigationActive(_ active: Bool) {
+        manager.desiredAccuracy = active ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyNearestTenMeters
+        manager.distanceFilter = active ? 8 : 25
+        #if os(iOS)
+        manager.allowsBackgroundLocationUpdates = active
+        manager.pausesLocationUpdatesAutomatically = !active
         #endif
     }
 

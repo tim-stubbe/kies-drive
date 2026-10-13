@@ -9,7 +9,7 @@ import UIKit
 struct DriveContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var settings = DriveSettings.shared
-    @StateObject private var location = LocationService()
+    @StateObject private var location = LocationService.shared
     @StateObject private var planner = RoutePlanner.shared
     @State private var position: MapCameraPosition = .automatic
     @State private var showSettings = false
@@ -132,6 +132,7 @@ struct DriveContentView: View {
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
+            location.setNavigationActive(planner.isNavigating)
             location.start()
             #if targetEnvironment(simulator)
             if isSimulatorNavigationPreview {
@@ -180,6 +181,7 @@ struct DriveContentView: View {
             }
         }
         .onChange(of: planner.isNavigating) { _, navigating in
+            location.setNavigationActive(navigating)
             if navigating { followCurrentLocation() }
         }
         .onOpenURL(perform: handleProvisioningURL)
