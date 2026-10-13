@@ -1120,7 +1120,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return .init(id: "amenity-\(coordinate.latitude)-\(coordinate.longitude)",
                          name: item.name ?? "Rastmöglichkeit", coordinate: coordinate,
                          progress: routeProgress[nearest.offset],
-                         detourMetres: detour * 2, isOpen: true)
+                         detourMetres: detour * 2, isOpen: nil)
         }
         let buckets = Dictionary(grouping: candidates) { min(9, Int($0.progress * 10)) }
         amenityBreakCandidates = buckets.keys.sorted().compactMap { bucket in

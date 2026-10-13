@@ -53,6 +53,16 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.routeProgress ?? 0, 2.0 / 3.0, accuracy: 0.001)
     }
 
+    func testBreakPlannerKeepsUnknownOpeningStatusHonest() {
+        let unknown = BreakCandidate(id: "unknown", name: "Rastplatz", coordinate: .init(),
+                                     progress: 2.0 / 3.0, detourMetres: 100, isOpen: nil)
+        let stop = BreakPlanner().plan(drivingTime: 3 * 3600, candidates: [unknown]).first
+
+        XCTAssertEqual(stop?.candidate?.id, "unknown")
+        XCTAssertTrue(stop?.explanation.contains("Öffnungsstatus") == true)
+        XCTAssertFalse(stop?.explanation.contains("Geöffneter Halt") == true)
+    }
+
     func testRouteProgressUsesDistanceRatherThanPointCount() {
         let coordinates = [
             CLLocationCoordinate2D(latitude: 50, longitude: 8),

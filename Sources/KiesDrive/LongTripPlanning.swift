@@ -93,11 +93,13 @@ struct BreakCandidate: Identifiable, Equatable {
     let coordinate: CLLocationCoordinate2D
     let progress: Double
     let detourMetres: Double
-    let isOpen: Bool
+    /// `nil` means the provider supplied no trustworthy opening status.
+    /// Unknown is preferable to claiming that an unstaffed or closed stop is open.
+    let isOpen: Bool?
     let supportsFuel: Bool
 
     init(id: String, name: String, coordinate: CLLocationCoordinate2D, progress: Double,
-         detourMetres: Double, isOpen: Bool, supportsFuel: Bool = false) {
+         detourMetres: Double, isOpen: Bool?, supportsFuel: Bool = false) {
         self.id = id
         self.name = name
         self.coordinate = coordinate
@@ -158,7 +160,7 @@ struct FuelStopPlanner {
         let safeRange = usableLitres / consumptionLPer100km * 100_000
         guard safeRange > 0, distanceMetres > safeRange else { return [] }
         let count = Int(ceil(distanceMetres / safeRange)) - 1
-        var remaining = candidates.filter { $0.isOpen && $0.supportsFuel }
+        var remaining = candidates.filter { $0.isOpen != false && $0.supportsFuel }
         var lastProgress = 0.0
         return (1...count).map { index in
             let idealDistance = min(distanceMetres * 0.95, Double(index) * safeRange * 0.88)
@@ -191,7 +193,7 @@ struct BreakPlanner {
               preferredCandidateIDs: Set<String> = []) -> [PlannedBreak] {
         guard drivingTime > maximumContinuousDriving else { return [] }
         let count = max(1, Int(ceil(drivingTime / maximumContinuousDriving)) - 1)
-        var remaining = candidates.filter { $0.isOpen }
+        var remaining = candidates.filter { $0.isOpen != false }
         var lastProgress = 0.0
         return (1...count).map { index in
             // Stop after each maximum driving interval, not at evenly split
@@ -217,16 +219,27 @@ struct BreakPlanner {
                 id: "break-\(index)", candidate: best,
                 afterDriving: drivingTime * progress, duration: defaultBreakDuration,
                 routeProgress: progress,
-                explanation: best == nil ? "Pause nahe dem optimalen Streckenpunkt; Ort noch nicht verifiziert." : "Offener Halt nahe dem optimalen Pausenfenster\(detour)."
+                explanation: explanation(for: best, detour: detour)
             )
         }
+    }
+
+    private func explanation(for candidate: BreakCandidate?, detour: String) -> String {
+        guard let candidate else {
+            return "Pause nahe dem optimalen Streckenpunkt; Ort noch nicht verifiziert."
+        }
+        if candidate.isOpen == true {
+            return "Geöffneter Halt nahe dem optimalen Pausenfenster\(detour)."
+        }
+        return "Halt nahe dem optimalen Pausenfenster\(detour) · Öffnungsstatus vor Abfahrt prüfen."
     }
 
     private func score(_ candidate: BreakCandidate, idealProgress: Double,
                        preferredCandidateIDs: Set<String>) -> Double {
         let combinedStopBonus = preferredCandidateIDs.contains(candidate.id) ? 25.0 : 0
+        let unknownOpeningPenalty = candidate.isOpen == nil ? 3.0 : 0
         return abs(candidate.progress - idealProgress) * 100 +
-            min(40, candidate.detourMetres / 1_000 * 8) - combinedStopBonus
+            min(40, candidate.detourMetres / 1_000 * 8) + unknownOpeningPenalty - combinedStopBonus
     }
 }
 
