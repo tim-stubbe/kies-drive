@@ -44,6 +44,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var routeSearchResults: [MKMapItem] = []
     @Published var nextManeuverInstruction: String?
     @Published var nextManeuverDistance: CLLocationDistance?
+    @Published var upcomingManeuverInstructions: [String] = []
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
 
@@ -430,6 +431,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !usable.isEmpty else {
             nextManeuverInstruction = "Route folgen"
             nextManeuverDistance = nil
+            upcomingManeuverInstructions = []
             return
         }
         let current = allSteps.min { lhs, rhs in
@@ -439,8 +441,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard let current else { return }
         // Die Anweisung des aktuellen Segments wurde bereits ausgeführt; groß
         // angezeigt wird der nächste noch kommende Abbiegepunkt.
-        let upcoming = usable.first { $0.offset > current.offset } ?? usable.last!
+        let future = usable.filter { $0.offset > current.offset }
+        let upcoming = future.first ?? usable.last!
         let step = upcoming.element
+        upcomingManeuverInstructions = Array(future.prefix(4).map(\.element.instructions))
         nextManeuverInstruction = step.instructions
         nextManeuverDistance = location.distance(from: CLLocation(
             latitude: step.polyline.coordinate.latitude,

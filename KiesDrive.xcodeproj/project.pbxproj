@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		06E26BA8890C65BFAD82661E /* KiesDriveCore in Frameworks */ = {isa = PBXBuildFile; productRef = B332AF04195AC0C57DF30205 /* KiesDriveCore */; };
+		0A3919F20CF69E4CA1357DEB /* NavigationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A85D76BF4C6A517F9802B52 /* NavigationPresentation.swift */; };
 		11BB130D6A26533A3F53EB1F /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98377E8D3793ED4419C6BCF2 /* CarPlaySceneDelegate.swift */; };
 		17F3457EA5597D6EB4D9FB39 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4EE8A32BD21980DD33E10 /* LocationService.swift */; };
 		26D540AE90AE806215AD735D /* DriveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166B1547AE269C0D338ADA3A /* DriveModels.swift */; };
@@ -17,6 +18,7 @@
 		33EAF7CECDD394FCF7C948BB /* RoutePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23492A6BAF9EA7B2672D42D1 /* RoutePersistenceTests.swift */; };
 		3570B8BF6483E3CBF736BF5F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8FA8E52E128B4357EB464F /* ContentView.swift */; };
 		40D380AB218A84C3A62B1A8A /* KiesDriveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51204E80A65B188C707AABC1 /* KiesDriveApp.swift */; };
+		44DDD43B1F9A8136BF83D864 /* NavigationPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7C7C1FBB8CC9B9224BC262 /* NavigationPresentationTests.swift */; };
 		49C1FD22F9CDA3C27D21D61F /* RoutePersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFD08D2ADAFA15679BB0ED57 /* RoutePersistence.swift */; };
 		49E71BAF5434FD00B0EE005C /* DriveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166B1547AE269C0D338ADA3A /* DriveModels.swift */; };
 		516915D9975DE742A48A23BB /* DriveAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 902B5B6770A1393D4A061FB9 /* DriveAPI.swift */; };
@@ -26,6 +28,7 @@
 		85E541E007B6EC0E143D8B3A /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98377E8D3793ED4419C6BCF2 /* CarPlaySceneDelegate.swift */; };
 		9B40E594F0DC20B3960C2235 /* LongTripPlanningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768A714AE5F167020FA01E19 /* LongTripPlanningTests.swift */; };
 		9D2B787E8D5C01FF5B060985 /* DriveRemoteBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC0B22096087224BCC19E6A /* DriveRemoteBridge.swift */; };
+		A5028F2AB8865D359FBA0D1C /* NavigationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A85D76BF4C6A517F9802B52 /* NavigationPresentation.swift */; };
 		C8FA48FC9E91231F7105D2E1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8FA8E52E128B4357EB464F /* ContentView.swift */; };
 		D9999252E37F60243CC80A65 /* RoutePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E60108DC2343C2D319B0E1B /* RoutePlanner.swift */; };
 		DDF1646E749CCE9957703015 /* LongTripPlanning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1960196DC9B8C54C7C8E014B /* LongTripPlanning.swift */; };
@@ -55,8 +58,10 @@
 		5BE1AD141060AC488D06B32D /* KiesDriveiOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KiesDriveiOS.entitlements; sourceTree = "<group>"; };
 		6D406FE5B4B849F81163B3D3 /* Info-macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-macOS.plist"; sourceTree = "<group>"; };
 		768A714AE5F167020FA01E19 /* LongTripPlanningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LongTripPlanningTests.swift; sourceTree = "<group>"; };
+		7A85D76BF4C6A517F9802B52 /* NavigationPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationPresentation.swift; sourceTree = "<group>"; };
 		814CF2C97AF398469038515E /* Info-iOS-PersonalTeam.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-iOS-PersonalTeam.plist"; sourceTree = "<group>"; };
 		8AB3523ED9032B95DAAB3F02 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8B7C7C1FBB8CC9B9224BC262 /* NavigationPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationPresentationTests.swift; sourceTree = "<group>"; };
 		8C498B077D3AD7C825C3CF20 /* KiesDriveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KiesDriveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		902B5B6770A1393D4A061FB9 /* DriveAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveAPI.swift; sourceTree = "<group>"; };
 		98377E8D3793ED4419C6BCF2 /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
@@ -110,6 +115,7 @@
 			isa = PBXGroup;
 			children = (
 				768A714AE5F167020FA01E19 /* LongTripPlanningTests.swift */,
+				8B7C7C1FBB8CC9B9224BC262 /* NavigationPresentationTests.swift */,
 				23492A6BAF9EA7B2672D42D1 /* RoutePersistenceTests.swift */,
 			);
 			name = KiesDriveTests;
@@ -141,6 +147,7 @@
 				5BE1AD141060AC488D06B32D /* KiesDriveiOS.entitlements */,
 				B3C4EE8A32BD21980DD33E10 /* LocationService.swift */,
 				1960196DC9B8C54C7C8E014B /* LongTripPlanning.swift */,
+				7A85D76BF4C6A517F9802B52 /* NavigationPresentation.swift */,
 				BFD08D2ADAFA15679BB0ED57 /* RoutePersistence.swift */,
 				4E60108DC2343C2D319B0E1B /* RoutePlanner.swift */,
 			);
@@ -283,6 +290,7 @@
 				40D380AB218A84C3A62B1A8A /* KiesDriveApp.swift in Sources */,
 				17F3457EA5597D6EB4D9FB39 /* LocationService.swift in Sources */,
 				DDF1646E749CCE9957703015 /* LongTripPlanning.swift in Sources */,
+				0A3919F20CF69E4CA1357DEB /* NavigationPresentation.swift in Sources */,
 				2FA38A1BA4EB2A986820DD39 /* RoutePersistence.swift in Sources */,
 				DF6166E832F0C6F0B2AC2A17 /* RoutePlanner.swift in Sources */,
 			);
@@ -293,6 +301,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B40E594F0DC20B3960C2235 /* LongTripPlanningTests.swift in Sources */,
+				44DDD43B1F9A8136BF83D864 /* NavigationPresentationTests.swift in Sources */,
 				33EAF7CECDD394FCF7C948BB /* RoutePersistenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -309,6 +318,7 @@
 				2FBC35C7BBCB6D5D3FBBAA73 /* KiesDriveApp.swift in Sources */,
 				EE6503E4FA50B9320A0AAE61 /* LocationService.swift in Sources */,
 				7D10C240BE5CFD838953202C /* LongTripPlanning.swift in Sources */,
+				A5028F2AB8865D359FBA0D1C /* NavigationPresentation.swift in Sources */,
 				49C1FD22F9CDA3C27D21D61F /* RoutePersistence.swift in Sources */,
 				D9999252E37F60243CC80A65 /* RoutePlanner.swift in Sources */,
 			);

@@ -234,15 +234,34 @@ struct DriveContentView: View {
     }
 
     private var navigationInstructionCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 16) {
-                Image(systemName: "arrow.turn.up.right")
-                    .font(.system(size: 46, weight: .bold)).frame(width: 58)
-                VStack(alignment: .leading, spacing: 2) {
-                    if let distance = planner.nextManeuverDistance {
-                        Text(formatDistance(distance)).font(.title2.bold())
+        let maneuver = NavigationManeuverPresentation(planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen")
+        return VStack(alignment: .leading, spacing: 10) {
+            if !planner.upcomingManeuverInstructions.isEmpty {
+                HStack(spacing: 18) {
+                    ForEach(Array(planner.upcomingManeuverInstructions.prefix(5).enumerated()), id: \.offset) { index, instruction in
+                        Image(systemName: NavigationManeuverPresentation(instruction).direction.symbolName)
+                            .font(.system(size: 25, weight: .bold))
+                            .foregroundStyle(index == 0 ? .white : .white.opacity(0.28))
                     }
-                    Text(planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen")
+                    Spacer()
+                }
+            }
+            HStack(spacing: 14) {
+                Image(systemName: maneuver.direction.symbolName)
+                    .font(.system(size: 42, weight: .bold)).frame(width: 54)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        if let distance = planner.nextManeuverDistance {
+                            Text(formatDistance(distance)).font(.title.bold())
+                        }
+                        Spacer()
+                        if let exit = maneuver.exitLabel {
+                            Text(exit).font(.subheadline.bold())
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(.white.opacity(0.14), in: Capsule())
+                        }
+                    }
+                    Text(maneuver.instruction)
                         .font(.system(size: 22, weight: .bold)).lineLimit(2).minimumScaleFactor(0.75)
                 }
                 Spacer()
@@ -261,9 +280,18 @@ struct DriveContentView: View {
                 Label("Neue Route wird gesucht", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.semibold)).opacity(0.9)
             }
+            if planner.upcomingManeuverInstructions.count > 1 {
+                Divider().overlay(.white.opacity(0.2))
+                HStack(spacing: 12) {
+                    Image(systemName: NavigationManeuverPresentation(planner.upcomingManeuverInstructions[1]).direction.symbolName)
+                    Text("Danach: \(planner.upcomingManeuverInstructions[1])")
+                        .font(.subheadline.weight(.semibold)).lineLimit(1)
+                }
+                .foregroundStyle(.white.opacity(0.8))
+            }
         }
         .foregroundStyle(.white).padding(14)
-        .background(Color(red: 0.10, green: 0.68, blue: 0.29), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color(red: 0.10, green: 0.14, blue: 0.18).opacity(0.94), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
     #endif
