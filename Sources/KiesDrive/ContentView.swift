@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import Combine
 import KiesDriveCore
+import UniformTypeIdentifiers
 #if os(iOS)
 import UIKit
 #endif
@@ -61,6 +62,14 @@ struct DriveContentView: View {
     private var isSimulatorStationPreview: Bool {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--station-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var isSimulatorSettingsPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--settings-preview")
         #else
         false
         #endif
@@ -171,6 +180,7 @@ struct DriveContentView: View {
                     lat: 50.014, lon: 8.352, price: 1.719, open: true, distanceKm: 1.4
                 )
             }
+            if isSimulatorSettingsPreview { showSettings = true }
             didCenterInitialLocation = true
             #endif
         }
@@ -1463,6 +1473,9 @@ struct DriveSettingsView: View {
     @State private var accountProfile: AccountProfile?
     @State private var showTwoFactorSetup = false
     @State private var confirmAccountDeletion = false
+    @StateObject private var offlineMaps = OfflineMapPackageStore.shared
+    @State private var showOfflineMapImporter = false
+    @State private var offlineMapImportError: String?
     @AppStorage("drive.account.guestMode") private var guestMode = false
 
     fileprivate enum ConnectionStatus {
@@ -1576,6 +1589,41 @@ struct DriveSettingsView: View {
                     Button("Zwischengespeicherte Route löschen", role: .destructive) { planner.clearOfflineCache() }
                         .disabled(planner.offlineRoute == nil)
                 }
+                Section("Lokale Karten") {
+                    if offlineMaps.packages.isEmpty {
+                        ContentUnavailableView(
+                            "Noch keine Kartenpakete",
+                            systemImage: "map",
+                            description: Text("Importiere einen Ordner mit manifest.json und tiles/z/x/y.png. So können eigene, lizenzierte Standardkarten später vollständig lokal angezeigt werden.")
+                        )
+                    } else {
+                        Picker("Aktive Karte", selection: $offlineMaps.activePackageID) {
+                            Text("Apple-Karte (online)").tag(String?.none)
+                            ForEach(offlineMaps.packages) { package in
+                                Text(package.manifest.name).tag(Optional(package.id))
+                            }
+                        }
+                        ForEach(offlineMaps.packages) { package in
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(package.manifest.name).font(.headline)
+                                    Spacer()
+                                    Text(ByteCountFormatter.string(fromByteCount: package.byteCount, countStyle: .file))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("Zoom \(package.manifest.minimumZoom)–\(package.manifest.maximumZoom) · \(package.manifest.attribution)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Button("Kartenpaket löschen", role: .destructive) {
+                                    do { try offlineMaps.remove(package) }
+                                    catch { offlineMapImportError = error.localizedDescription }
+                                }
+                            }
+                        }
+                    }
+                    Button("Kartenpaket importieren …") { showOfflineMapImporter = true }
+                    Text("Kies Drive lädt nicht ungefragt massenhaft Kartenkacheln. Pakete stammen aus einer von dir kontrollierten Quelle, zum Beispiel einem Export auf deinem TrueNAS, und müssen die Lizenz/Attribution nennen.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Navigationsqualität") {
                     let reroutes = diagnosticEvents.filter { $0.kind == .rerouteRequested }.count
                     let failures = diagnosticEvents.filter { $0.kind == .rerouteFailed }.count
@@ -1605,6 +1653,24 @@ struct DriveSettingsView: View {
             .sheet(isPresented: $showTwoFactorSetup, onDismiss: {
                 Task { accountProfile = try? await DriveAPI.account() }
             }) { TwoFactorSetupView() }
+            .fileImporter(isPresented: $showOfflineMapImporter, allowedContentTypes: [.folder]) { result in
+                do {
+                    let url = try result.get()
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                    try offlineMaps.install(from: url)
+                } catch {
+                    offlineMapImportError = error.localizedDescription
+                }
+            }
+            .alert("Kartenpaket konnte nicht importiert werden", isPresented: Binding(
+                get: { offlineMapImportError != nil },
+                set: { if !$0 { offlineMapImportError = nil } }
+            )) {
+                Button("OK", role: .cancel) { offlineMapImportError = nil }
+            } message: {
+                Text(offlineMapImportError ?? "Unbekannter Fehler")
+            }
             .alert("Konto wirklich löschen?", isPresented: $confirmAccountDeletion) {
                 Button("Abbrechen", role: .cancel) {}
                 Button("Endgültig löschen", role: .destructive) {
