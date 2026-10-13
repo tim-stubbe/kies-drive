@@ -132,14 +132,14 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
         guard distance.isFinite, distance >= 0 else { return nil }
         let speedMetresPerSecond = max(0, speedKmh) / 3.6
-        // Time-based horizons keep exits safe at motorway speeds: at 200 km/h
-        // the first cue arrives around 35 seconds and the final cue around
-        // 2.5 seconds before the maneuver, rather than using city distances.
-        let nowDistance = min(140, max(45, speedMetresPerSecond * 2.5))
+        // Time-based horizons keep exits safe at motorway speeds. Four seconds
+        // for the final cue leaves enough time even when Core Location skips a
+        // sample, while the caps keep city guidance from becoming premature.
+        let nowDistance = min(260, max(40, speedMetresPerSecond * 4))
         if distance <= nowDistance { return .now }
-        let prepareDistance = min(850, max(220, speedMetresPerSecond * 12))
+        let prepareDistance = min(1_100, max(220, speedMetresPerSecond * 15))
         if distance <= prepareDistance { return .prepare }
-        let earlyDistance = min(2_500, max(500, speedMetresPerSecond * 35))
+        let earlyDistance = min(3_000, max(500, speedMetresPerSecond * 45))
         if distance <= earlyDistance { return .early }
         return nil
     }

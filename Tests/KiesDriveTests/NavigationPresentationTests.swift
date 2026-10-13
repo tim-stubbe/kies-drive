@@ -107,6 +107,13 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 120, speedKmh: 200), .now)
     }
 
+    func testFinalCueHasEnoughHighSpeedReactionTime() {
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 210, speedKmh: 200), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 250, speedKmh: 200), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 125, speedKmh: 120), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 170, speedKmh: 120), .prepare)
+    }
+
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare, .now]))
