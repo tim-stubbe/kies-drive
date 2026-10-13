@@ -64,4 +64,21 @@ final class RoutePersistenceTests: XCTestCase {
         store.finish()
         XCTAssertNil(RouteLockStore(defaults: defaults).activeLock)
     }
+
+    func testRestoreMarksOnlyWaypointsAlreadyPassedInsideCorridor() {
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
+            destination: .init(latitude: 5, longitude: 0),
+            waypoints: [
+                .init(id: "one", name: "Eins", coordinate: .init(latitude: 1, longitude: 0), required: true, optionsAfter: nil),
+                .init(id: "two", name: "Zwei", coordinate: .init(latitude: 3, longitude: 0), required: true, optionsAfter: nil),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: (0...5).map { .init(latitude: Double($0), longitude: 0) },
+            visitedWaypointIDs: [], status: .active, createdAt: Date(), updatedAt: Date())
+
+        XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 0)), ["one"])
+        XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
+    }
 }

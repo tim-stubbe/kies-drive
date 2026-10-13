@@ -317,6 +317,17 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         isLoading = true; errorMessage = nil; stations = []
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
+            if let existing = routeLockStore.activeLock {
+                let passed = existing.passedWaypointIDs(at: .init(latitude: start.latitude, longitude: start.longitude))
+                if !passed.isEmpty {
+                    routeLockStore.update { lock in
+                        var visited = Set(lock.visitedWaypointIDs ?? [])
+                        visited.formUnion(passed)
+                        lock.visitedWaypointIDs = Array(visited)
+                    }
+                    activeRouteLock = routeLockStore.activeLock
+                }
+            }
             let lock = routeLockStore.activeLock
             let visited = Set(lock?.visitedWaypointIDs ?? [])
             let lockedWaypoints = lock?.waypoints.filter { $0.required && !visited.contains($0.id) } ?? []

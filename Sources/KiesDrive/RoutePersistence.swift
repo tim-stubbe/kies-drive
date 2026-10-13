@@ -47,6 +47,33 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
 }
 
 extension ActiveRouteLock {
+    /// Determines mandatory points already passed along the persisted route
+    /// corridor. This prevents a restored trip from routing back to Croatia or
+    /// Slovenia after a longer break farther north. The result is intentionally
+    /// empty when the current position is not plausibly inside the corridor.
+    func passedWaypointIDs(at current: DriveCoordinate) -> [String] {
+        guard let corridorPoints, corridorPoints.count > 2 else { return [] }
+        let currentLocation = CLLocation(latitude: current.latitude, longitude: current.longitude)
+        guard let currentMatch = corridorPoints.enumerated().min(by: {
+            currentLocation.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
+            currentLocation.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
+        }) else { return [] }
+        let corridorDistance = currentLocation.distance(from: CLLocation(
+            latitude: currentMatch.element.latitude, longitude: currentMatch.element.longitude))
+        guard corridorDistance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
+
+        return waypoints.compactMap { waypoint in
+            let point = CLLocation(latitude: waypoint.coordinate.latitude, longitude: waypoint.coordinate.longitude)
+            guard let match = corridorPoints.enumerated().min(by: {
+                point.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
+                point.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
+            }) else { return nil }
+            // Keep the next corridor point active. A small index margin avoids
+            // skipping a mandatory pass when GPS lies just beyond its sample.
+            return match.offset < currentMatch.offset ? waypoint.id : nil
+        }
+    }
+
     /// Heimfahrt nach Hochheim am Main. Der Punkt liegt direkt auf der B109
     /// auf der Wurzenpasshoehe und erzwingt damit die Umfahrung des
     /// Karawankentunnels, ohne eine Ortsmitte als Zwischenziel anzufahren.
