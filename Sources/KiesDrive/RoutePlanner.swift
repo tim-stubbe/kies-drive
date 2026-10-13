@@ -953,6 +953,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func breakCandidates(totalDistance: Double) -> [BreakCandidate] {
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         guard routeCoordinates.count > 1 else { return [] }
+        let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
         let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
             let location = CLLocation(latitude: station.lat, longitude: station.lon)
             guard let match = routeCoordinates.enumerated().min(by: {
@@ -963,7 +964,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return BreakCandidate(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate,
-                progress: Double(match.offset) / Double(routeCoordinates.count - 1),
+                progress: routeProgress[match.offset],
                 detourMetres: detour * 2, isOpen: station.open != false, supportsFuel: true
             )
         }
@@ -1002,6 +1003,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         guard generation == breakCandidateLoadGeneration else { return }
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
         guard routePoints.count > 1 else { amenityBreakCandidates = []; return }
         let candidates = matches.values.compactMap { item -> BreakCandidate? in
             let point = CLLocation(latitude: item.placemark.coordinate.latitude,
@@ -1014,7 +1016,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let coordinate = item.placemark.coordinate
             return .init(id: "amenity-\(coordinate.latitude)-\(coordinate.longitude)",
                          name: item.name ?? "Rastmöglichkeit", coordinate: coordinate,
-                         progress: Double(nearest.offset) / Double(routePoints.count - 1),
+                         progress: routeProgress[nearest.offset],
                          detourMetres: detour * 2, isOpen: true)
         }
         let buckets = Dictionary(grouping: candidates) { min(9, Int($0.progress * 10)) }
@@ -1038,17 +1040,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard generation == stationLoadGeneration else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        let nearRoute = unique.values.compactMap { station -> (FuelStation, Int)? in
+        let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
+        let nearRoute = unique.values.compactMap { station -> (FuelStation, Int, Double)? in
             let point = CLLocation(latitude: station.lat, longitude: station.lon)
             guard let match = routePoints.enumerated().min(by: { $0.element.distance(from: point) < $1.element.distance(from: point) }),
                   match.element.distance(from: point) < 4_000 else { return nil }
-            return (station, match.offset)
+            return (station, match.offset, routeProgress[match.offset])
         }
         // Keep at most one strong candidate per route section. This gives the
         // break planner geographic coverage without flooding MapKit with pins.
         let bucketCount = min(12, max(1, routeCoordinates.count))
         let grouped = Dictionary(grouping: nearRoute) { item in
-            min(bucketCount - 1, item.1 * bucketCount / max(1, routeCoordinates.count))
+            min(bucketCount - 1, Int(item.2 * Double(bucketCount)))
         }
         stations = grouped.keys.sorted().compactMap { bucket in
             grouped[bucket]?.min {

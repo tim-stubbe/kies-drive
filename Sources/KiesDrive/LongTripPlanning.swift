@@ -110,6 +110,25 @@ struct BreakCandidate: Identifiable, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
+enum RouteGeometryProgress {
+    /// Converts arbitrary polyline sampling density into real distance
+    /// fractions. Dense junction geometry must not count as more trip progress
+    /// than a long, sparsely sampled motorway section.
+    static func cumulativeFractions(_ coordinates: [CLLocationCoordinate2D]) -> [Double] {
+        guard coordinates.count > 1 else { return coordinates.map { _ in 0 } }
+        var distances = [Double](repeating: 0, count: coordinates.count)
+        for index in 1..<coordinates.count {
+            distances[index] = distances[index - 1] + CLLocation(
+                latitude: coordinates[index - 1].latitude,
+                longitude: coordinates[index - 1].longitude
+            ).distance(from: CLLocation(latitude: coordinates[index].latitude,
+                                        longitude: coordinates[index].longitude))
+        }
+        guard let total = distances.last, total > 0 else { return distances.map { _ in 0 } }
+        return distances.map { $0 / total }
+    }
+}
+
 struct PlannedBreak: Identifiable, Equatable {
     let id: String
     let candidate: BreakCandidate?
@@ -179,8 +198,9 @@ struct BreakPlanner {
             let idealProgress = min(0.95, Double(index) * maximumContinuousDriving / drivingTime)
             let candidatesAhead = remaining.filter { $0.progress > lastProgress + 0.05 }
             let candidatesInWindow = candidatesAhead.filter { abs($0.progress - idealProgress) <= 0.12 }
-            let pool = candidatesInWindow.isEmpty ? candidatesAhead : candidatesInWindow
-            let best = pool.min {
+            // A distant stop is not an "optimal" pause merely because it is
+            // the only search result. Leave the location unverified instead.
+            let best = candidatesInWindow.min {
                 score($0, idealProgress: idealProgress) < score($1, idealProgress: idealProgress)
             }
             if let best {

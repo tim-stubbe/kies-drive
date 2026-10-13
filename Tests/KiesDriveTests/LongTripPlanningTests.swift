@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
@@ -41,6 +42,27 @@ final class LongTripPlanningTests: XCTestCase {
         let breaks = BreakPlanner().plan(drivingTime: 5 * 3600, candidates: candidates)
         XCTAssertEqual(breaks[0].afterDriving, 2 * 3600, accuracy: 1)
         XCTAssertEqual(breaks[1].afterDriving, 4 * 3600, accuracy: 1)
+    }
+
+    func testBreakPlannerDoesNotCallARemoteStopOptimal() {
+        let remote = BreakCandidate(id: "remote", name: "Much later", coordinate: .init(),
+                                    progress: 0.9, detourMetres: 50, isOpen: true)
+        let breaks = BreakPlanner().plan(drivingTime: 3 * 3600, candidates: [remote])
+        XCTAssertEqual(breaks.count, 1)
+        XCTAssertNil(breaks.first?.candidate)
+        XCTAssertEqual(breaks.first?.routeProgress ?? 0, 2.0 / 3.0, accuracy: 0.001)
+    }
+
+    func testRouteProgressUsesDistanceRatherThanPointCount() {
+        let coordinates = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.001),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.011),
+        ]
+        let progress = RouteGeometryProgress.cumulativeFractions(coordinates)
+        XCTAssertEqual(progress.first, 0)
+        XCTAssertEqual(progress.last, 1)
+        XCTAssertEqual(progress[1], 1.0 / 11.0, accuracy: 0.01)
     }
 
     func testUnknownTollNeverTurnsIntoInventedZero() async throws {
