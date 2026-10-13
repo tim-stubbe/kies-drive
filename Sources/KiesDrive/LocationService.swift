@@ -69,8 +69,24 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #endif
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        location = locations.last
-        if let location { Task { await DriveRemoteBridge.shared.sync(location: location) } }
+        guard let latest = locations.last else { return }
+        location = latest
+
+        // Navigation progress must be driven by Core Location itself, not by
+        // a SwiftUI `onReceive` callback. SwiftUI view updates are not a
+        // reliable execution path while the display is locked, the app is in
+        // the background, or CarPlay owns the visible navigation surface.
+        // Keeping this here also guarantees exactly one progress update per
+        // delivered GPS fix across the phone, Mac and CarPlay presentations.
+        let planner = RoutePlanner.shared
+        if !planner.legs.isEmpty {
+            planner.updateProgress(at: latest, settings: .shared)
+        }
+
+        Task {
+            await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
+            await DriveRemoteBridge.shared.sync(location: latest)
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {

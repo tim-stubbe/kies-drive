@@ -130,14 +130,6 @@ struct DriveContentView: View {
         .onAppear {
             location.start()
         }
-        .onReceive(location.$location) { newValue in
-            guard let newValue else { return }
-            if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
-            Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
-            #if os(iOS)
-            if planner.isNavigating && isFollowingLocation { followCurrentLocation() }
-            #endif
-        }
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
         .sheet(isPresented: accountOnboardingPresented) {
@@ -217,8 +209,6 @@ struct DriveContentView: View {
         }
         .onReceive(location.$location) { newValue in
             guard let newValue else { return }
-            if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
-            Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
             // Respect manual pan/zoom. Following resumes only when the user
             // explicitly taps the location button again.
             if planner.isNavigating && isFollowingLocation { followCurrentLocation(using: newValue) }
