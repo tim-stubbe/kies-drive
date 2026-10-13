@@ -66,7 +66,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private let synthesizer = AVSpeechSynthesizer()
     private var navigationStepCursor = 0
     private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
-    private var offRouteStrikes = 0
+    private var offRouteSince: Date?
+    private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
     private var lastAcceptedNavigationLocation: CLLocation?
     private var lastLocationRejectionLoggedAt: Date?
@@ -448,7 +449,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             resetLiveNavigationProgress()
             remainingDistanceMetres = totalDistance
             remainingTravelTime = totalTravelTime
-            offRouteStrikes = 0
+            resetDeviationTracking()
             cacheForOffline()
             DriveDiagnosticStore.append(.routeCalculated, detail: "\(legs.count) Etappen · \(Int(totalDistance)) m")
             // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
@@ -550,7 +551,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func resetLiveNavigationProgress() {
         navigationStepCursor = 0
         announcedManeuverStages = [:]
-        offRouteStrikes = 0
+        resetDeviationTracking()
         arrivalStrikes = 0
         lastAcceptedNavigationLocation = nil
     }
@@ -575,7 +576,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         upcomingManeuverInstructions = []
         lastAnnouncement = "Ziel erreicht"
         hasArrived = true
-        offRouteStrikes = 0
+        resetDeviationTracking()
         if settings.voiceGuidance { speak("Du hast dein Ziel erreicht.") }
         routeLockStore.finish()
         activeRouteLock = nil
@@ -739,18 +740,28 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if let lastRerouteAt, Date().timeIntervalSince(lastRerouteAt) < 45 { return }
         let nearest = legs.map { Self.distance(from: location.coordinate, to: $0.polyline) }.min()
             ?? .greatestFiniteMagnitude
-        if nearest > 150 {
-            offRouteStrikes += 1
-        } else {
-            offRouteStrikes = 0
+        let shouldAccumulate = NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: nearest,
+            previousDistance: previousOffRouteDistance,
+            horizontalAccuracy: location.horizontalAccuracy,
+            speedMetresPerSecond: max(location.speed, 0)
+        )
+        previousOffRouteDistance = nearest
+        guard shouldAccumulate else {
+            resetDeviationTracking(keepingDistance: nearest)
+            return
         }
-        guard offRouteStrikes >= 8 else { return }
-        offRouteStrikes = 0
+        let now = location.timestamp
+        if offRouteSince == nil { offRouteSince = now }
+        guard let offRouteSince,
+              now.timeIntervalSince(offRouteSince) >= NavigationDeviationPolicy.confirmationDuration(
+                speedMetresPerSecond: max(location.speed, 0)
+              ) else { return }
+        resetDeviationTracking()
         lastRerouteAt = Date()
         DriveDiagnosticStore.append(.rerouteRequested, detail: "Abweichung \(Int(nearest)) m")
         Task {
             isRecalculating = true
-            lastAnnouncement = "Route wird neu berechnet …"
             if settings.voiceGuidance { speak("Die Route wird neu berechnet.") }
             await calculate(from: location.coordinate, settings: settings)
             if let errorMessage {
@@ -760,6 +771,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
             isRecalculating = false
         }
+    }
+
+    private func resetDeviationTracking(keepingDistance distance: CLLocationDistance? = nil) {
+        offRouteSince = nil
+        previousOffRouteDistance = distance
     }
 
     /// Kleinster Abstand zu jedem echten Liniensegment. Die frühere Stichprobe

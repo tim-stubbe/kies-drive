@@ -204,3 +204,22 @@ enum NavigationEstimatePolicy {
         return max(1, distanceMetres / effectiveSpeed)
     }
 }
+
+enum NavigationDeviationPolicy {
+    static func threshold(horizontalAccuracy: Double, speedMetresPerSecond: Double) -> Double {
+        max(100, horizontalAccuracy * 3, min(220, max(speedMetresPerSecond, 0) * 4))
+    }
+
+    static func shouldAccumulate(distanceFromRoute: Double, previousDistance: Double?,
+                                 horizontalAccuracy: Double, speedMetresPerSecond: Double) -> Bool {
+        guard horizontalAccuracy >= 0, horizontalAccuracy <= 65, speedMetresPerSecond >= 2.5 else { return false }
+        guard distanceFromRoute > threshold(horizontalAccuracy: horizontalAccuracy,
+                                            speedMetresPerSecond: speedMetresPerSecond) else { return false }
+        if let previousDistance, distanceFromRoute + 30 < previousDistance { return false }
+        return true
+    }
+
+    static func confirmationDuration(speedMetresPerSecond: Double) -> TimeInterval {
+        speedMetresPerSecond > 22 ? 8 : 12
+    }
+}

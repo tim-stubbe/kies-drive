@@ -8,6 +8,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_390, speedMetresPerSecond: 0), 100, accuracy: 0.1)
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 0, speedMetresPerSecond: 30), 0)
     }
+    func testDeviationPolicyIgnoresStopsNoiseAndConvergingSlipRoads() {
+        XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 250, previousDistance: 230, horizontalAccuracy: 12, speedMetresPerSecond: 0.5))
+        XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 250, previousDistance: 320, horizontalAccuracy: 12, speedMetresPerSecond: 20))
+        XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 250, previousDistance: 230, horizontalAccuracy: 90, speedMetresPerSecond: 20))
+    }
+
+    func testDeviationPolicyRequiresSustainedMovingDeparture() {
+        XCTAssertTrue(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 210, previousDistance: 190, horizontalAccuracy: 15, speedMetresPerSecond: 20))
+        XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 20), 12)
+        XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 30), 8)
+    }
     func testExitNumberAndDirectionAreExtracted() {
         let presentation = NavigationManeuverPresentation("Ausfahrt 69 rechts Richtung Neufahrn nehmen")
         XCTAssertEqual(presentation.exitLabel, "Ausfahrt 69")
