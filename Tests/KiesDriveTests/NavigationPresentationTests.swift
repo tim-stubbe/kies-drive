@@ -60,4 +60,31 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 200, speedKmh: 50), .prepare)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 30, speedKmh: 50), .now)
     }
+
+    func testRecentDestinationsDeduplicateAndKeepLatestFirst() {
+        let suite = "DriveHistoryTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = RecentDestination(name: "Zuhause", subtitle: "A", latitude: 50, longitude: 8,
+                                      lastUsedAt: Date(timeIntervalSince1970: 1))
+        let newer = RecentDestination(name: "Zuhause neu", subtitle: "B", latitude: 50, longitude: 8,
+                                      lastUsedAt: Date(timeIntervalSince1970: 2))
+        _ = RecentDestinationStore.record(first, defaults: defaults)
+        let values = RecentDestinationStore.record(newer, defaults: defaults)
+        XCTAssertEqual(values.count, 1)
+        XCTAssertEqual(values.first?.name, "Zuhause neu")
+    }
+
+    func testDiagnosticsAreBounded() {
+        let suite = "DriveDiagnosticTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for index in 0..<120 {
+            DriveDiagnosticStore.append(.routeCalculated, detail: "\(index)", defaults: defaults)
+        }
+        let events = DriveDiagnosticStore.load(defaults: defaults)
+        XCTAssertEqual(events.count, 100)
+        XCTAssertEqual(events.first?.detail, "20")
+        XCTAssertEqual(events.last?.detail, "119")
+    }
 }

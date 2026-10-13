@@ -22,6 +22,7 @@ struct DriveContentView: View {
     @State private var didCenterInitialLocation = false
     @State private var showFavorites = false
     @State private var favorites = DriveFavoriteStore.load()
+    @State private var recentDestinations = RecentDestinationStore.load()
 
     private var isSimulatorNavigationPreview: Bool {
         #if targetEnvironment(simulator)
@@ -432,9 +433,7 @@ struct DriveContentView: View {
                 Divider()
                 ForEach(Array(planner.suggestions.prefix(4)), id: \.self) { item in
                     Button {
-                        planner.destination = item
-                        planner.destinationText = item.name ?? item.placemark.title ?? "Ziel"
-                        planner.suggestions = []
+                        selectDestination(item)
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "mappin.circle.fill").font(.title2).foregroundStyle(.blue)
@@ -447,6 +446,27 @@ struct DriveContentView: View {
                         .padding(.horizontal, 14).padding(.vertical, 10)
                     }
                     .buttonStyle(.plain)
+                }
+            } else if planner.destinationText.isEmpty && !recentDestinations.isEmpty {
+                Divider()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(recentDestinations.prefix(5)) { recent in
+                            Button {
+                                let item = MKMapItem(placemark: MKPlacemark(coordinate: recent.coordinate))
+                                item.name = recent.name
+                                selectDestination(item)
+                            } label: {
+                                Label(recent.name, systemImage: "clock.arrow.circlepath")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Color.kiesForest)
+                                    .padding(.horizontal, 11).padding(.vertical, 8)
+                                    .background(Color.kiesForest.opacity(0.08), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                 }
             }
         }
@@ -592,7 +612,24 @@ struct DriveContentView: View {
     private func calculateRouteAndShowOverview(from start: CLLocationCoordinate2D) async {
         await planner.calculate(from: start, settings: settings)
         guard planner.route != nil else { return }
+        rememberCurrentDestination()
         showCompleteRoute()
+    }
+
+    private func selectDestination(_ item: MKMapItem) {
+        planner.destination = item
+        planner.destinationText = item.name ?? item.placemark.title ?? "Ziel"
+        planner.suggestions = []
+    }
+
+    private func rememberCurrentDestination() {
+        guard let item = planner.destination else { return }
+        let coordinate = item.placemark.coordinate
+        recentDestinations = RecentDestinationStore.record(.init(
+            name: item.name ?? planner.destinationText,
+            subtitle: item.placemark.title ?? "",
+            latitude: coordinate.latitude, longitude: coordinate.longitude
+        ))
     }
 
     private func installSimulatorSearchPreview() {

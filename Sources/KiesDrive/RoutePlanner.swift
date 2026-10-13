@@ -104,6 +104,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
             ?? "Route gestartet."
         speak(opening)
+        DriveDiagnosticStore.append(.navigationStarted, detail: destination?.name ?? destinationText)
     }
 
     func stopNavigation() {
@@ -381,6 +382,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             resetLiveNavigationProgress()
             offRouteStrikes = 0
             cacheForOffline()
+            DriveDiagnosticStore.append(.routeCalculated, detail: "\(legs.count) Etappen · \(Int(totalDistance)) m")
             // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
             // duerfen Navigation und UI nicht mehr blockieren.
             isLoading = false
@@ -619,11 +621,17 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard offRouteStrikes >= 8 else { return }
         offRouteStrikes = 0
         lastRerouteAt = Date()
+        DriveDiagnosticStore.append(.rerouteRequested, detail: "Abweichung \(Int(nearest)) m")
         Task {
             isRecalculating = true
             lastAnnouncement = "Route wird neu berechnet …"
             if settings.voiceGuidance { speak("Die Route wird neu berechnet.") }
             await calculate(from: location.coordinate, settings: settings)
+            if let errorMessage {
+                DriveDiagnosticStore.append(.rerouteFailed, detail: errorMessage)
+            } else {
+                DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
+            }
             isRecalculating = false
         }
     }
