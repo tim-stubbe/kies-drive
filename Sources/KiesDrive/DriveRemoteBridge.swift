@@ -163,18 +163,16 @@ final class DriveRemoteBridge {
                 avoidHighways: command.arguments["avoid_highways"]?.bool)
             await planner.calculate(from: current, settings: settings)
         case "set_destination":
+            let item: MKMapItem
             if let lat = command.arguments["latitude"]?.number,
                let lon = command.arguments["longitude"]?.number {
-                let item = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: lat, longitude: lon)))
+                item = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: lat, longitude: lon)))
                 item.name = command.arguments["query"]?.string ?? "Remote-Ziel"
-                planner.destination = item
-                planner.destinationText = item.name ?? "Remote-Ziel"
             } else if let query = command.arguments["query"]?.string {
                 planner.destinationText = query
                 await planner.searchDestination(near: current)
-                guard let item = planner.suggestions.first else { throw DriveRemoteError.destinationNotFound }
-                planner.destination = item
-                planner.destinationText = item.name ?? query
+                guard let found = planner.suggestions.first else { throw DriveRemoteError.destinationNotFound }
+                item = found
             } else { throw DriveRemoteError.destinationNotFound }
             let waypoints = command.arguments["required_waypoints"]?.array?.compactMap { value -> LockedWaypoint? in
                 guard let item = value.object,
@@ -191,9 +189,10 @@ final class DriveRemoteBridge {
                     coordinate: .init(latitude: latitude, longitude: longitude),
                     required: true, optionsAfter: options)
             } ?? []
-            planner.replaceRouteLockForRemoteDestination(waypoints: waypoints)
-            await planner.calculate(from: current, settings: settings)
-            planner.startNavigation()
+            guard await planner.activateDestination(item, from: current, settings: settings,
+                                                    requiredWaypoints: waypoints) else {
+                throw DriveRemoteError.routeUnavailable
+            }
         case "add_route_stop":
             guard let query = command.arguments["query"]?.string else { throw DriveRemoteError.destinationNotFound }
             await planner.searchAlongRoute(query)
@@ -206,10 +205,11 @@ final class DriveRemoteBridge {
 }
 
 enum DriveRemoteError: LocalizedError {
-    case destinationNotFound, unknownCommand
+    case destinationNotFound, routeUnavailable, unknownCommand
     var errorDescription: String? {
         switch self {
         case .destinationNotFound: "Ziel konnte nicht gefunden werden."
+        case .routeUnavailable: "Für dieses Ziel konnte keine gültige Route berechnet werden."
         case .unknownCommand: "Unbekannter Remote-Befehl."
         }
     }

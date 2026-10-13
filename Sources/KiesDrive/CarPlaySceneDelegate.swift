@@ -121,8 +121,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         follow.image = UIImage(systemName: "location.fill")
         let overview = CPMapButton { [weak self] _ in self?.showRouteOverview() }
         overview.image = UIImage(systemName: "map")
-        let stops = CPMapButton { [weak self] _ in self?.showStops() }
-        stops.image = UIImage(systemName: "fork.knife")
+        let stops = CPMapButton { [weak self] _ in self?.showDestinationsAndStops() }
+        stops.image = UIImage(systemName: "list.bullet")
         let audio = CPMapButton { button in
             DriveSettings.shared.voiceGuidance.toggle()
             button.image = UIImage(systemName: DriveSettings.shared.voiceGuidance
@@ -147,9 +147,34 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         mapView.setVisibleMapRect(rect, edgePadding: .init(top: 90, left: 55, bottom: 90, right: 55), animated: true)
     }
 
-    private func showStops() {
+    private func showDestinationsAndStops() {
         let planner = RoutePlanner.shared
-        var items = planner.stations.prefix(4).map { station in
+        var items: [CPListItem] = []
+        let home = DriveSettings.shared.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !home.isEmpty {
+            let item = CPListItem(text: "Zuhause", detailText: home,
+                                  image: UIImage(systemName: "house.fill"))
+            item.handler = { [weak self] _, completion in
+                Task {
+                    await self?.navigateHome(home)
+                    completion()
+                }
+            }
+            items.append(item)
+        }
+        for recent in RecentDestinationStore.load().prefix(4) {
+            let item = CPListItem(text: recent.name,
+                                  detailText: recent.subtitle.isEmpty ? "Letztes Ziel" : recent.subtitle,
+                                  image: UIImage(systemName: "clock.arrow.circlepath"))
+            item.handler = { [weak self] _, completion in
+                Task {
+                    await self?.navigate(to: recent)
+                    completion()
+                }
+            }
+            items.append(item)
+        }
+        items.append(contentsOf: planner.stations.prefix(3).map { station in
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
                                   detailText: String(format: "%.3f € · %.1f km", station.price, station.distanceKm))
             item.handler = { _, completion in
@@ -160,27 +185,59 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 }
             }
             return item
-        }
-        for (title, query, symbol) in [
-            ("McDonald’s entlang der Route", "McDonald's", "m.circle.fill"),
-            ("Essen entlang der Route", "Restaurant", "fork.knife"),
-            ("Rastplätze entlang der Route", "Raststätte Autohof", "cup.and.saucer.fill")
-        ] {
-            let item = CPListItem(text: title, detailText: "Mit kleinem Umweg suchen",
-                                  image: UIImage(systemName: symbol))
-            item.handler = { [weak self] _, completion in
-                Task {
-                    await planner.searchAlongRoute(query)
-                    await MainActor.run {
-                        completion()
-                        self?.showSearchResults(title: title)
+        })
+        if !visibleRoutePolylines.isEmpty {
+            for (title, query, symbol) in [
+                ("McDonald’s entlang der Route", "McDonald's", "m.circle.fill"),
+                ("Essen entlang der Route", "Restaurant", "fork.knife"),
+                ("Rastplätze entlang der Route", "Raststätte Autohof", "cup.and.saucer.fill")
+            ] {
+                let item = CPListItem(text: title, detailText: "Mit kleinem Umweg suchen",
+                                      image: UIImage(systemName: symbol))
+                item.handler = { [weak self] _, completion in
+                    Task {
+                        await planner.searchAlongRoute(query)
+                        await MainActor.run {
+                            completion()
+                            self?.showSearchResults(title: title)
+                        }
                     }
                 }
+                items.append(item)
             }
-            items.append(item)
         }
-        let list = CPListTemplate(title: "Auf der Route", sections: [CPListSection(items: items)])
+        if items.isEmpty {
+            items = [CPListItem(text: "Noch keine Ziele", detailText: "Lege Zuhause oder ein Ziel auf dem iPhone fest.")]
+        }
+        let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: Array(items.prefix(12)))])
         interfaceController?.pushTemplate(list, animated: true, completion: nil)
+    }
+
+    private func navigateHome(_ address: String) async {
+        guard let start = LocationService.shared.location?.coordinate else { return }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = address
+        request.region = .init(center: start, latitudinalMeters: 500_000, longitudinalMeters: 500_000)
+        guard let item = try? await MKLocalSearch(request: request).start().mapItems.first else { return }
+        await navigate(to: item, from: start)
+    }
+
+    private func navigate(to recent: RecentDestination) async {
+        guard let start = LocationService.shared.location?.coordinate else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: recent.coordinate))
+        item.name = recent.name
+        await navigate(to: item, from: start)
+    }
+
+    private func navigate(to item: MKMapItem, from start: CLLocationCoordinate2D) async {
+        guard await RoutePlanner.shared.activateDestination(item, from: start, settings: .shared) else { return }
+        let coordinate = item.placemark.coordinate
+        RecentDestinationStore.record(.init(
+            name: item.name ?? "Ziel", subtitle: item.placemark.title ?? "",
+            latitude: coordinate.latitude, longitude: coordinate.longitude
+        ))
+        interfaceController?.popToRootTemplate(animated: true, completion: nil)
+        followVehicle()
     }
 
     private func showSearchResults(title: String) {

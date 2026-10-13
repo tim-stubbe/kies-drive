@@ -320,6 +320,30 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         activeRouteLock = lock
     }
 
+    /// Atomically switches to a completely new destination. A failed route
+    /// request restores the previous destination and trip lock, preventing a
+    /// new label from being shown on top of an old route.
+    @discardableResult
+    func activateDestination(_ item: MKMapItem, from start: CLLocationCoordinate2D,
+                             settings: DriveSettings,
+                             requiredWaypoints: [LockedWaypoint] = []) async -> Bool {
+        let previousDestination = destination
+        let previousDestinationText = destinationText
+        let previousLock = routeLockStore.activeLock
+        destination = item
+        destinationText = item.name ?? item.placemark.title ?? "Ziel"
+        replaceRouteLockForRemoteDestination(waypoints: requiredWaypoints)
+        guard await calculate(from: start, settings: settings) else {
+            destination = previousDestination
+            destinationText = previousDestinationText
+            routeLockStore.replace(with: previousLock)
+            activeRouteLock = previousLock
+            return false
+        }
+        startNavigation()
+        return true
+    }
+
     var nextInstruction: String? {
         if let nextManeuverInstruction { return nextManeuverInstruction }
         return legs.lazy
