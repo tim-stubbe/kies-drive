@@ -100,7 +100,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         isNavigating = true
         announcedStepKeys = []
         lastAnnouncement = nextInstruction ?? "Route gestartet"
-        speak(lastAnnouncement ?? "Route gestartet")
+        let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
+            ?? "Route gestartet."
+        speak(opening)
     }
 
     func stopNavigation() {
@@ -501,7 +503,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let distance = here.distance(from: CLLocation(latitude: stepStart.latitude, longitude: stepStart.longitude))
             if distance <= 120 {
                 announcedStepKeys.insert(key)
-                speak(step.instructions.isEmpty ? "Weiter geradeaus" : step.instructions)
+                let instruction = step.instructions.isEmpty ? "Weiter geradeaus" : step.instructions
+                speak(NavigationSpeechFormatter.spokenText(instruction, distance: distance))
                 lastAnnouncement = step.instructions
                 break
             }
@@ -510,9 +513,30 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func speak(_ text: String) {
         guard !text.isEmpty else { return }
+        #if os(iOS)
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try? audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        #endif
+        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "de-DE")
+        utterance.voice = Self.preferredGermanVoice()
+        utterance.rate = 0.48
+        utterance.pitchMultiplier = 0.98
+        utterance.volume = 1
+        utterance.preUtteranceDelay = 0.08
+        utterance.postUtteranceDelay = 0.12
+        utterance.prefersAssistiveTechnologySettings = false
         synthesizer.speak(utterance)
+    }
+
+    private static func preferredGermanVoice() -> AVSpeechSynthesisVoice? {
+        let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == "de-DE" }
+        return voices.max { lhs, rhs in
+            let lhsScore = lhs.quality.rawValue + (lhs.identifier.localizedCaseInsensitiveContains("siri") ? 10 : 0)
+            let rhsScore = rhs.quality.rawValue + (rhs.identifier.localizedCaseInsensitiveContains("siri") ? 10 : 0)
+            return lhsScore < rhsScore
+        } ?? AVSpeechSynthesisVoice(language: "de-DE")
     }
 
     /// Zählt aufeinanderfolgende Positionsmeldungen weit abseits der Route und

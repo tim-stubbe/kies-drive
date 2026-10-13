@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 struct NavigationManeuverPresentation: Equatable {
     enum Direction: Equatable {
@@ -65,5 +66,47 @@ struct NavigationManeuverPresentation: Equatable {
         } else {
             destinationLabel = nil
         }
+    }
+}
+
+/// Converts MapKit's compact, sometimes symbol-heavy instructions into text
+/// that a German navigation voice can pronounce naturally.
+enum NavigationSpeechFormatter {
+    static func spokenText(_ instruction: String, distance: CLLocationDistance? = nil) -> String {
+        var text = instruction
+            .replacingOccurrences(of: "&", with: " und ")
+            .replacingOccurrences(of: "/", with: ", ")
+            .replacingOccurrences(of: "→", with: " ")
+            .replacingOccurrences(of: "↗", with: " ")
+            .replacingOccurrences(of: "↖", with: " ")
+            .replacingOccurrences(of: "←", with: " ")
+
+        text = replacing(#"(?i)\bStr\."#, in: text, with: "Straße")
+        text = replacing(#"\s+"#, in: text, with: " ")
+        text = replacing(#"\s*[,;:]\s*"#, in: text, with: ", ")
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+
+        guard !text.isEmpty else { return "Bitte der Route folgen." }
+        let maneuver = text.first?.isUppercase == true
+            ? text
+            : text.prefix(1).uppercased() + String(text.dropFirst())
+
+        guard let distance else { return sentence(maneuver) }
+        if distance <= 35 { return sentence("Jetzt, \(maneuver)") }
+        let rounded = max(50, Int((distance / 50).rounded()) * 50)
+        return sentence("In \(rounded) Metern, \(maneuver)")
+    }
+
+    private static func replacing(_ pattern: String, in value: String, with replacement: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return value }
+        return regex.stringByReplacingMatches(
+            in: value,
+            range: NSRange(value.startIndex..., in: value),
+            withTemplate: replacement
+        )
+    }
+
+    private static func sentence(_ value: String) -> String {
+        value.last.map { ".!?".contains($0) } == true ? value : value + "."
     }
 }

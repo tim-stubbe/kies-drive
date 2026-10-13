@@ -33,6 +33,14 @@ struct DriveContentView: View {
         #endif
     }
 
+    private var isSimulatorRouteDetailsPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--route-details-preview")
+        #else
+        false
+        #endif
+    }
+
     private var showsNavigationUI: Bool { planner.isNavigating || isSimulatorNavigationPreview }
 
     var body: some View {
@@ -106,6 +114,10 @@ struct DriveContentView: View {
                                          latitudinalMeters: 18_000, longitudinalMeters: 18_000))
             }
             if isSimulatorSearchPreview { installSimulatorSearchPreview() }
+            if isSimulatorRouteDetailsPreview {
+                installSimulatorRouteDetailsPreview()
+                showRouteDetails = true
+            }
             didCenterInitialLocation = true
             #else
             if !settings.isReady { showSettings = true }
@@ -137,6 +149,10 @@ struct DriveContentView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { Button("Fertig") { showRouteDetails = false } }
             }
+            // Route detail cards use the deliberate ivory/forest palette.
+            // Keep their semantic text dark and readable when the phone is
+            // otherwise using Dark Mode.
+            .preferredColorScheme(.light)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
@@ -534,6 +550,11 @@ struct DriveContentView: View {
             item.name = name
             return item
         }
+    }
+
+    private func installSimulatorRouteDetailsPreview() {
+        planner.destinationText = "Raiffeisenstraße 10"
+        planner.installHochheimViaWurzenpassTripLock()
     }
 
     private func navigateHome() {

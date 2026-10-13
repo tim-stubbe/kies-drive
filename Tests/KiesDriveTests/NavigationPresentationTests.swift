@@ -39,4 +39,18 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(object["navigation_active"] as? Bool, true)
         XCTAssertNil(object["headingDegrees"])
     }
+
+    func testSpeechInstructionsRemoveSymbolsAndSoundLikeSentences() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("rechts ↗ Richtung A 66 / Wiesbaden", distance: 112),
+            "In 100 Metern, Rechts Richtung A 66, Wiesbaden."
+        )
+    }
+
+    func testSpeechInstructionUsesImmediateCueNearManeuver() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("links abbiegen", distance: 20),
+            "Jetzt, Links abbiegen."
+        )
+    }
 }
