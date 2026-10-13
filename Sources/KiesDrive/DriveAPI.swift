@@ -197,8 +197,8 @@ enum DriveAPI {
         return try JSONDecoder().decode(SpeedLimitEnvelope.self, from: payload).limits
     }
 
-    static func tollCost(origin: String, destination: String) async throws -> TollCost {
-        let body = try JSONEncoder().encode(TollSearchRequest(origin: origin, destination: destination))
+    static func tollCost(origin: String, destination: String, via: [String] = []) async throws -> TollCost {
+        let body = try JSONEncoder().encode(TollSearchRequest(origin: origin, destination: destination, via: via))
         let payload = try await data(for: try request(path: "/api/navigation/toll-search", method: "POST", body: body))
         let result = try JSONDecoder().decode(TollSearchResponse.self, from: payload)
         if let evidence = TollEvidenceValidator.validate(
@@ -286,7 +286,11 @@ private struct TwoFactorEnableResponse: Decodable {
     enum CodingKeys: String, CodingKey { case recoveryCodes = "recovery_codes" }
 }
 
-private struct TollSearchRequest: Encodable { let origin: String; let destination: String }
+private struct TollSearchRequest: Encodable {
+    let origin: String
+    let destination: String
+    let via: [String]
+}
 private struct TollSearchSource: Decodable { let title: String; let url: String; let snippet: String }
 private struct TollSearchResponse: Decodable {
     let status: String

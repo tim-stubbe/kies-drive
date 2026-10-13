@@ -67,6 +67,7 @@ class TOTPRequest(BaseModel):
 class TollSearchRequest(BaseModel):
     origin: str
     destination: str
+    via: Optional[list[str]] = None
 
 
 class PasswordResetRequest(BaseModel):
@@ -421,6 +422,19 @@ def explicit_toll_amount(text: str) -> float | None:
     return None
 
 
+def toll_source_matches_route(text: str, destination: str, via: list[str]) -> bool:
+    """Reject a labelled price that is clearly about some unrelated route."""
+    haystack = text.casefold()
+    route_labels = [destination, *via]
+    tokens = {
+        token.casefold()
+        for label in route_labels
+        for token in re.findall(r"[\wÀ-ÿ-]{4,}", label)
+        if not token.isdigit()
+    }
+    return bool(tokens) and any(token in haystack for token in tokens)
+
+
 @app.post("/api/navigation/toll-search")
 async def toll_search(payload: TollSearchRequest, authorization: str | None = Header(None)):
     current_user(authorization)
@@ -429,9 +443,11 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
         raise HTTPException(503, "SearXNG ist im Kies-Drive-Container noch nicht eingerichtet.")
     origin = payload.origin.strip()[:180]
     destination = payload.destination.strip()[:180]
+    via = [name.strip()[:120] for name in (payload.via or [])[:8] if name.strip()]
     if len(origin) < 2 or len(destination) < 2:
         raise HTTPException(422, "Start und Ziel fehlen.")
-    query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination} {date.today().year}"
+    via_query = f" über {' '.join(via)}" if via else ""
+    query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination}{via_query} {date.today().year}"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(f"{searxng_url}/search", params={
@@ -448,7 +464,9 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
     } for item in results[:5] if isinstance(item, dict)]
     for source in sources:
         amount = explicit_toll_amount(f"{source['title']} {source['snippet']}")
-        if amount is not None and source["url"].startswith("https://"):
+        source_text = f"{source['title']} {source['snippet']}"
+        if (amount is not None and source["url"].startswith("https://")
+                and toll_source_matches_route(source_text, destination, via)):
             return {"status": "known", "amount": amount, "currency": "EUR",
                     "source": source["title"], "source_url": source["url"], "sources": sources}
     return {"status": "unknown", "amount": None, "currency": "EUR",

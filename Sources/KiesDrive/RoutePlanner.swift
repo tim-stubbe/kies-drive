@@ -1110,8 +1110,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         tollLoadGeneration = generation
         let origin = String(format: "%.4f, %.4f", start.latitude, start.longitude)
         let destinationName = destination.placemark.title ?? destination.name ?? destinationText
+        let via = routeLockStore.activeLock?.waypoints.filter(\.required).map(\.name) ?? []
         do {
-            let toll = try await DriveAPI.tollCost(origin: origin, destination: destinationName)
+            let toll = try await DriveAPI.tollCost(origin: origin, destination: destinationName, via: via)
             guard generation == tollLoadGeneration else { return }
             researchedToll = toll
         } catch {

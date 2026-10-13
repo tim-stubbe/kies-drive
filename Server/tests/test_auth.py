@@ -16,6 +16,18 @@ def test_toll_amount_parser_accepts_only_explicit_total():
     assert main.explicit_toll_amount("Mautkosten: 99999 EUR") is None
 
 
+def test_toll_source_must_match_destination_or_required_via_point():
+    assert main.toll_source_matches_route(
+        "Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass", "Hochheim am Main", ["Wurzenpass"]
+    )
+    assert main.toll_source_matches_route(
+        "Wurzenpass Mautkosten: 27,40 EUR", "Hochheim am Main", ["Wurzenpass"]
+    )
+    assert not main.toll_source_matches_route(
+        "Paris nach Lyon Mautkosten: 27,40 EUR", "Hochheim am Main", ["Wurzenpass"]
+    )
+
+
 def test_verification_email_can_be_resent_without_account_disclosure(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "auth.db"))
     sent = []
