@@ -12,7 +12,14 @@ private extension Array {
 /// Eine echte Offline-Kartendarstellung bietet MapKit über keine öffentliche API an.
 struct CachedRoute: Codable {
     struct Step: Codable { let instructions: String; let distance: Double }
-    struct Leg: Codable { let distance: Double; let travelTime: TimeInterval; let steps: [Step] }
+    struct Leg: Codable {
+        let distance: Double
+        let travelTime: TimeInterval
+        let steps: [Step]
+        /// Simplified route geometry. Optional keeps caches written by older
+        /// versions decodable after an app update.
+        let coordinates: [DriveCoordinate]?
+    }
     let destinationName: String
     let legs: [Leg]
     let stations: [FuelStation]
@@ -45,6 +52,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var nextManeuverInstruction: String?
     @Published var nextManeuverDistance: CLLocationDistance?
     @Published var upcomingManeuverInstructions: [String] = []
+    @Published var remainingDistanceMetres: CLLocationDistance = 0
+    @Published var remainingTravelTime: TimeInterval = 0
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
 
@@ -93,6 +102,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     var completeRouteMapRect: MKMapRect? {
         guard !legs.isEmpty else { return nil }
         return legs.reduce(MKMapRect.null) { $0.union($1.polyline.boundingMapRect) }
+    }
+    var offlinePolylines: [MKPolyline] {
+        offlineRoute?.legs.compactMap { leg in
+            guard let values = leg.coordinates, values.count > 1 else { return nil }
+            var coordinates = values.map(\.clLocationCoordinate)
+            return MKPolyline(coordinates: &coordinates, count: coordinates.count)
+        } ?? []
+    }
+    var completeDisplayMapRect: MKMapRect? {
+        if let completeRouteMapRect { return completeRouteMapRect }
+        guard !offlinePolylines.isEmpty else { return nil }
+        return offlinePolylines.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
     }
 
     func startNavigation() {
@@ -380,6 +401,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 comparisonRoute = nil
             }
             resetLiveNavigationProgress()
+            remainingDistanceMetres = totalDistance
+            remainingTravelTime = totalTravelTime
             offRouteStrikes = 0
             cacheForOffline()
             DriveDiagnosticStore.append(.routeCalculated, detail: "\(legs.count) Etappen · \(Int(totalDistance)) m")
@@ -409,7 +432,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             destinationName: destination?.name ?? destinationText,
             legs: legs.map { leg in
                 CachedRoute.Leg(distance: leg.distance, travelTime: leg.expectedTravelTime,
-                                 steps: leg.steps.map { .init(instructions: $0.instructions, distance: $0.distance) })
+                                 steps: leg.steps.map { .init(instructions: $0.instructions, distance: $0.distance) },
+                                 coordinates: sample(leg.polyline, maximum: 600).map {
+                                     .init(latitude: $0.latitude, longitude: $0.longitude)
+                                 })
             },
             stations: stations,
             savedAt: Date()
@@ -456,6 +482,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let maneuver: LiveRouteStep
         let maneuverFlatIndex: Int
         let distance: CLLocationDistance
+        let totalRemainingDistance: CLLocationDistance
         let upcomingInstructions: [String]
     }
 
@@ -519,7 +546,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         return LiveNavigationProgress(
             maneuver: steps[maneuverIndex], maneuverFlatIndex: maneuverIndex,
-            distance: max(0, distance), upcomingInstructions: Array(upcoming.prefix(5))
+            distance: max(0, distance),
+            totalRemainingDistance: max(0, Self.remainingDistance(from: location.coordinate,
+                                                                  on: steps[currentIndex].step.polyline)
+                + steps.dropFirst(currentIndex + 1).reduce(0) { $0 + $1.step.distance }),
+            upcomingInstructions: Array(upcoming.prefix(5))
         )
     }
 
@@ -533,6 +564,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         nextManeuverInstruction = progress.maneuver.step.instructions
         nextManeuverDistance = progress.distance
         upcomingManeuverInstructions = progress.upcomingInstructions
+        remainingDistanceMetres = progress.totalRemainingDistance
+        let averageMetresPerSecond = totalDistance / max(totalTravelTime, 1)
+        remainingTravelTime = progress.totalRemainingDistance / max(averageMetresPerSecond, 1)
     }
 
     private func markReachedWaypoints(at location: CLLocation, settings: DriveSettings) {

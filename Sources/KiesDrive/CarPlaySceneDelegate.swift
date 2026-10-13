@@ -87,6 +87,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
+        Publishers.CombineLatest3(planner.$nextManeuverInstruction,
+                                  planner.$nextManeuverDistance,
+                                  planner.$upcomingManeuverInstructions)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _, _ in
+                self?.publishManeuver()
+                self?.updateGuidanceEstimates()
+            }
+            .store(in: &cancellables)
+
         LocationService.shared.$location
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
@@ -171,10 +181,21 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func publishManeuver() {
         guard let session = navigationSession else { return }
-        let maneuver = CPManeuver()
-        maneuver.instructionVariants = [RoutePlanner.shared.nextInstruction ?? RoutePlanner.shared.lastAnnouncement ?? "Route folgen"]
-        maneuver.initialTravelEstimates = travelEstimates()
-        session.upcomingManeuvers = [maneuver]
+        let planner = RoutePlanner.shared
+        let instructions = planner.upcomingManeuverInstructions.isEmpty
+            ? [planner.nextInstruction ?? planner.lastAnnouncement ?? "Route folgen"]
+            : Array(planner.upcomingManeuverInstructions.prefix(3))
+        session.upcomingManeuvers = instructions.enumerated().map { index, instruction in
+            let maneuver = CPManeuver()
+            maneuver.instructionVariants = [instruction]
+            if index == 0 {
+                maneuver.initialTravelEstimates = CPTravelEstimates(
+                    distanceRemaining: Measurement(value: max(planner.nextManeuverDistance ?? 0, 0),
+                                                   unit: UnitLength.meters),
+                    timeRemaining: 0)
+            }
+            return maneuver
+        }
     }
 
     private func updateGuidanceEstimates() {
@@ -185,8 +206,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func travelEstimates() -> CPTravelEstimates {
-        CPTravelEstimates(distanceRemaining: Measurement(value: max(RoutePlanner.shared.totalDistance, 0), unit: UnitLength.meters),
-                          timeRemaining: max(RoutePlanner.shared.totalTravelTime, 0))
+        let planner = RoutePlanner.shared
+        let distance = planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance
+        let time = planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime
+        return CPTravelEstimates(distanceRemaining: Measurement(value: max(distance, 0), unit: UnitLength.meters),
+                                 timeRemaining: max(time, 0))
     }
 
     private func updateCamera(for location: CLLocation) {

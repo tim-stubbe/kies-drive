@@ -892,9 +892,9 @@ struct DriveContentView: View {
         #endif
         let routeRect: MKMapRect?
         #if targetEnvironment(simulator)
-        routeRect = planner.completeRouteMapRect ?? simulatorPreviewPolyline.boundingMapRect
+        routeRect = planner.completeDisplayMapRect ?? simulatorPreviewPolyline.boundingMapRect
         #else
-        routeRect = planner.completeRouteMapRect
+        routeRect = planner.completeDisplayMapRect
         #endif
         if let rect = routeRect {
             // MapKit fits against the full screen, although instruction and
@@ -1134,6 +1134,14 @@ struct DriveContentView: View {
                 MapPolyline(leg.polyline)
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
+            if planner.legs.isEmpty {
+                ForEach(Array(planner.offlinePolylines.enumerated()), id: \.offset) { _, polyline in
+                    MapPolyline(polyline)
+                        .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    MapPolyline(polyline)
+                        .stroke(Color.kiesRouteBlue.opacity(0.8), style: StrokeStyle(lineWidth: 5, dash: [8, 5]))
+                }
+            }
             if !isShowingRouteOverview {
                 ForEach(Array(planner.stations.prefix(showsNavigationUI ? 12 : 24))) { station in
                     Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
@@ -1297,7 +1305,9 @@ struct DriveContentView: View {
 
     /// Zeigt die zuletzt zwischengespeicherte Route (Ziel, Fahrhinweise,
     /// Tankstellen) an, damit unterwegs auch ohne Verbindung noch eine
-    /// Orientierung möglich ist - ohne Kartenmaterial, nur als Textliste.
+    /// Orientierung möglich ist. Die vereinfachte Routenlinie bleibt lokal
+    /// sichtbar; die eigentlichen Apple-Kartenkacheln sind nicht offline
+    /// exportierbar und werden deshalb nicht fälschlich als verfügbar beworben.
     @ViewBuilder
     private func offlineRouteView(_ cached: CachedRoute) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1395,6 +1405,7 @@ struct DriveSettingsView: View {
     @ObservedObject private var tokens = DeviceTokenStore.shared
     @State private var token = ""
     @State private var connectionStatus: ConnectionStatus = .idle
+    @State private var diagnosticEvents = DriveDiagnosticStore.load()
 
     fileprivate enum ConnectionStatus {
         case idle, testing, success, failed(String)
@@ -1470,8 +1481,25 @@ struct DriveSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Offline-Zwischenspeicher") {
+                    if let cache = planner.offlineRoute {
+                        LabeledContent("Gespeichert", value: cache.savedAt.formatted(date: .abbreviated, time: .shortened))
+                        LabeledContent("Routenlinie", value: cache.legs.contains { ($0.coordinates?.count ?? 0) > 1 } ? "verfügbar" : "älterer Cache")
+                    }
                     Button("Zwischengespeicherte Route löschen", role: .destructive) { planner.clearOfflineCache() }
                         .disabled(planner.offlineRoute == nil)
+                }
+                Section("Navigationsqualität") {
+                    let reroutes = diagnosticEvents.filter { $0.kind == .rerouteRequested }.count
+                    let failures = diagnosticEvents.filter { $0.kind == .rerouteFailed }.count
+                    LabeledContent("Aufgezeichnete Fahrereignisse", value: "\(diagnosticEvents.count)")
+                    LabeledContent("Neuberechnungen", value: "\(reroutes)")
+                    LabeledContent("Fehlgeschlagen", value: "\(failures)")
+                    Text("Die Diagnose bleibt lokal auf diesem Gerät und enthält keine vollständige Standortspur.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Diagnose zurücksetzen", role: .destructive) {
+                        DriveDiagnosticStore.clear()
+                        diagnosticEvents = []
+                    }
                 }
                 Section("Über") {
                     LabeledContent("App-Version", value: DriveSettings.appVersionString)

@@ -81,4 +81,11 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 0)), ["one"])
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
     }
+
+    func testOldOfflineCacheWithoutGeometryStillDecodes() throws {
+        let json = #"{"destinationName":"Ziel","legs":[{"distance":1000,"travelTime":60,"steps":[]}],"stations":[],"savedAt":0}"#
+        let cache = try JSONDecoder().decode(CachedRoute.self, from: Data(json.utf8))
+        XCTAssertEqual(cache.destinationName, "Ziel")
+        XCTAssertNil(cache.legs.first?.coordinates)
+    }
 }
