@@ -20,6 +20,36 @@ final class LongTripPlanningTests: XCTestCase {
                              plan.results[0].fuel.averageConsumptionLPer100km)
     }
 
+    func testUnlimitedShareUsesDistanceAndTreatsMissingLimitsConservatively() {
+        let points = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.01),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.11)
+        ]
+        let limits = [
+            SpeedLimitResult(maxspeed: nil, unlimited: true),
+            SpeedLimitResult(maxspeed: nil, unlimited: false)
+        ]
+        let fraction = SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: limits)
+        XCTAssertEqual(fraction, 1.0 / 11.0, accuracy: 0.02)
+
+        let missing = SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: [limits[0]])
+        XCTAssertEqual(missing, 1.0 / 11.0, accuracy: 0.02,
+                       "A missing second limit must not make the long segment unrestricted")
+    }
+
+    func testSpeedScenarioAppliesDistanceShareInsteadOfTimeShare() {
+        let route = RoutePlanningInput(
+            id: "distance-share", title: "Route", distanceMetres: 600_000,
+            mapKitExpectedTravelTime: 6 * 3600, unlimitedMotorwayFraction: 0.5,
+            typicalUnlimitedSpeedKmh: 130, toll: .unknown(reason: "test"), breakCandidates: []
+        )
+        let result = RouteComparison(fuelModel: .init(), breakPlanner: .init())
+            .compare(routes: [route], scenarios: [.target(200)], vehicle: .init()).results[0]
+        let expected = 6 * 3600 - (300_000 / (130 / 3.6)) + (300_000 / (200 / 3.6))
+        XCTAssertEqual(result.drivingTime, expected, accuracy: 1)
+    }
+
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {
         let candidates = [
             BreakCandidate(id: "closed", name: "Closed", coordinate: .init(latitude: 0, longitude: 0), progress: 0.34, detourMetres: 50, isOpen: false),

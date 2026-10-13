@@ -1099,8 +1099,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !legs.isEmpty else { longTripPlan = nil; return }
         let mainDistance = totalDistance
         let mainTime = totalTravelTime
-        let knownLimits = speedLimits.filter { $0.maxspeed != nil || $0.unlimited }
-        let unlimitedFraction = knownLimits.isEmpty ? 0 : Double(knownLimits.filter(\.unlimited).count) / Double(knownLimits.count)
+        let unlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
+            points: speedLimitPoints, limits: speedLimits
+        )
         let candidates = breakCandidates(along: legs)
         var inputs = [RoutePlanningInput(
             id: settings.avoidTolls ? "toll-avoiding" : "standard",

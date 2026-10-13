@@ -87,6 +87,29 @@ struct FuelModel {
     }
 }
 
+enum SpeedScenarioPolicy {
+    /// Measures unrestricted motorway share by route distance. Missing speed
+    /// data stays conservative instead of inflating the known unrestricted
+    /// samples to 100 percent of the journey.
+    static func unlimitedDistanceFraction(points: [CLLocationCoordinate2D],
+                                          limits: [SpeedLimitResult]) -> Double {
+        guard points.count > 1 else { return 0 }
+        var totalDistance = 0.0
+        var unlimitedDistance = 0.0
+        for index in 0..<(points.count - 1) {
+            let distance = CLLocation(latitude: points[index].latitude, longitude: points[index].longitude)
+                .distance(from: CLLocation(latitude: points[index + 1].latitude,
+                                           longitude: points[index + 1].longitude))
+            guard distance.isFinite, distance > 0 else { continue }
+            totalDistance += distance
+            if limits.indices.contains(index), limits[index].unlimited {
+                unlimitedDistance += distance
+            }
+        }
+        return totalDistance > 0 ? min(1, max(0, unlimitedDistance / totalDistance)) : 0
+    }
+}
+
 struct BreakCandidate: Identifiable, Equatable {
     let id: String
     let name: String
@@ -384,10 +407,9 @@ struct RouteComparison {
         let fraction = min(1, max(0, route.unlimitedMotorwayFraction))
         let baseline = max(1, route.typicalUnlimitedSpeedKmh)
         let target = min(max(80, scenario.targetSpeedKmh), 220)
-        let baselineUnlimitedTime = route.mapKitExpectedTravelTime * fraction
+        let unlimitedDistance = route.distanceMetres * fraction
+        let baselineUnlimitedTime = unlimitedDistance / (baseline / 3.6)
         let limitedTime = max(0, route.mapKitExpectedTravelTime - baselineUnlimitedTime)
-        let estimatedUnlimitedDistance = baselineUnlimitedTime * baseline / 3.6
-        let unlimitedDistance = min(route.distanceMetres, max(0, estimatedUnlimitedDistance))
         let limitedDistance = max(0, route.distanceMetres - unlimitedDistance)
         let adjustedUnlimitedTime = unlimitedDistance / (target / 3.6)
         // Preserve MapKit's limited/urban/traffic component instead of assuming
