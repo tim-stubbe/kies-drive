@@ -329,11 +329,32 @@ struct DriveContentView: View {
                     Text(String(format: "%.1f l · %.2f € Kraftstoff", result.fuel.litres, result.fuel.cost))
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(result.breaks) { stop in
-                        HStack(alignment: .top, spacing: 9) {
-                            Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.kiesBrass)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(stop.candidate?.name ?? "Optimale Pause").font(.caption.weight(.semibold))
-                                Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack(alignment: .top, spacing: 9) {
+                                Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.kiesBrass)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(stop.candidate?.name ?? "Optimale Pause").font(.caption.weight(.semibold))
+                                    Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                            }
+                            if let candidate = stop.candidate {
+                                let isPlanned = planner.activeRouteLock?.waypoints.contains(where: {
+                                    $0.id == candidate.id || $0.name == candidate.name
+                                }) == true
+                                Button {
+                                    guard let start = location.location?.coordinate else {
+                                        planner.errorMessage = "Standort ist noch nicht verfügbar."
+                                        return
+                                    }
+                                    Task { await planner.addPlannedBreak(stop, from: start, settings: settings) }
+                                } label: {
+                                    Label(isPlanned ? "Pause eingeplant" : "Pause zur Route hinzufügen",
+                                          systemImage: isPlanned ? "checkmark.circle.fill" : "plus.circle.fill")
+                                        .font(.caption.weight(.semibold))
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(Color.kiesForest)
+                                .disabled(isPlanned)
                             }
                         }
                     }
