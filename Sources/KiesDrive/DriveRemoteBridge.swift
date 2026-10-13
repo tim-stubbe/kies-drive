@@ -15,6 +15,17 @@ struct DriveRemoteState: Encodable {
     let routeLock: ActiveRouteLock?
     let navigationActive: Bool
     let recordedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case location
+        case headingDegrees = "heading_degrees"
+        case speedKmh = "speed_kmh"
+        case activeRoute = "active_route"
+        case nextManeuver = "next_maneuver"
+        case routeLock = "route_lock"
+        case navigationActive = "navigation_active"
+        case recordedAt = "recorded_at"
+    }
 }
 
 struct DriveRemoteCommand: Decodable {
@@ -74,7 +85,7 @@ final class DriveRemoteBridge {
             activeRoute: planner.legs.isEmpty ? nil : .init(
                 destination: planner.destination?.name ?? planner.destinationText,
                 distanceMetres: planner.totalDistance, travelTimeSeconds: planner.totalTravelTime),
-            nextManeuver: planner.nextInstruction.map { .init(instruction: $0) },
+            nextManeuver: (planner.nextManeuverInstruction ?? planner.nextInstruction).map { .init(instruction: $0) },
             routeLock: planner.activeRouteLock,
             navigationActive: planner.isNavigating, recordedAt: Date()
         )

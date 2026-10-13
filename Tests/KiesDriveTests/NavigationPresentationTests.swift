@@ -22,4 +22,21 @@ final class NavigationPresentationTests: XCTestCase {
     func testMapChoicesExcludePureSatelliteMode() {
         XCTAssertEqual(DriveMapAppearance.allCases, [.standard, .hybrid])
     }
+
+    func testRemoteStateUsesServerCompatibleSnakeCaseKeys() throws {
+        let state = DriveRemoteState(
+            location: .init(latitude: 50, longitude: 8, accuracyMetres: 4),
+            headingDegrees: 180, speedKmh: 90,
+            activeRoute: .init(destination: "Hochheim", distanceMetres: 1_000, travelTimeSeconds: 60),
+            nextManeuver: .init(instruction: "Rechts abbiegen"), routeLock: nil,
+            navigationActive: true, recordedAt: Date(timeIntervalSince1970: 1))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as? [String: Any])
+
+        XCTAssertEqual(object["heading_degrees"] as? Double, 180)
+        XCTAssertEqual(object["speed_kmh"] as? Double, 90)
+        XCTAssertNotNil(object["active_route"])
+        XCTAssertNotNil(object["next_maneuver"])
+        XCTAssertEqual(object["navigation_active"] as? Bool, true)
+        XCTAssertNil(object["headingDegrees"])
+    }
 }
