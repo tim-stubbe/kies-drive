@@ -14,6 +14,7 @@ struct DriveContentView: View {
     @AppStorage("drive.account.guestMode") private var guestMode = false
     @StateObject private var location = LocationService.shared
     @StateObject private var planner = RoutePlanner.shared
+    @StateObject private var offlineMaps = OfflineMapPackageStore.shared
     @State private var position: MapCameraPosition = .automatic
     @State private var showSettings = false
     @State private var showJarvis = false
@@ -70,6 +71,14 @@ struct DriveContentView: View {
     private var isSimulatorSettingsPreview: Bool {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--settings-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var isSimulatorOfflineMapPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--offline-map-preview")
         #else
         false
         #endif
@@ -181,6 +190,10 @@ struct DriveContentView: View {
                 )
             }
             if isSimulatorSettingsPreview { showSettings = true }
+            if isSimulatorOfflineMapPreview {
+                offlineMaps.reload()
+                offlineMaps.activePackageID = offlineMaps.packages.first?.id
+            }
             didCenterInitialLocation = true
             #endif
         }
@@ -1149,7 +1162,16 @@ struct DriveContentView: View {
 
     @ViewBuilder
     private var map: some View {
-        if showsNavigationUI {
+        if let package = offlineMaps.activePackage {
+            OfflineTileMapView(
+                package: package,
+                routes: planner.legs.map(\.polyline).isEmpty ? planner.offlinePolylines : planner.legs.map(\.polyline),
+                currentLocation: location.location,
+                destination: planner.destination,
+                followsLocation: isFollowingLocation,
+                showsRouteOverview: isShowingRouteOverview
+            )
+        } else if showsNavigationUI {
             mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
         } else {
             switch settings.mapAppearance {

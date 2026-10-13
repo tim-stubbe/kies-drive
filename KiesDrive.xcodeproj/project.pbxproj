@@ -32,7 +32,9 @@
 		9B40E594F0DC20B3960C2235 /* LongTripPlanningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768A714AE5F167020FA01E19 /* LongTripPlanningTests.swift */; };
 		9D2B787E8D5C01FF5B060985 /* DriveRemoteBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC0B22096087224BCC19E6A /* DriveRemoteBridge.swift */; };
 		A5028F2AB8865D359FBA0D1C /* NavigationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A85D76BF4C6A517F9802B52 /* NavigationPresentation.swift */; };
+		AB6F9C8C2175811557B357E5 /* OfflineTileMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F930EB1DAF5FCBB8FE42925C /* OfflineTileMapView.swift */; };
 		C8FA48FC9E91231F7105D2E1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8FA8E52E128B4357EB464F /* ContentView.swift */; };
+		D5C47B8CF2DD33965C3CAE23 /* OfflineTileMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F930EB1DAF5FCBB8FE42925C /* OfflineTileMapView.swift */; };
 		D9999252E37F60243CC80A65 /* RoutePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E60108DC2343C2D319B0E1B /* RoutePlanner.swift */; };
 		DDF1646E749CCE9957703015 /* LongTripPlanning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1960196DC9B8C54C7C8E014B /* LongTripPlanning.swift */; };
 		DF6166E832F0C6F0B2AC2A17 /* RoutePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E60108DC2343C2D319B0E1B /* RoutePlanner.swift */; };
@@ -76,6 +78,7 @@
 		D8C18D3FEEEB4346132BB1FD /* kies-drive */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "kies-drive"; path = .; sourceTree = SOURCE_ROOT; };
 		E88997BF11E8D182DE1CF565 /* KiesDriveiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KiesDriveiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F814EC3CED48F0485281CCD6 /* KiesDriveMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KiesDriveMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F930EB1DAF5FCBB8FE42925C /* OfflineTileMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTileMapView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +158,7 @@
 				1960196DC9B8C54C7C8E014B /* LongTripPlanning.swift */,
 				7A85D76BF4C6A517F9802B52 /* NavigationPresentation.swift */,
 				0753B852C78912F73D45650D /* OfflineMapPackage.swift */,
+				F930EB1DAF5FCBB8FE42925C /* OfflineTileMapView.swift */,
 				BFD08D2ADAFA15679BB0ED57 /* RoutePersistence.swift */,
 				4E60108DC2343C2D319B0E1B /* RoutePlanner.swift */,
 			);
@@ -299,6 +303,7 @@
 				DDF1646E749CCE9957703015 /* LongTripPlanning.swift in Sources */,
 				0A3919F20CF69E4CA1357DEB /* NavigationPresentation.swift in Sources */,
 				343ED4CCF207A8B99417A0F1 /* OfflineMapPackage.swift in Sources */,
+				D5C47B8CF2DD33965C3CAE23 /* OfflineTileMapView.swift in Sources */,
 				2FA38A1BA4EB2A986820DD39 /* RoutePersistence.swift in Sources */,
 				DF6166E832F0C6F0B2AC2A17 /* RoutePlanner.swift in Sources */,
 			);
@@ -329,6 +334,7 @@
 				7D10C240BE5CFD838953202C /* LongTripPlanning.swift in Sources */,
 				A5028F2AB8865D359FBA0D1C /* NavigationPresentation.swift in Sources */,
 				88C7E8247386AC41B4680794 /* OfflineMapPackage.swift in Sources */,
+				AB6F9C8C2175811557B357E5 /* OfflineTileMapView.swift in Sources */,
 				49C1FD22F9CDA3C27D21D61F /* RoutePersistence.swift in Sources */,
 				D9999252E37F60243CC80A65 /* RoutePlanner.swift in Sources */,
 			);
