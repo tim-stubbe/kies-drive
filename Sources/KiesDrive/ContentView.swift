@@ -271,18 +271,32 @@ struct DriveContentView: View {
                 }
             }
             .padding(12).background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
-            ForEach(planner.routeSearchResults.prefix(4), id: \.self) { item in
+            ForEach(planner.routeSearchResults.prefix(4)) { result in
+                let item = result.mapItem
                 HStack(spacing: 11) {
                     Image(systemName: "mappin.circle.fill").foregroundStyle(Color.kiesBrass)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name ?? "Zwischenstopp").font(.subheadline.weight(.semibold))
-                        Text(item.placemark.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text("\(item.placemark.title ?? "") · \(formatDistance(result.detourMetres)) von der Route")
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
                     Button("Hinzufügen") {
                         guard let start = location.location?.coordinate else { return }
                         Task { await planner.addRouteStop(item, from: start, settings: settings) }
                     }.buttonStyle(.bordered).tint(Color.kiesForest)
+                }
+            }
+            ForEach(planner.removableRouteStops) { stop in
+                HStack {
+                    Label(stop.name, systemImage: "mappin.and.ellipse")
+                        .font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Spacer()
+                    Button(role: .destructive) {
+                        guard let start = location.location?.coordinate else { return }
+                        Task { await planner.removeRouteStop(id: stop.id, from: start, settings: settings) }
+                    } label: { Image(systemName: "minus.circle.fill") }
+                        .buttonStyle(.plain)
                 }
             }
         }
@@ -1048,16 +1062,28 @@ struct DriveContentView: View {
                             .onSubmit { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
                         Button("Suchen") { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
                     }
-                    ForEach(planner.routeSearchResults, id: \.self) { item in
+                    ForEach(planner.routeSearchResults) { result in
+                        let item = result.mapItem
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(item.name ?? "Zwischenstopp")
-                                Text(item.placemark.title ?? "").font(.caption).foregroundStyle(.secondary)
+                                Text("\(item.placemark.title ?? "") · \(formatDistance(result.detourMetres)) von der Route")
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Button("Hinzufügen", systemImage: "plus.circle.fill") {
                                 guard let start = location.location?.coordinate else { return }
                                 Task { await planner.addRouteStop(item, from: start, settings: settings) }
+                            }
+                        }
+                    }
+                    ForEach(planner.removableRouteStops) { stop in
+                        HStack {
+                            Label(stop.name, systemImage: "mappin.and.ellipse")
+                            Spacer()
+                            Button("Entfernen", role: .destructive) {
+                                guard let start = location.location?.coordinate else { return }
+                                Task { await planner.removeRouteStop(id: stop.id, from: start, settings: settings) }
                             }
                         }
                     }

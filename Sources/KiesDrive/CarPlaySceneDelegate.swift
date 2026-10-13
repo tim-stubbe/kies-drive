@@ -284,11 +284,14 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func showSearchResults(title: String) {
         let planner = RoutePlanner.shared
         let start = LocationService.shared.location?.coordinate
-        let items = planner.routeSearchResults.prefix(10).map { mapItem in
+        let items = planner.routeSearchResults.prefix(10).map { result in
+            let mapItem = result.mapItem
             let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
                 .compactMap { $0 }.joined(separator: ", ")
             let item = CPListItem(text: mapItem.name ?? "Zwischenstopp",
-                                  detailText: address.isEmpty ? "Entlang der Route" : address)
+                                  detailText: String(format: "%@ · %.1f km von der Route",
+                                                     address.isEmpty ? "Entlang der Route" : address,
+                                                     result.detourMetres / 1_000))
             item.handler = { _, completion in
                 Task {
                     guard let start else {

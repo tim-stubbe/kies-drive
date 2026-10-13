@@ -39,6 +39,13 @@ struct CachedRoute: Codable {
     let savedAt: Date
 }
 
+struct RouteSearchResult: Identifiable {
+    let id: String
+    let mapItem: MKMapItem
+    let detourMetres: CLLocationDistance
+    let routeProgress: Double
+}
+
 @MainActor
 final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     /// Shared by the phone UI and CarPlay so both surfaces operate on the
@@ -61,7 +68,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var isNavigating = false
     @Published var activeRouteLock: ActiveRouteLock?
     @Published var routeSearchQuery = ""
-    @Published var routeSearchResults: [MKMapItem] = []
+    @Published var routeSearchResults: [RouteSearchResult] = []
     @Published var nextManeuverInstruction: String?
     @Published var nextManeuverDistance: CLLocationDistance?
     @Published var upcomingManeuverInstructions: [String] = []
@@ -431,7 +438,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return (item, nearest.offset, detour)
         }
         .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 < $1.1 }
-        .prefix(12).map(\.0)
+        .prefix(12).map { item, index, detour in
+            let coordinate = item.placemark.coordinate
+            return RouteSearchResult(
+                id: "\(item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
+                mapItem: item,
+                detourMetres: detour,
+                routeProgress: routePoints.count > 1 ? Double(index) / Double(routePoints.count - 1) : 0
+            )
+        }
     }
 
     @discardableResult
@@ -457,6 +472,28 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return false
         }
         startNavigation()
+        return true
+    }
+
+    var removableRouteStops: [LockedWaypoint] {
+        activeRouteLock?.waypoints.filter { $0.id.hasPrefix("poi-") } ?? []
+    }
+
+    @discardableResult
+    func removeRouteStop(id: String, from start: CLLocationCoordinate2D,
+                         settings: DriveSettings) async -> Bool {
+        guard id.hasPrefix("poi-"),
+              routeLockStore.activeLock?.waypoints.contains(where: { $0.id == id }) == true else {
+            return false
+        }
+        let previousLock = routeLockStore.activeLock
+        routeLockStore.update { $0.removeWaypoint(id: id) }
+        activeRouteLock = routeLockStore.activeLock
+        guard await calculate(from: start, settings: settings) else {
+            routeLockStore.replace(with: previousLock)
+            activeRouteLock = previousLock
+            return false
+        }
         return true
     }
 
