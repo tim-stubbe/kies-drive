@@ -13,6 +13,7 @@ struct DriveContentView: View {
     @State private var selectedStation: FuelStation?
     @State private var showRouteDetails = false
     @State private var isFollowingLocation = true
+    @State private var isShowingRouteOverview = false
     @State private var didCenterInitialLocation = false
     @State private var showFavorites = false
     @State private var favorites = DriveFavoriteStore.load()
@@ -36,6 +37,22 @@ struct DriveContentView: View {
     private var isSimulatorRouteDetailsPreview: Bool {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--route-details-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var isSimulatorRouteOverviewPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--route-overview-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var isSimulatorStationPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--station-preview")
         #else
         false
         #endif
@@ -86,7 +103,11 @@ struct DriveContentView: View {
 
             VStack(spacing: 12) {
                 if showsNavigationUI {
-                    navigationInstructionCard
+                    if isShowingRouteOverview {
+                        compactNavigationInstructionCard
+                    } else {
+                        navigationInstructionCard
+                    }
                 } else {
                     mobileHeader
                 }
@@ -118,6 +139,14 @@ struct DriveContentView: View {
                 installSimulatorRouteDetailsPreview()
                 showRouteDetails = true
             }
+            if isSimulatorRouteOverviewPreview { showCompleteRoute() }
+            if isSimulatorStationPreview {
+                selectedStation = FuelStation(
+                    id: "preview-station", name: "HEM Hochheim", brand: "HEM",
+                    street: "Frankfurter Straße 80", place: "Hochheim am Main",
+                    lat: 50.014, lon: 8.352, price: 1.719, open: true, distanceKm: 1.4
+                )
+            }
             didCenterInitialLocation = true
             #else
             if !settings.isReady { showSettings = true }
@@ -142,6 +171,7 @@ struct DriveContentView: View {
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
         .sheet(isPresented: $showFavorites) { favoritesSheet }
+        .sheet(item: $selectedStation) { station in stationDetailSheet(station) }
         .sheet(isPresented: $showRouteDetails) {
             NavigationStack {
                 mobileRouteDetails
@@ -170,6 +200,7 @@ struct DriveContentView: View {
             .padding(16)
         }
         .background(Color.kiesCanvas.ignoresSafeArea())
+        .sheet(item: $selectedStation) { station in stationDetailSheet(station) }
     }
 
     private var routeSearchCard: some View {
@@ -263,15 +294,19 @@ struct DriveContentView: View {
             Label("Tanken entlang der Route", systemImage: "fuelpump.fill")
                 .font(.headline).foregroundStyle(Color.kiesForest)
             ForEach(planner.stations.prefix(5)) { station in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(station.brand.isEmpty ? station.name : station.brand).font(.subheadline.weight(.semibold))
-                        Text("\(station.place) · \(station.distanceKm, specifier: "%.1f") km")
-                            .font(.caption).foregroundStyle(.secondary)
+                Button { selectedStation = station } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(station.brand.isEmpty ? station.name : station.brand).font(.subheadline.weight(.semibold))
+                            Text("\(station.place) · \(station.distanceKm, specifier: "%.1f") km")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "%.3f €", station.price)).font(.subheadline.bold()).monospacedDigit()
+                        Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
                     }
-                    Spacer()
-                    Text(String(format: "%.3f €", station.price)).font(.subheadline.bold()).monospacedDigit()
                 }
+                .buttonStyle(.plain)
             }
         }
         .driveCard()
@@ -346,6 +381,7 @@ struct DriveContentView: View {
 
     private func followCurrentLocation(using currentLocation: CLLocation? = nil) {
         isFollowingLocation = true
+        isShowingRouteOverview = false
         guard let currentLocation = currentLocation ?? location.location else {
             position = .userLocation(followsHeading: true, fallback: .automatic)
             return
@@ -693,13 +729,109 @@ struct DriveContentView: View {
         .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
+
+
+    private var compactNavigationInstructionCard: some View {
+        let previewInstruction = "Rechts abbiegen auf Raiffeisenstraße"
+        let maneuver = NavigationManeuverPresentation(isSimulatorNavigationPreview
+            ? previewInstruction
+            : (planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen"))
+        return HStack(spacing: 14) {
+            Image(systemName: maneuver.direction.symbolName)
+                .font(.system(size: 38, weight: .bold)).frame(width: 48)
+            Text(maneuver.instruction)
+                .font(.system(size: 20, weight: .bold)).lineLimit(2).minimumScaleFactor(0.76)
+            Spacer(minLength: 4)
+            Button {
+                settings.voiceGuidance.toggle()
+                planner.setVoiceGuidanceEnabled(settings.voiceGuidance)
+            } label: {
+                Image(systemName: settings.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .font(.title3.bold()).frame(width: 42, height: 42)
+                    .background(.white.opacity(0.18), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(.white).padding(14)
+        .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+    }
+
+    private func stationDetailSheet(_ station: FuelStation) -> some View {
+        let isVia = planner.viaStations.contains(where: { $0.id == station.id })
+        return NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
+                    Image(systemName: "fuelpump.fill")
+                        .font(.title2).foregroundStyle(Color.kiesIvory)
+                        .frame(width: 52, height: 52).background(Color.kiesForest, in: Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(station.brand.isEmpty ? station.name : station.brand)
+                            .font(.title2.bold()).foregroundStyle(Color.kiesForest)
+                        Text([station.street, station.place].filter { !$0.isEmpty }.joined(separator: ", "))
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(settings.fuel.label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(String(format: "%.3f €", station.price))
+                            .font(.system(size: 38, weight: .bold, design: .rounded)).monospacedDigit()
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(station.open == false ? "Geschlossen" : "Geöffnet")
+                            .font(.subheadline.bold()).foregroundStyle(station.open == false ? .red : .green)
+                        Text(String(format: "%.1f km von der Route", station.distanceKm))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Button {
+                    guard let start = location.location?.coordinate else {
+                        planner.errorMessage = "Standort ist noch nicht verfügbar."
+                        return
+                    }
+                    selectedStation = nil
+                    Task { await planner.toggleWaypoint(station, from: start, settings: settings) }
+                } label: {
+                    Label(isVia ? "Von der Route entfernen" : "Als Zwischenstopp hinzufügen",
+                          systemImage: isVia ? "minus.circle.fill" : "plus.circle.fill")
+                        .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
+                }
+                .buttonStyle(.borderedProminent).tint(Color.kiesForest).controlSize(.large)
+                .disabled(planner.route == nil)
+                Spacer()
+            }
+            .padding(22).background(Color.kiesIvory.ignoresSafeArea())
+            .navigationTitle("Tankstelle")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Fertig") { selectedStation = nil } }
+        }
+        .preferredColorScheme(.light)
+        .presentationDetents([.height(370), .medium])
+        .presentationDragIndicator(.visible)
+    }
     #endif
 
     private func showCompleteRoute() {
         #if os(iOS)
         isFollowingLocation = false
+        isShowingRouteOverview = true
         #endif
-        if let rect = planner.completeRouteMapRect { position = .rect(rect) }
+        let routeRect: MKMapRect?
+        #if targetEnvironment(simulator)
+        routeRect = planner.completeRouteMapRect ?? simulatorPreviewPolyline.boundingMapRect
+        #else
+        routeRect = planner.completeRouteMapRect
+        #endif
+        if let rect = routeRect {
+            // MapKit fits against the full screen, although instruction and
+            // ETA cards cover part of it. Extra breathing room keeps both
+            // ends of the route inside the actually visible map area.
+            position = .rect(rect.insetBy(dx: -rect.size.width * 0.18,
+                                           dy: -rect.size.height * 0.34))
+        }
     }
 
     private var routePanel: some View {
@@ -931,14 +1063,15 @@ struct DriveContentView: View {
                 MapPolyline(leg.polyline)
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
-            if !showsNavigationUI {
-                ForEach(planner.stations) { station in
-                    Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
+            ForEach(Array(planner.stations.prefix(showsNavigationUI ? 12 : 24))) { station in
+                Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
+                    Button { selectedStation = station } label: {
                         VStack(spacing: 2) {
                             Image(systemName: "fuelpump.fill").padding(8).background(.green, in: Circle()).foregroundStyle(.white)
                             Text(String(format: "%.3f", station.price)).font(.caption.bold()).padding(.horizontal, 5).background(.regularMaterial, in: Capsule())
                         }
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -964,7 +1097,10 @@ struct DriveContentView: View {
                             .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
                     }
                     .accessibilityLabel("Gesamte Route anzeigen")
-                    Button { followCurrentLocation() } label: {
+                    Button {
+                        isShowingRouteOverview = false
+                        followCurrentLocation()
+                    } label: {
                         Image(systemName: isFollowingLocation ? "location.fill" : "location")
                             .font(.title3.bold()).padding(13)
                             .foregroundStyle(isFollowingLocation ? .blue : .primary)
