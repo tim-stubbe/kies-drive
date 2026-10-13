@@ -57,6 +57,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var hasArrived = false
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
+    private var amenityBreakCandidates: [BreakCandidate] = []
 
     /// Tempolimits entlang der Route, parallel zu `speedLimitPoints` indiziert.
     private var speedLimitPoints: [CLLocationCoordinate2D] = []
@@ -71,6 +72,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var lastLocationRejectionLoggedAt: Date?
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
+    private var breakCandidateLoadGeneration = UUID()
     private var speedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
@@ -455,6 +457,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             Task { [weak self] in
                 guard let self else { return }
                 await self.loadStations(fuel: settings.fuel)
+                guard calculationGeneration == self.routeCalculationGeneration else { return }
+                await self.loadBreakAmenities()
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.loadSpeedLimits()
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
@@ -925,7 +929,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func breakCandidates(totalDistance: Double) -> [BreakCandidate] {
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         guard routeCoordinates.count > 1 else { return [] }
-        return stations.compactMap { station in
+        let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
             let location = CLLocation(latitude: station.lat, longitude: station.lon)
             guard let match = routeCoordinates.enumerated().min(by: {
                 location.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
@@ -938,6 +942,60 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 progress: Double(match.offset) / Double(routeCoordinates.count - 1),
                 detourMetres: detour * 2, isOpen: station.open != false
             )
+        }
+        return (fuelCandidates + amenityBreakCandidates)
+            .reduce(into: [String: BreakCandidate]()) { result, candidate in result[candidate.id] = candidate }
+            .values.sorted { $0.progress < $1.progress }
+    }
+
+    /// Finds real rest areas and motorway service locations near the route so
+    /// break planning is not limited to petrol stations.
+    private func loadBreakAmenities() async {
+        guard !legs.isEmpty else { amenityBreakCandidates = []; return }
+        let generation = UUID()
+        breakCandidateLoadGeneration = generation
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
+        let searchPoints = evenlySpaced(routeCoordinates, maximum: 4)
+        var matches: [String: MKMapItem] = [:]
+        await withTaskGroup(of: [MKMapItem].self) { group in
+            for point in searchPoints {
+                for query in ["Raststätte Autohof", "Rastplatz"] {
+                    group.addTask {
+                        let request = MKLocalSearch.Request()
+                        request.naturalLanguageQuery = query
+                        request.region = .init(center: point, latitudinalMeters: 90_000,
+                                               longitudinalMeters: 90_000)
+                        return (try? await MKLocalSearch(request: request).start().mapItems) ?? []
+                    }
+                }
+            }
+            for await items in group {
+                for item in items {
+                    let coordinate = item.placemark.coordinate
+                    matches["\(item.name ?? "Halt"):\(coordinate.latitude):\(coordinate.longitude)"] = item
+                }
+            }
+        }
+        guard generation == breakCandidateLoadGeneration else { return }
+        let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        guard routePoints.count > 1 else { amenityBreakCandidates = []; return }
+        let candidates = matches.values.compactMap { item -> BreakCandidate? in
+            let point = CLLocation(latitude: item.placemark.coordinate.latitude,
+                                   longitude: item.placemark.coordinate.longitude)
+            guard let nearest = routePoints.enumerated().min(by: {
+                $0.element.distance(from: point) < $1.element.distance(from: point)
+            }) else { return nil }
+            let detour = nearest.element.distance(from: point)
+            guard detour <= 4_000 else { return nil }
+            let coordinate = item.placemark.coordinate
+            return .init(id: "amenity-\(coordinate.latitude)-\(coordinate.longitude)",
+                         name: item.name ?? "Rastmöglichkeit", coordinate: coordinate,
+                         progress: Double(nearest.offset) / Double(routePoints.count - 1),
+                         detourMetres: detour * 2, isOpen: true)
+        }
+        let buckets = Dictionary(grouping: candidates) { min(9, Int($0.progress * 10)) }
+        amenityBreakCandidates = buckets.keys.sorted().compactMap { bucket in
+            buckets[bucket]?.min { $0.detourMetres < $1.detourMetres }
         }
     }
 
@@ -989,15 +1047,21 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func addPlannedBreak(_ plannedBreak: PlannedBreak, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
-        guard let candidate = plannedBreak.candidate,
-              let station = stations.first(where: { $0.id == candidate.id }),
-              !viaStations.contains(where: { $0.id == station.id }) else { return }
-        viaStations.append(station)
-        let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(totalDistance: totalDistance).map { ($0.id, $0.progress) })
-        viaStations.sort { lhs, rhs in
-            (progressByID[lhs.id] ?? 1) < (progressByID[rhs.id] ?? 1)
+        guard let candidate = plannedBreak.candidate else { return }
+        if let station = stations.first(where: { $0.id == candidate.id }) {
+            guard !viaStations.contains(where: { $0.id == station.id }) else { return }
+            viaStations.append(station)
+            let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(totalDistance: totalDistance)
+                .map { ($0.id, $0.progress) })
+            viaStations.sort { lhs, rhs in
+                (progressByID[lhs.id] ?? 1) < (progressByID[rhs.id] ?? 1)
+            }
+            await calculate(from: start, settings: settings)
+        } else {
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
+            item.name = candidate.name
+            await addRouteStop(item, from: start, settings: settings)
         }
-        await calculate(from: start, settings: settings)
     }
 
     private func sample(_ polyline: MKPolyline, maximum: Int) -> [CLLocationCoordinate2D] {
