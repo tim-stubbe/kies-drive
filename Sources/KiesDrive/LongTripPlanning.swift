@@ -91,6 +91,51 @@ struct PlannedBreak: Identifiable, Equatable {
     let explanation: String
 }
 
+struct PlannedFuelStop: Identifiable, Equatable {
+    let id: String
+    let candidate: BreakCandidate?
+    let afterDistanceMetres: Double
+    let routeProgress: Double
+    let explanation: String
+}
+
+struct FuelStopPlanner {
+    /// Assumes departure with a full tank and reserves the profile's unusable
+    /// fraction. Stops are placed before the reserve, never at the theoretical
+    /// last kilometre of the tank.
+    func plan(distanceMetres: Double, consumptionLPer100km: Double,
+              vehicle: VehicleProfile, candidates: [BreakCandidate]) -> [PlannedFuelStop] {
+        guard distanceMetres > 0, consumptionLPer100km > 0,
+              vehicle.tankCapacityLitres > 0 else { return [] }
+        let usableLitres = vehicle.tankCapacityLitres * min(0.95, max(0.5, vehicle.usableTankFraction))
+        let safeRange = usableLitres / consumptionLPer100km * 100_000
+        guard safeRange > 0, distanceMetres > safeRange else { return [] }
+        let count = Int(ceil(distanceMetres / safeRange)) - 1
+        var remaining = candidates.filter(\.isOpen)
+        var lastProgress = 0.0
+        return (1...count).map { index in
+            let idealDistance = min(distanceMetres * 0.95, Double(index) * safeRange * 0.88)
+            let idealProgress = idealDistance / distanceMetres
+            let ahead = remaining.filter { $0.progress > lastProgress + 0.03 }
+            let window = ahead.filter { abs($0.progress - idealProgress) <= 0.14 }
+            let pool = window.isEmpty ? ahead : window
+            let best = pool.min {
+                abs($0.progress - idealProgress) + $0.detourMetres / 100_000 <
+                abs($1.progress - idealProgress) + $1.detourMetres / 100_000
+            }
+            if let best { remaining.removeAll { $0.id == best.id } }
+            let progress = best?.progress ?? idealProgress
+            lastProgress = progress
+            return .init(
+                id: "fuel-\(index)", candidate: best,
+                afterDistanceMetres: distanceMetres * progress, routeProgress: progress,
+                explanation: best.map { "Tankstopp vor der Reserve · ca. \(Int($0.detourMetres)) m Umweg" }
+                    ?? "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
+            )
+        }
+    }
+}
+
 struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
@@ -173,6 +218,7 @@ struct RouteScenarioResult: Identifiable, Equatable {
     let fuel: FuelEstimate
     let toll: TollCost
     let breaks: [PlannedBreak]
+    let fuelStops: [PlannedFuelStop]
     let unlimitedFraction: Double
 }
 
@@ -185,6 +231,7 @@ struct LongTripPlan: Equatable {
 struct RouteComparison {
     let fuelModel: FuelModel
     let breakPlanner: BreakPlanner
+    var fuelStopPlanner = FuelStopPlanner()
 
     func compare(routes: [RoutePlanningInput], scenarios: [SpeedScenario], vehicle: VehicleProfile, now: Date = Date()) -> LongTripPlan {
         let results = routes.flatMap { route in
@@ -211,11 +258,14 @@ struct RouteComparison {
         let averageSpeed = route.distanceMetres / max(1, drivingTime) * 3.6
         let fuel = fuelModel.estimate(distanceMetres: route.distanceMetres, effectiveSpeedKmh: averageSpeed, profile: vehicle)
         let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates)
+        let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
+                                             consumptionLPer100km: fuel.averageConsumptionLPer100km,
+                                             vehicle: vehicle, candidates: route.breakCandidates)
         return .init(
             id: "\(route.id)-\(scenario.id)", routeTitle: route.title, scenario: scenario,
             distanceMetres: route.distanceMetres, drivingTime: drivingTime,
             totalTime: drivingTime + breaks.reduce(0) { $0 + $1.duration }, fuel: fuel,
-            toll: route.toll, breaks: breaks, unlimitedFraction: fraction
+            toll: route.toll, breaks: breaks, fuelStops: fuelStops, unlimitedFraction: fraction
         )
     }
 }

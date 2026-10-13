@@ -57,11 +57,25 @@ final class LongTripPlanningTests: XCTestCase {
     func testComparisonOnlyCalculatesTollSavingsForKnownPrices() {
         let scenario = SpeedScenario.target(150)
         let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)
-        let baseline = RouteScenarioResult(id: "a", routeTitle: "A", scenario: scenario, distanceMetres: 500_000, drivingTime: 18_000, totalTime: 19_200, fuel: fuel, toll: .known(amount: 24, currency: "EUR", source: "provider"), breaks: [], unlimitedFraction: 0)
-        let unknown = RouteScenarioResult(id: "b", routeTitle: "B", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .unknown(reason: "missing"), breaks: [], unlimitedFraction: 0)
-        let free = RouteScenarioResult(id: "c", routeTitle: "C", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .noToll(source: "provider"), breaks: [], unlimitedFraction: 0)
+        let baseline = RouteScenarioResult(id: "a", routeTitle: "A", scenario: scenario, distanceMetres: 500_000, drivingTime: 18_000, totalTime: 19_200, fuel: fuel, toll: .known(amount: 24, currency: "EUR", source: "provider"), breaks: [], fuelStops: [], unlimitedFraction: 0)
+        let unknown = RouteScenarioResult(id: "b", routeTitle: "B", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .unknown(reason: "missing"), breaks: [], fuelStops: [], unlimitedFraction: 0)
+        let free = RouteScenarioResult(id: "c", routeTitle: "C", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .noToll(source: "provider"), breaks: [], fuelStops: [], unlimitedFraction: 0)
 
         XCTAssertNil(RouteComparisonDelta(from: baseline, to: unknown).tollSavings)
         XCTAssertEqual(RouteComparisonDelta(from: baseline, to: free).tollSavings, 24)
+    }
+
+    func testFuelStopsStayBeforeReserveAndPreferRouteCandidate() {
+        let candidates = [
+            BreakCandidate(id: "station", name: "Route station", coordinate: .init(),
+                           progress: 0.48, detourMetres: 200, isOpen: true)
+        ]
+        let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+                                     tankCapacityLitres: 50, usableTankFraction: 0.8)
+        let stops = FuelStopPlanner().plan(distanceMetres: 700_000, consumptionLPer100km: 10,
+                                           vehicle: vehicle, candidates: candidates)
+        XCTAssertEqual(stops.count, 1)
+        XCTAssertEqual(stops.first?.candidate?.id, "station")
+        XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
     }
 }

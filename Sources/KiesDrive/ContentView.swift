@@ -299,6 +299,15 @@ struct DriveContentView: View {
                             }
                         }
                     }
+                    ForEach(result.fuelStops) { stop in
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: "fuelpump.fill").foregroundStyle(Color.kiesBrass)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(stop.candidate?.name ?? "Tankstopp erforderlich").font(.caption.weight(.semibold))
+                                Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                    }
                 }
                 .padding(12).background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
             }
