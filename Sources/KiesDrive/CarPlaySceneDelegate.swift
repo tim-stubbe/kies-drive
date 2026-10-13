@@ -190,10 +190,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
                                   detailText: String(format: "%.3f € · %.1f km", station.price, station.distanceKm))
             item.handler = { _, completion in
-                guard let start = LocationService.shared.location?.coordinate else { completion(); return }
                 Task {
-                    await planner.toggleWaypoint(station, from: start, settings: .shared)
+                    guard let start = LocationService.shared.location?.coordinate else {
+                        completion()
+                        self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                        return
+                    }
+                    let succeeded = await planner.toggleWaypoint(station, from: start, settings: .shared)
                     completion()
+                    if succeeded { self.interfaceController?.popToRootTemplate(animated: true, completion: nil) }
+                    else { self.showFailure(planner.errorMessage ?? "Die Route zum Tankstopp konnte nicht berechnet werden.") }
                 }
             }
             return item
@@ -226,30 +232,45 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func navigateHome(_ address: String) async {
-        guard let start = LocationService.shared.location?.coordinate else { return }
+        guard let start = LocationService.shared.location?.coordinate else {
+            showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+            return
+        }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = address
         request.region = .init(center: start, latitudinalMeters: 500_000, longitudinalMeters: 500_000)
-        guard let item = try? await MKLocalSearch(request: request).start().mapItems.first else { return }
+        guard let item = try? await MKLocalSearch(request: request).start().mapItems.first else {
+            showFailure("Die Zuhause-Adresse konnte nicht gefunden werden.")
+            return
+        }
         await navigate(to: item, from: start)
     }
 
     private func navigate(to recent: RecentDestination) async {
-        guard let start = LocationService.shared.location?.coordinate else { return }
+        guard let start = LocationService.shared.location?.coordinate else {
+            showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+            return
+        }
         let item = MKMapItem(placemark: MKPlacemark(coordinate: recent.coordinate))
         item.name = recent.name
         await navigate(to: item, from: start)
     }
 
     private func navigate(to favorite: DriveFavorite) async {
-        guard let start = LocationService.shared.location?.coordinate else { return }
+        guard let start = LocationService.shared.location?.coordinate else {
+            showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+            return
+        }
         let item = MKMapItem(placemark: MKPlacemark(coordinate: favorite.coordinate))
         item.name = favorite.name
         await navigate(to: item, from: start)
     }
 
     private func navigate(to item: MKMapItem, from start: CLLocationCoordinate2D) async {
-        guard await RoutePlanner.shared.activateDestination(item, from: start, settings: .shared) else { return }
+        guard await RoutePlanner.shared.activateDestination(item, from: start, settings: .shared) else {
+            showFailure(RoutePlanner.shared.errorMessage ?? "Die Route zu diesem Ziel konnte nicht berechnet werden.")
+            return
+        }
         let coordinate = item.placemark.coordinate
         RecentDestinationStore.record(.init(
             name: item.name ?? "Ziel", subtitle: item.placemark.title ?? "",
@@ -268,10 +289,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let item = CPListItem(text: mapItem.name ?? "Zwischenstopp",
                                   detailText: address.isEmpty ? "Entlang der Route" : address)
             item.handler = { _, completion in
-                guard let start else { completion(); return }
                 Task {
-                    await planner.addRouteStop(mapItem, from: start, settings: .shared)
-                    await MainActor.run { completion() }
+                    guard let start else {
+                        completion()
+                        self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                        return
+                    }
+                    let succeeded = await planner.addRouteStop(mapItem, from: start, settings: .shared)
+                    completion()
+                    if succeeded { self.interfaceController?.popToRootTemplate(animated: true, completion: nil) }
+                    else { self.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht hinzugefügt werden.") }
                 }
             }
             return item
@@ -283,6 +310,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             CPListTemplate(title: title, sections: [CPListSection(items: visible)]),
             animated: true, completion: nil
         )
+    }
+
+    private func showFailure(_ message: String) {
+        let action = CPAlertAction(title: "OK", style: .default) { _ in }
+        let alert = CPAlertTemplate(titleVariants: ["Aktion nicht möglich", message], actions: [action])
+        interfaceController?.presentTemplate(alert, animated: true, completion: nil)
     }
 
     private func redrawRoute() {

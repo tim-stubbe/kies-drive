@@ -409,7 +409,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         .prefix(12).map(\.0)
     }
 
-    func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
+    @discardableResult
+    func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D,
+                      settings: DriveSettings) async -> Bool {
         let previousLock = routeLockStore.activeLock
         // A user may add a stop while merely previewing a calculated route,
         // before tapping Start. Materialise the lock here so the action never
@@ -417,7 +419,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if routeLockStore.activeLock == nil { persistActiveTrip() }
         guard routeLockStore.activeLock != nil else {
             errorMessage = "Zwischenstopp konnte nicht gespeichert werden."
-            return
+            return false
         }
         let coordinate = item.placemark.coordinate
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
@@ -427,9 +429,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard succeeded else {
             routeLockStore.replace(with: previousLock)
             activeRouteLock = previousLock
-            return
+            return false
         }
         startNavigation()
+        return true
     }
 
     /// Every user-selected stop is written into the persistent trip lock. This
@@ -1240,7 +1243,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// Fügt eine Tankstelle als Zwischenstopp ein (oder entfernt sie erneut,
     /// wenn sie bereits als Zwischenstopp gesetzt ist) und berechnet die
     /// Route neu.
-    func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
+    @discardableResult
+    func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D,
+                        settings: DriveSettings) async -> Bool {
         let previousStations = viaStations
         let previousLock = routeLockStore.activeLock
         if let index = viaStations.firstIndex(where: { $0.id == station.id }) {
@@ -1261,8 +1266,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             viaStations = previousStations
             routeLockStore.replace(with: previousLock)
             activeRouteLock = previousLock
-            return
+            return false
         }
+        return true
     }
 
     func addPlannedBreak(_ plannedBreak: PlannedBreak, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
