@@ -850,6 +850,9 @@ struct DriveContentView: View {
             if planner.isRecalculating {
                 Label("Neue Route wird gesucht", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.semibold)).opacity(0.9)
+            } else if planner.isUsingOfflineGuidance {
+                Label("Gespeicherte Route · offline", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                    .font(.caption.weight(.semibold)).opacity(0.9)
             }
             if let followingInstruction {
                 Divider().overlay(.white.opacity(0.2))

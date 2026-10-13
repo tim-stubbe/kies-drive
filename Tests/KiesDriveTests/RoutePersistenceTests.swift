@@ -143,5 +143,6 @@ final class RoutePersistenceTests: XCTestCase {
         let cache = try JSONDecoder().decode(CachedRoute.self, from: Data(json.utf8))
         XCTAssertEqual(cache.destinationName, "Ziel")
         XCTAssertNil(cache.legs.first?.coordinates)
+        XCTAssertNil(cache.legs.first?.steps.first?.coordinates)
     }
 }

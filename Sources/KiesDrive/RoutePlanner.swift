@@ -11,7 +11,20 @@ private extension Array {
 /// berechnete Route auch ohne Netzverbindung als Text/Liste angezeigt werden kann.
 /// Eine echte Offline-Kartendarstellung bietet MapKit über keine öffentliche API an.
 struct CachedRoute: Codable {
-    struct Step: Codable { let instructions: String; let distance: Double }
+    struct Step: Codable {
+        let instructions: String
+        let distance: Double
+        /// Optional keeps caches from earlier releases decodable. New caches
+        /// store per-maneuver geometry so guidance can continue without a
+        /// fresh MapKit route after a restart or network outage.
+        let coordinates: [DriveCoordinate]?
+
+        init(instructions: String, distance: Double, coordinates: [DriveCoordinate]? = nil) {
+            self.instructions = instructions
+            self.distance = distance
+            self.coordinates = coordinates
+        }
+    }
     struct Leg: Codable {
         let distance: Double
         let travelTime: TimeInterval
@@ -55,6 +68,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var remainingDistanceMetres: CLLocationDistance = 0
     @Published var remainingTravelTime: TimeInterval = 0
     @Published var hasArrived = false
+    @Published private(set) var isUsingOfflineGuidance = false
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
     private var amenityBreakCandidates: [BreakCandidate] = []
@@ -151,6 +165,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     func startNavigation() {
         guard !legs.isEmpty else { return }
+        isUsingOfflineGuidance = false
         persistActiveTrip()
         isNavigating = true
         hasArrived = false
@@ -164,6 +179,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     func stopNavigation() {
         isNavigating = false
+        isUsingOfflineGuidance = false
         synthesizer.stopSpeaking(at: .immediate)
         lastAnnouncement = nil
         speedWarning = false
@@ -226,7 +242,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         item.name = lock.destinationName
         destination = item
         await calculate(from: current, settings: settings)
-        if !legs.isEmpty { startNavigation() }
+        if !legs.isEmpty {
+            startNavigation()
+        } else {
+            startOfflineGuidanceIfAvailable()
+        }
     }
 
     func restoreActiveTrip(from current: CLLocationCoordinate2D, settings: DriveSettings) async {
@@ -456,6 +476,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 comparisonRoute = nil
             }
             resetLiveNavigationProgress()
+            isUsingOfflineGuidance = false
             remainingDistanceMetres = totalDistance
             remainingTravelTime = totalTravelTime
             resetDeviationTracking()
@@ -493,7 +514,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             destinationName: destination?.name ?? destinationText,
             legs: legs.map { leg in
                 CachedRoute.Leg(distance: leg.distance, travelTime: leg.expectedTravelTime,
-                                 steps: leg.steps.map { .init(instructions: $0.instructions, distance: $0.distance) },
+                                 steps: leg.steps.map { step in
+                                     .init(instructions: step.instructions, distance: step.distance,
+                                           coordinates: sample(step.polyline, maximum: 80).map {
+                                               .init(latitude: $0.latitude, longitude: $0.longitude)
+                                           })
+                                 },
                                  coordinates: sample(leg.polyline, maximum: 600).map {
                                      .init(latitude: $0.latitude, longitude: $0.longitude)
                                  })
@@ -523,7 +549,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// Überschreitung erkennen und bei Abweichung von der Route automatisch
     /// neu berechnen.
     func updateProgress(at location: CLLocation, settings: DriveSettings) {
-        guard isNavigating, !legs.isEmpty else { return }
+        guard isNavigating, !legs.isEmpty || isUsingOfflineGuidance else { return }
         guard NavigationLocationPolicy.accepts(location, after: lastAcceptedNavigationLocation) else {
             if lastLocationRejectionLoggedAt.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
                 lastLocationRejectionLoggedAt = Date()
@@ -534,13 +560,71 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         lastAcceptedNavigationLocation = location
         if detectArrival(at: location, settings: settings) { return }
-        if let progress = liveNavigationProgress(at: location) {
+        if isUsingOfflineGuidance {
+            updateOfflineProgress(at: location, settings: settings)
+        } else if let progress = liveNavigationProgress(at: location) {
             updateNextManeuver(using: progress)
             if settings.voiceGuidance { announce(progress, at: location) }
         }
         markReachedWaypoints(at: location, settings: settings)
-        checkSpeedLimit(at: location.coordinate, speedMps: location.speed)
-        checkForDeviation(from: location, settings: settings)
+        if !isUsingOfflineGuidance {
+            checkSpeedLimit(at: location.coordinate, speedMps: location.speed)
+            checkForDeviation(from: location, settings: settings)
+        }
+    }
+
+    @discardableResult
+    private func startOfflineGuidanceIfAvailable() -> Bool {
+        guard legs.isEmpty, let cache = offlineRoute,
+              cache.destinationName.localizedCaseInsensitiveCompare(destination?.name ?? destinationText) == .orderedSame,
+              cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {
+            return false
+        }
+        resetLiveNavigationProgress()
+        errorMessage = nil
+        isUsingOfflineGuidance = true
+        isNavigating = true
+        hasArrived = false
+        remainingDistanceMetres = cache.legs.reduce(0) { $0 + $1.distance }
+        remainingTravelTime = cache.legs.reduce(0) { $0 + $1.travelTime }
+        nextManeuverInstruction = cache.legs.flatMap(\.steps)
+            .first(where: { !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.instructions
+        lastAnnouncement = "Offline-Route wiederhergestellt"
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Offline · \(cache.destinationName)")
+        return true
+    }
+
+    private func updateOfflineProgress(at location: CLLocation, settings: DriveSettings) {
+        guard let cache = offlineRoute else { return }
+        let steps = cache.legs.flatMap(\.steps).compactMap { step -> OfflineGuidanceStep? in
+            guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
+            return .init(instruction: step.instructions, distance: step.distance,
+                         coordinates: coordinates.map(\.clLocationCoordinate))
+        }
+        guard let progress = OfflineGuidanceEngine.progress(
+            at: location.coordinate, currentIndex: navigationStepCursor, steps: steps,
+            transitionRadius: max(8, location.horizontalAccuracy * 1.5)
+        ) else { return }
+        navigationStepCursor = progress.currentStepIndex
+        nextManeuverInstruction = progress.instruction
+        nextManeuverDistance = progress.distanceToManeuver
+        upcomingManeuverInstructions = progress.upcomingInstructions
+        remainingDistanceMetres = progress.remainingDistance
+        let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
+        let cachedTime = cache.legs.reduce(0) { $0 + $1.travelTime }
+        remainingTravelTime = progress.remainingDistance / max(cachedDistance / max(cachedTime, 1), 1)
+
+        guard settings.voiceGuidance,
+              let stage = NavigationAnnouncementStage.stage(
+                distance: progress.distanceToManeuver, speedKmh: max(0, location.speed) * 3.6
+              ) else { return }
+        let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
+        let completed = announcedManeuverStages[key] ?? []
+        guard !completed.contains(stage) else { return }
+        announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
+        let spokenDistance = stage == .now ? min(progress.distanceToManeuver, 35) : progress.distanceToManeuver
+        speak(NavigationSpeechFormatter.spokenText(progress.instruction, distance: spokenDistance))
+        lastAnnouncement = progress.instruction
     }
 
     private struct LiveRouteStep {

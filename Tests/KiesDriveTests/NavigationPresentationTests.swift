@@ -205,4 +205,46 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(current: 0, metrics: metrics,
                                                                     transitionRadius: 12), 2)
     }
+
+    func testOfflineGuidanceFindsNextManeuverAlongCachedGeometry() throws {
+        let steps = [
+            OfflineGuidanceStep(instruction: "", distance: 1_000, coordinates: [
+                .init(latitude: 50, longitude: 8), .init(latitude: 50, longitude: 8.014)
+            ]),
+            OfflineGuidanceStep(instruction: "Rechts auf die B 40 abbiegen", distance: 700, coordinates: [
+                .init(latitude: 50, longitude: 8.014), .init(latitude: 49.994, longitude: 8.014)
+            ]),
+            OfflineGuidanceStep(instruction: "Links Richtung Ziel", distance: 300, coordinates: [
+                .init(latitude: 49.994, longitude: 8.014), .init(latitude: 49.994, longitude: 8.01)
+            ]),
+        ]
+        let progress = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: .init(latitude: 50, longitude: 8.007), currentIndex: 0,
+            steps: steps, transitionRadius: 15
+        ))
+
+        XCTAssertEqual(progress.currentStepIndex, 0)
+        XCTAssertEqual(progress.maneuverStepIndex, 1)
+        XCTAssertEqual(progress.instruction, "Rechts auf die B 40 abbiegen")
+        XCTAssertGreaterThan(progress.distanceToManeuver, 400)
+        XCTAssertLessThan(progress.distanceToManeuver, 600)
+        XCTAssertEqual(progress.upcomingInstructions.count, 2)
+    }
+
+    func testOfflineGuidanceDoesNotJumpToNearbyFutureParallelStep() throws {
+        let steps = [
+            OfflineGuidanceStep(instruction: "", distance: 1_000, coordinates: [
+                .init(latitude: 50, longitude: 8), .init(latitude: 50, longitude: 8.014)
+            ]),
+            OfflineGuidanceStep(instruction: "Rechts abbiegen", distance: 1_000, coordinates: [
+                .init(latitude: 50.00005, longitude: 8), .init(latitude: 50.00005, longitude: 8.014)
+            ]),
+        ]
+        let progress = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: .init(latitude: 50, longitude: 8.003), currentIndex: 0,
+            steps: steps, transitionRadius: 12
+        ))
+        XCTAssertEqual(progress.currentStepIndex, 0)
+        XCTAssertEqual(progress.maneuverStepIndex, 1)
+    }
 }

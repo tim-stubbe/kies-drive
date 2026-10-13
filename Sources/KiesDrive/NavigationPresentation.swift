@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 struct NavigationManeuverPresentation: Equatable {
     enum Direction: Equatable {
@@ -238,5 +239,97 @@ enum NavigationDeviationPolicy {
 
     static func confirmationDuration(speedMetresPerSecond: Double) -> TimeInterval {
         speedMetresPerSecond > 22 ? 8 : 12
+    }
+}
+
+struct OfflineGuidanceStep {
+    let instruction: String
+    let distance: CLLocationDistance
+    let coordinates: [CLLocationCoordinate2D]
+}
+
+struct OfflineGuidanceProgress: Equatable {
+    let currentStepIndex: Int
+    let maneuverStepIndex: Int
+    let instruction: String
+    let distanceToManeuver: CLLocationDistance
+    let remainingDistance: CLLocationDistance
+    let upcomingInstructions: [String]
+}
+
+enum OfflineGuidanceEngine {
+    static func progress(at coordinate: CLLocationCoordinate2D, currentIndex: Int,
+                         steps: [OfflineGuidanceStep],
+                         transitionRadius: CLLocationDistance) -> OfflineGuidanceProgress? {
+        guard !steps.isEmpty else { return nil }
+        let metrics = steps.map {
+            NavigationStepMetric(distanceFromRoute: distance(from: coordinate, to: $0.coordinates),
+                                 remainingOnStep: remaining(from: coordinate, on: $0.coordinates))
+        }
+        let selected = NavigationStepSelectionPolicy.selectedIndex(
+            current: min(max(0, currentIndex), steps.count - 1), metrics: metrics,
+            transitionRadius: transitionRadius
+        )
+        let routeRemaining = max(0, metrics[selected].remainingOnStep +
+            steps.dropFirst(selected + 1).reduce(0) { $0 + $1.distance })
+        guard let maneuver = steps.indices.dropFirst(selected + 1).first(where: {
+            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else {
+            return .init(currentStepIndex: selected, maneuverStepIndex: selected,
+                         instruction: "Dem Straßenverlauf bis zum Ziel folgen",
+                         distanceToManeuver: routeRemaining, remainingDistance: routeRemaining,
+                         upcomingInstructions: ["Dem Straßenverlauf bis zum Ziel folgen"])
+        }
+        let distanceToManeuver = metrics[selected].remainingOnStep +
+            steps[(selected + 1)..<maneuver].reduce(0) { $0 + $1.distance }
+        let upcoming = steps[maneuver...].map(\.instruction).filter {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return .init(currentStepIndex: selected, maneuverStepIndex: maneuver,
+                     instruction: steps[maneuver].instruction,
+                     distanceToManeuver: max(0, distanceToManeuver),
+                     remainingDistance: routeRemaining,
+                     upcomingInstructions: Array(upcoming.prefix(5)))
+    }
+
+    private static func distance(from coordinate: CLLocationCoordinate2D,
+                                 to coordinates: [CLLocationCoordinate2D]) -> CLLocationDistance {
+        guard coordinates.count > 1 else { return .greatestFiniteMagnitude }
+        let point = MKMapPoint(coordinate)
+        let route = coordinates.map(MKMapPoint.init)
+        return route.indices.dropLast().reduce(.greatestFiniteMagnitude) { best, index in
+            min(best, segmentProjection(point, route[index], route[index + 1]).distance)
+        }
+    }
+
+    private static func remaining(from coordinate: CLLocationCoordinate2D,
+                                  on coordinates: [CLLocationCoordinate2D]) -> CLLocationDistance {
+        guard coordinates.count > 1 else { return .greatestFiniteMagnitude }
+        let point = MKMapPoint(coordinate)
+        let route = coordinates.map(MKMapPoint.init)
+        var best = (index: 0, projection: route[0], distance: CLLocationDistance.greatestFiniteMagnitude)
+        for index in route.indices.dropLast() {
+            let projected = segmentProjection(point, route[index], route[index + 1])
+            if projected.distance < best.distance {
+                best = (index, projected.point, projected.distance)
+            }
+        }
+        var value = best.projection.distance(to: route[best.index + 1])
+        if best.index + 1 < route.count - 1 {
+            for index in (best.index + 1)..<(route.count - 1) {
+                value += route[index].distance(to: route[index + 1])
+            }
+        }
+        return value
+    }
+
+    private static func segmentProjection(_ point: MKMapPoint, _ start: MKMapPoint,
+                                          _ end: MKMapPoint) -> (point: MKMapPoint, distance: CLLocationDistance) {
+        let dx = end.x - start.x, dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        let fraction = lengthSquared == 0 ? 0 : max(0, min(1,
+            ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+        let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+        return (projected, point.distance(to: projected))
     }
 }
