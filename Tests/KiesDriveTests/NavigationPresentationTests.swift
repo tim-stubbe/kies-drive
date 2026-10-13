@@ -6,9 +6,16 @@ final class NavigationPresentationTests: XCTestCase {
         let presentation = NavigationManeuverPresentation("Ausfahrt 69 rechts Richtung Neufahrn nehmen")
         XCTAssertEqual(presentation.exitLabel, "Ausfahrt 69")
         XCTAssertEqual(presentation.direction, .right)
+        XCTAssertEqual(presentation.destinationLabel, "Neufahrn nehmen")
     }
 
     func testFollowingRoadDefaultsToStraight() {
-        XCTAssertEqual(NavigationManeuverPresentation("Der A9 folgen").direction, .straight)
+        let presentation = NavigationManeuverPresentation("Der A9 folgen")
+        XCTAssertEqual(presentation.direction, .straight)
+        XCTAssertEqual(presentation.roadLabel, "A9")
+    }
+
+    func testRoadShieldAllowsWhitespace() {
+        XCTAssertEqual(NavigationManeuverPresentation("Auf die A 10 fahren").roadLabel, "A10")
     }
 }

@@ -77,7 +77,9 @@ struct DriveContentView: View {
             guard let newValue else { return }
             if !planner.legs.isEmpty { planner.updateProgress(at: newValue, settings: settings) }
             Task { await planner.restoreActiveTripIfNeeded(from: newValue.coordinate, settings: settings) }
-            if planner.isNavigating { followCurrentLocation() }
+            // Respect manual pan/zoom. Following resumes only when the user
+            // explicitly taps the location button again.
+            if planner.isNavigating && isFollowingLocation { followCurrentLocation(using: newValue) }
         }
         .onChange(of: planner.isNavigating) { _, navigating in
             if navigating { followCurrentLocation() }
@@ -119,9 +121,19 @@ struct DriveContentView: View {
         }
     }
 
-    private func followCurrentLocation() {
+    private func followCurrentLocation(using currentLocation: CLLocation? = nil) {
         isFollowingLocation = true
-        position = .userLocation(followsHeading: true, fallback: .automatic)
+        guard let currentLocation = currentLocation ?? location.location else {
+            position = .userLocation(followsHeading: true, fallback: .automatic)
+            return
+        }
+        let heading = currentLocation.course >= 0 ? currentLocation.course : location.heading?.trueHeading ?? 0
+        position = .camera(MapCamera(
+            centerCoordinate: currentLocation.coordinate,
+            distance: 750,
+            heading: heading,
+            pitch: 58
+        ))
     }
 
     private var mobileSearchCard: some View {
@@ -261,8 +273,14 @@ struct DriveContentView: View {
                                 .background(.white.opacity(0.14), in: Capsule())
                         }
                     }
-                    Text(maneuver.instruction)
+                    Text(maneuver.destinationLabel.map { "Richtung \($0)" } ?? maneuver.instruction)
                         .font(.system(size: 22, weight: .bold)).lineLimit(2).minimumScaleFactor(0.75)
+                    if let road = maneuver.roadLabel {
+                        Text(road)
+                            .font(.caption.bold()).monospacedDigit()
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(.blue, in: RoundedRectangle(cornerRadius: 6))
+                    }
                 }
                 Spacer()
                 Button {
@@ -548,7 +566,7 @@ struct DriveContentView: View {
                             .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
                     }
                     .accessibilityLabel("Gesamte Route anzeigen")
-                    Button(action: followCurrentLocation) {
+                    Button { followCurrentLocation() } label: {
                         Image(systemName: isFollowingLocation ? "location.fill" : "location")
                             .font(.title3.bold()).padding(13)
                             .foregroundStyle(isFollowingLocation ? .blue : .primary)

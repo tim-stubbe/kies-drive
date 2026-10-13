@@ -21,6 +21,8 @@ struct NavigationManeuverPresentation: Equatable {
 
     let instruction: String
     let exitLabel: String?
+    let roadLabel: String?
+    let destinationLabel: String?
     let direction: Direction
 
     init(_ instruction: String) {
@@ -43,6 +45,25 @@ struct NavigationManeuverPresentation: Equatable {
             exitLabel = "Ausfahrt \(instruction[range])"
         } else {
             exitLabel = nil
+        }
+
+        let roadPattern = #"(?i)\b(?:A|B|L|K)\s?[0-9]{1,4}[a-z]?\b"#
+        if let regex = try? NSRegularExpression(pattern: roadPattern),
+           let match = regex.firstMatch(in: instruction, range: NSRange(instruction.startIndex..., in: instruction)),
+           let range = Range(match.range, in: instruction) {
+            roadLabel = instruction[range].replacingOccurrences(of: " ", with: "").uppercased()
+        } else {
+            roadLabel = nil
+        }
+
+        let destinationPattern = #"(?i)\b(?:Richtung|toward|towards)\s+(.+)$"#
+        if let regex = try? NSRegularExpression(pattern: destinationPattern),
+           let match = regex.firstMatch(in: instruction, range: NSRange(instruction.startIndex..., in: instruction)),
+           let range = Range(match.range(at: 1), in: instruction) {
+            let value = instruction[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            destinationLabel = value.isEmpty ? nil : value
+        } else {
+            destinationLabel = nil
         }
     }
 }

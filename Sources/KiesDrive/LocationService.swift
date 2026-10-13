@@ -7,6 +7,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     static let shared = LocationService()
 
     @Published var location: CLLocation?
+    @Published var heading: CLHeading?
     @Published var authorization: CLAuthorizationStatus = .notDetermined
     private let manager = CLLocationManager()
 
@@ -29,6 +30,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.requestAlwaysAuthorization()
         #endif
         manager.startUpdatingLocation()
+        if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -42,5 +44,10 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         location = locations.last
         if let location { Task { await DriveRemoteBridge.shared.sync(location: location) } }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard newHeading.headingAccuracy >= 0 else { return }
+        heading = newHeading
     }
 }
