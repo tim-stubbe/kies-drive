@@ -116,8 +116,8 @@ final class DriveRemoteBridge {
             location: .init(latitude: location.coordinate.latitude,
                             longitude: location.coordinate.longitude,
                             accuracyMetres: location.horizontalAccuracy),
-            headingDegrees: location.course >= 0 ? location.course : nil,
-            speedKmh: location.speed >= 0 ? location.speed * 3.6 : nil,
+            headingDegrees: NavigationMotionPolicy.reliableCourse(for: location),
+            speedKmh: NavigationMotionPolicy.reliableSpeed(for: location).map { $0 * 3.6 },
             activeRoute: planner.legs.isEmpty ? nil : .init(
                 destination: planner.destination?.name ?? planner.destinationText,
                 distanceMetres: planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance,

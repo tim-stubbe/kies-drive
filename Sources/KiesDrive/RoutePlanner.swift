@@ -662,7 +662,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         markReachedWaypoints(at: location, settings: settings)
         if !isUsingOfflineGuidance {
-            checkSpeedLimit(at: location.coordinate, speedMps: location.speed)
+            checkSpeedLimit(at: location.coordinate,
+                            speedMps: NavigationMotionPolicy.reliableSpeed(for: location))
             checkForDeviation(from: location, settings: settings)
         }
     }
@@ -722,7 +723,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         recordManeuverTransition(key: key, instruction: progress.instruction)
         guard
               let stage = NavigationAnnouncementStage.stage(
-                distance: progress.distanceToManeuver, speedKmh: max(0, location.speed) * 3.6
+                distance: progress.distanceToManeuver,
+                speedKmh: (NavigationMotionPolicy.reliableSpeed(for: location) ?? 0) * 3.6
               ) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard !completed.contains(stage) else { return }
@@ -880,8 +882,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         Task { await calculate(from: location.coordinate, settings: settings) }
     }
 
-    private func checkSpeedLimit(at coordinate: CLLocationCoordinate2D, speedMps: Double) {
-        guard speedMps >= 0, let limit = currentSpeedLimit(near: coordinate), let maxspeed = limit.maxspeed else {
+    private func checkSpeedLimit(at coordinate: CLLocationCoordinate2D, speedMps: Double?) {
+        guard let speedMps,
+              let limit = currentSpeedLimit(near: coordinate), let maxspeed = limit.maxspeed else {
             speedWarning = false
             return
         }
@@ -891,7 +894,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     private func announce(_ progress: LiveNavigationProgress, at location: CLLocation) {
-        let speedKmh = max(0, location.speed) * 3.6
+        let speedKmh = (NavigationMotionPolicy.reliableSpeed(for: location) ?? 0) * 3.6
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
         recordManeuverTransition(key: key, instruction: progress.maneuver.step.instructions)
         guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
@@ -960,7 +963,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
             horizontalAccuracy: location.horizontalAccuracy,
-            speedMetresPerSecond: max(location.speed, 0)
+            speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
         )
         previousOffRouteDistance = nearest
         guard shouldAccumulate else {
@@ -971,7 +974,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if offRouteSince == nil { offRouteSince = now }
         guard let offRouteSince,
               now.timeIntervalSince(offRouteSince) >= NavigationDeviationPolicy.confirmationDuration(
-                speedMetresPerSecond: max(location.speed, 0)
+                speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
               ) else { return }
         resetDeviationTracking()
         lastRerouteAt = Date()

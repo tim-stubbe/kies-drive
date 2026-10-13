@@ -189,6 +189,45 @@ enum NavigationLocationPolicy {
     }
 }
 
+/// Shared plausibility rules for motion values reported by Core Location.
+/// A position can be good enough to advance along a route while its speed or
+/// course is still unusable (for example directly after leaving a tunnel).
+/// Consumers must retain their last useful camera heading instead of turning
+/// an invalid course into north.
+enum NavigationMotionPolicy {
+    static func reliableSpeed(speedMetresPerSecond: Double, speedAccuracy: Double,
+                              horizontalAccuracy: Double) -> Double? {
+        guard speedMetresPerSecond.isFinite, speedMetresPerSecond >= 0,
+              speedMetresPerSecond <= 80,
+              horizontalAccuracy >= 0, horizontalAccuracy <= 65 else { return nil }
+        // A negative accuracy means that this OS/location source does not
+        // provide the field. Otherwise reject fixes whose uncertainty is too
+        // large to drive warnings or timing decisions.
+        guard speedAccuracy < 0 || speedAccuracy <= 5 else { return nil }
+        return speedMetresPerSecond
+    }
+
+    static func reliableCourse(courseDegrees: Double, courseAccuracy: Double,
+                               speedMetresPerSecond: Double) -> Double? {
+        guard courseDegrees.isFinite, courseDegrees >= 0, courseDegrees < 360,
+              speedMetresPerSecond.isFinite, speedMetresPerSecond >= 2.5,
+              courseAccuracy < 0 || courseAccuracy <= 35 else { return nil }
+        return courseDegrees
+    }
+
+    static func reliableSpeed(for location: CLLocation) -> Double? {
+        reliableSpeed(speedMetresPerSecond: location.speed,
+                      speedAccuracy: location.speedAccuracy,
+                      horizontalAccuracy: location.horizontalAccuracy)
+    }
+
+    static func reliableCourse(for location: CLLocation) -> Double? {
+        reliableCourse(courseDegrees: location.course,
+                       courseAccuracy: location.courseAccuracy,
+                       speedMetresPerSecond: reliableSpeed(for: location) ?? -1)
+    }
+}
+
 enum NavigationArrivalPolicy {
     static let requiredConsecutiveFixes = 3
 

@@ -16,6 +16,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var navigationSession: CPNavigationSession?
     private var activeTrip: CPTrip?
     private var cameraMode: CameraMode = .follow
+    private var lastReliableCourse: CLLocationDirection?
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -380,7 +381,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func maneuverTravelEstimates() -> CPTravelEstimates {
         let distance = max(RoutePlanner.shared.nextManeuverDistance ?? 0, 0)
-        let speed = max(LocationService.shared.location?.speed ?? 0, 0)
+        let speed = LocationService.shared.location.flatMap(NavigationMotionPolicy.reliableSpeed(for:)) ?? 0
         return CPTravelEstimates(
             distanceRemaining: Measurement(value: distance, unit: UnitLength.meters),
             timeRemaining: NavigationEstimatePolicy.timeToManeuver(
@@ -399,7 +400,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func updateCamera(for location: CLLocation) {
         guard RoutePlanner.shared.isNavigating, cameraMode == .follow else { return }
-        let camera = MKMapCamera(lookingAtCenter: location.coordinate, fromDistance: 850, pitch: 55, heading: max(location.course, 0))
+        if let course = NavigationMotionPolicy.reliableCourse(for: location) {
+            lastReliableCourse = course
+        }
+        let heading = lastReliableCourse ?? mapView?.camera.heading ?? 0
+        let camera = MKMapCamera(lookingAtCenter: location.coordinate, fromDistance: 850, pitch: 55, heading: heading)
         mapView?.setCamera(camera, animated: true)
     }
 

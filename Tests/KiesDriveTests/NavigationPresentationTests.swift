@@ -3,6 +3,28 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
+        XCTAssertEqual(NavigationMotionPolicy.reliableSpeed(
+            speedMetresPerSecond: 27, speedAccuracy: 1.5, horizontalAccuracy: 12), 27)
+        XCTAssertNil(NavigationMotionPolicy.reliableSpeed(
+            speedMetresPerSecond: -1, speedAccuracy: 1, horizontalAccuracy: 12))
+        XCTAssertNil(NavigationMotionPolicy.reliableSpeed(
+            speedMetresPerSecond: 30, speedAccuracy: 12, horizontalAccuracy: 12))
+        XCTAssertNil(NavigationMotionPolicy.reliableSpeed(
+            speedMetresPerSecond: 95, speedAccuracy: 1, horizontalAccuracy: 12))
+    }
+
+    func testMotionPolicyKeepsCameraStableAtLowSpeed() {
+        XCTAssertEqual(NavigationMotionPolicy.reliableCourse(
+            courseDegrees: 182, courseAccuracy: 8, speedMetresPerSecond: 18), 182)
+        XCTAssertNil(NavigationMotionPolicy.reliableCourse(
+            courseDegrees: 182, courseAccuracy: 8, speedMetresPerSecond: 1))
+        XCTAssertNil(NavigationMotionPolicy.reliableCourse(
+            courseDegrees: 182, courseAccuracy: 80, speedMetresPerSecond: 18))
+        XCTAssertNil(NavigationMotionPolicy.reliableCourse(
+            courseDegrees: -1, courseAccuracy: 8, speedMetresPerSecond: 18))
+    }
+
     func testManeuverEstimateUsesMovementAndSensibleFallback() {
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_000, speedMetresPerSecond: 20), 50, accuracy: 0.01)
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_390, speedMetresPerSecond: 0), 100, accuracy: 0.1)

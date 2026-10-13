@@ -469,7 +469,9 @@ struct DriveContentView: View {
             position = .userLocation(followsHeading: true, fallback: .automatic)
             return
         }
-        let heading = currentLocation.course >= 0 ? currentLocation.course : location.heading?.trueHeading ?? 0
+        let heading = NavigationMotionPolicy.reliableCourse(for: currentLocation)
+            ?? location.heading.flatMap { $0.trueHeading >= 0 ? $0.trueHeading : $0.magneticHeading }
+            ?? 0
         position = .camera(MapCamera(
             centerCoordinate: currentLocation.coordinate,
             distance: 750,
