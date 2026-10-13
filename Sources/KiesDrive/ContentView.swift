@@ -481,11 +481,11 @@ struct DriveContentView: View {
             VStack(spacing: 12) {
                 Capsule().fill(Color.kiesForest.opacity(0.16)).frame(width: 36, height: 4)
                 HStack(spacing: 0) {
-                    navigationMetric(isSimulatorNavigationPreview ? "18:42" : formatArrival(planner.totalTravelTime), "Ankunft", emphasized: true)
+                    navigationMetric(isSimulatorNavigationPreview ? "18:42" : formatArrival(navigationRemainingTime), "Ankunft", emphasized: true)
                     Divider().frame(height: 38)
-                    navigationMetric(isSimulatorNavigationPreview ? "1:18" : formatTime(planner.totalTravelTime), "Fahrzeit")
+                    navigationMetric(isSimulatorNavigationPreview ? "1:18" : formatTime(navigationRemainingTime), "Fahrzeit")
                     Divider().frame(height: 38)
-                    navigationMetric(isSimulatorNavigationPreview ? "112 km" : formatDistance(planner.totalDistance), "Strecke")
+                    navigationMetric(isSimulatorNavigationPreview ? "112 km" : formatDistance(navigationRemainingDistance), "Strecke")
                 }
                 HStack {
                     Button("Auf Route suchen", systemImage: "magnifyingglass") { showRouteDetails = true }
@@ -569,6 +569,14 @@ struct DriveContentView: View {
             Text(label).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var navigationRemainingDistance: Double {
+        planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance
+    }
+
+    private var navigationRemainingTime: TimeInterval {
+        planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime
     }
 
     private var idleDriveCard: some View {

@@ -71,15 +71,27 @@ async def complete(command_id: int, request: Request, x_kies_device_token: str |
     return {"ok": True}
 
 
+EMPTY_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
 TOOLS = [
-    {"name": n, "description": d, "inputSchema": {"type": "object", "additionalProperties": True}}
-    for n, d in [
-        ("get_location", "Aktuellen Standort lesen"), ("get_heading", "Fahrtrichtung lesen"),
-        ("get_speed", "Geschwindigkeit lesen"), ("get_active_route", "Aktive Route und Trip-Lock lesen"),
-        ("get_next_maneuver", "Nächsten Navigationsschritt lesen"), ("set_destination", "Ziel und Pflichtpunkte setzen"),
-        ("set_route_options", "Routenvorgaben ändern"), ("restore_route", "Persistente Route wiederherstellen"),
-        ("add_route_stop", "POI wie McDonald's mit geringem Umweg als Zwischenstopp hinzufügen"),
-    ]
+    {"name": "get_location", "description": "Aktuellen Standort lesen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "get_heading", "description": "Fahrtrichtung lesen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "get_speed", "description": "Geschwindigkeit lesen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "get_active_route", "description": "Aktive Route und Trip-Lock lesen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "get_next_maneuver", "description": "Nächsten Navigationsschritt lesen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "restore_route", "description": "Persistente Route wiederherstellen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "add_route_stop", "description": "POI mit geringem Umweg als Zwischenstopp hinzufügen", "inputSchema": {
+        "type": "object", "properties": {"query": {"type": "string", "minLength": 2}},
+        "required": ["query"], "additionalProperties": False}},
+    {"name": "set_route_options", "description": "Routenvorgaben ändern", "inputSchema": {
+        "type": "object", "properties": {
+            "waypoint_id": {"type": "string"}, "avoid_tolls": {"type": "boolean"},
+            "avoid_highways": {"type": "boolean"}}, "additionalProperties": False}},
+    {"name": "set_destination", "description": "Ziel und Pflichtpunkte setzen", "inputSchema": {
+        "type": "object", "properties": {
+            "query": {"type": "string"}, "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+            "longitude": {"type": "number", "minimum": -180, "maximum": 180},
+            "required_waypoints": {"type": "array", "items": {"type": "object"}}},
+        "additionalProperties": False}},
 ]
 
 
@@ -96,12 +108,15 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
         name = params.get("name")
         args = params.get("arguments") or {}
         with db() as conn:
-            if name.startswith("get_"):
+            if isinstance(name, str) and name.startswith("get_"):
                 row = conn.execute("SELECT payload,updated_at FROM state WHERE id=1").fetchone()
                 state = json.loads(row["payload"]) if row else {}
                 keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
                 value = {"active_route": state.get("active_route"), "route_lock": state.get("route_lock")} if name == "get_active_route" else state.get(keys.get(name, ""))
-                data = {"value": value, "updated_at": row["updated_at"] if row else None}
+                updated_at = datetime.fromisoformat(row["updated_at"]) if row else None
+                age = max(0, (datetime.now(timezone.utc) - updated_at).total_seconds()) if updated_at else None
+                data = {"value": value, "updated_at": row["updated_at"] if row else None,
+                        "age_seconds": age, "live": age is not None and age <= 30}
             elif name in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
                 cur = conn.execute("INSERT INTO commands(command,arguments,created_at) VALUES(?,?,?)", (name, json.dumps(args), datetime.now(timezone.utc).isoformat()))
                 data = {"accepted": True, "command_id": cur.lastrowid}
@@ -117,6 +132,7 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
 async def kies_proxy(path: str, request: Request, x_kies_device_token: str | None = Header(None)):
     # Navigation data that still belongs to Kies (fuel, toll/search, Jarvis) is
     # consumed through this narrow authenticated proxy.
+    device(x_kies_device_token)
     headers = {"X-Kies-Device-Token": os.getenv("KIES_DEVICE_TOKEN", x_kies_device_token or "")}
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         upstream = await client.request(request.method, f"{KIES_BASE_URL}/api/navigation/{path}", params=request.query_params,
@@ -127,6 +143,7 @@ async def kies_proxy(path: str, request: Request, x_kies_device_token: str | Non
 @app.post("/api/jarvis/chat")
 async def jarvis_proxy(request: Request, x_kies_device_token: str | None = Header(None)):
     """Keep the existing assistant integration while Kies Drive is deployed separately."""
+    device(x_kies_device_token)
     headers = {"X-Kies-Device-Token": os.getenv("KIES_DEVICE_TOKEN", x_kies_device_token or "")}
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         upstream = await client.post(

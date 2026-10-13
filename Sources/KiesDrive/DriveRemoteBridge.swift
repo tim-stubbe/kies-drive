@@ -5,7 +5,15 @@ import MapKit
 struct DriveRemoteState: Encodable {
     struct Position: Encodable { let latitude: Double; let longitude: Double; let accuracyMetres: Double }
     struct Route: Encodable { let destination: String; let distanceMetres: Double; let travelTimeSeconds: Double }
-    struct Maneuver: Encodable { let instruction: String }
+    struct Maneuver: Encodable {
+        let instruction: String
+        let distanceMetres: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case instruction
+            case distanceMetres = "distance_metres"
+        }
+    }
 
     let location: Position?
     let headingDegrees: Double?
@@ -84,8 +92,11 @@ final class DriveRemoteBridge {
             speedKmh: location.speed >= 0 ? location.speed * 3.6 : nil,
             activeRoute: planner.legs.isEmpty ? nil : .init(
                 destination: planner.destination?.name ?? planner.destinationText,
-                distanceMetres: planner.totalDistance, travelTimeSeconds: planner.totalTravelTime),
-            nextManeuver: (planner.nextManeuverInstruction ?? planner.nextInstruction).map { .init(instruction: $0) },
+                distanceMetres: planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance,
+                travelTimeSeconds: planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime),
+            nextManeuver: (planner.nextManeuverInstruction ?? planner.nextInstruction).map {
+                .init(instruction: $0, distanceMetres: planner.nextManeuverDistance)
+            },
             routeLock: planner.activeRouteLock,
             navigationActive: planner.isNavigating, recordedAt: Date()
         )
