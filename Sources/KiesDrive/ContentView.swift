@@ -2,6 +2,9 @@ import SwiftUI
 import MapKit
 import Combine
 import KiesDriveCore
+#if os(iOS)
+import UIKit
+#endif
 
 struct DriveContentView: View {
     @StateObject private var settings = DriveSettings.shared
@@ -11,6 +14,7 @@ struct DriveContentView: View {
     @State private var showSettings = false
     @State private var showJarvis = false
     @State private var selectedStation: FuelStation?
+    @State private var stationRouteUpdateID: String?
     @State private var showRouteDetails = false
     @State private var isFollowingLocation = true
     @State private var isShowingRouteOverview = false
@@ -380,6 +384,7 @@ struct DriveContentView: View {
     }
 
     private func followCurrentLocation(using currentLocation: CLLocation? = nil) {
+        if isShowingRouteOverview { UISelectionFeedbackGenerator().selectionChanged() }
         isFollowingLocation = true
         isShowingRouteOverview = false
         guard let currentLocation = currentLocation ?? location.location else {
@@ -759,6 +764,7 @@ struct DriveContentView: View {
 
     private func stationDetailSheet(_ station: FuelStation) -> some View {
         let isVia = planner.viaStations.contains(where: { $0.id == station.id })
+        let isUpdating = stationRouteUpdateID == station.id
         return NavigationStack {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .top) {
@@ -775,8 +781,10 @@ struct DriveContentView: View {
                 }
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(settings.fuel.label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        Text(String(format: "%.3f €", station.price))
+                        Text("Aktueller Serverpreis · \(settings.fuel.label)")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(station.price.formatted(.number.locale(Locale(identifier: "de_DE"))
+                            .precision(.fractionLength(3))) + " €")
                             .font(.system(size: 38, weight: .bold, design: .rounded)).monospacedDigit()
                     }
                     Spacer()
@@ -792,15 +800,24 @@ struct DriveContentView: View {
                         planner.errorMessage = "Standort ist noch nicht verfügbar."
                         return
                     }
-                    selectedStation = nil
-                    Task { await planner.toggleWaypoint(station, from: start, settings: settings) }
+                    stationRouteUpdateID = station.id
+                    Task {
+                        await planner.toggleWaypoint(station, from: start, settings: settings)
+                        stationRouteUpdateID = nil
+                        selectedStation = nil
+                    }
                 } label: {
-                    Label(isVia ? "Von der Route entfernen" : "Als Zwischenstopp hinzufügen",
-                          systemImage: isVia ? "minus.circle.fill" : "plus.circle.fill")
-                        .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
+                    if isUpdating {
+                        HStack { ProgressView(); Text("Route wird aktualisiert …") }
+                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
+                    } else {
+                        Label(isVia ? "Von der Route entfernen" : "Als Zwischenstopp hinzufügen",
+                              systemImage: isVia ? "minus.circle.fill" : "plus.circle.fill")
+                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
+                    }
                 }
                 .buttonStyle(.borderedProminent).tint(Color.kiesForest).controlSize(.large)
-                .disabled(planner.route == nil)
+                .disabled(planner.route == nil || isUpdating)
                 Spacer()
             }
             .padding(22).background(Color.kiesIvory.ignoresSafeArea())
@@ -816,6 +833,7 @@ struct DriveContentView: View {
 
     private func showCompleteRoute() {
         #if os(iOS)
+        UISelectionFeedbackGenerator().selectionChanged()
         isFollowingLocation = false
         isShowingRouteOverview = true
         #endif
@@ -1063,15 +1081,20 @@ struct DriveContentView: View {
                 MapPolyline(leg.polyline)
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
-            ForEach(Array(planner.stations.prefix(showsNavigationUI ? 12 : 24))) { station in
-                Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
-                    Button { selectedStation = station } label: {
-                        VStack(spacing: 2) {
-                            Image(systemName: "fuelpump.fill").padding(8).background(.green, in: Circle()).foregroundStyle(.white)
-                            Text(String(format: "%.3f", station.price)).font(.caption.bold()).padding(.horizontal, 5).background(.regularMaterial, in: Capsule())
+            if !isShowingRouteOverview {
+                ForEach(Array(planner.stations.prefix(showsNavigationUI ? 12 : 24))) { station in
+                    Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
+                        Button { selectedStation = station } label: {
+                            VStack(spacing: 2) {
+                                Image(systemName: "fuelpump.fill").padding(8).background(.green, in: Circle()).foregroundStyle(.white)
+                                Text(station.price.formatted(.number.locale(Locale(identifier: "de_DE"))
+                                    .precision(.fractionLength(3))))
+                                    .font(.caption.bold()).padding(.horizontal, 5)
+                                    .background(.regularMaterial, in: Capsule())
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -1090,13 +1113,20 @@ struct DriveContentView: View {
             #if os(iOS)
             if showsNavigationUI {
                 VStack(spacing: 10) {
-                    Button(action: showCompleteRoute) {
+                    Button {
+                        if isShowingRouteOverview {
+                            followCurrentLocation()
+                        } else {
+                            showCompleteRoute()
+                        }
+                    } label: {
                         Image(systemName: "map.fill")
                             .font(.title3.bold()).padding(13)
+                            .foregroundStyle(isShowingRouteOverview ? .blue : .primary)
                             .background(.ultraThickMaterial, in: Circle())
                             .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
                     }
-                    .accessibilityLabel("Gesamte Route anzeigen")
+                    .accessibilityLabel(isShowingRouteOverview ? "Zur Fahrzeugansicht zurückkehren" : "Gesamte Route anzeigen")
                     Button {
                         isShowingRouteOverview = false
                         followCurrentLocation()
@@ -1138,14 +1168,15 @@ struct DriveContentView: View {
             #endif
         }
         .overlay(alignment: .topLeading) {
-            if let coordinate = location.location?.coordinate,
+            if !isShowingRouteOverview,
+               let coordinate = location.location?.coordinate,
                let limit = planner.currentSpeedLimit(near: coordinate) {
                 speedLimitSign(limit).padding()
             }
         }
         .overlay(alignment: .bottomLeading) {
             #if os(iOS)
-            if isSimulatorNavigationPreview {
+            if isSimulatorNavigationPreview && !isShowingRouteOverview {
                 VStack(spacing: 8) {
                     ZStack {
                         Circle().fill(.white).frame(width: 56, height: 56)
