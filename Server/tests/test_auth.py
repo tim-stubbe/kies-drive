@@ -43,6 +43,9 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
         "email": email, "password": password, "totp_code": pyotp.TOTP(secret).now()
     })
     assert signed_in.status_code == 200
+    final_headers = {"Authorization": f"Bearer {signed_in.json()['session']}"}
+    assert client.delete("/auth/account", headers=final_headers).status_code == 200
+    assert client.get("/auth/me", headers=final_headers).status_code == 401
 
 
 def test_password_and_authentication_guards(tmp_path, monkeypatch):

@@ -25,6 +25,7 @@ public final class AccountSessionStore: ObservableObject {
         Self.save(email, account: emailAccount, service: service)
         self.session = session
         self.email = email
+        UserDefaults.standard.set(false, forKey: "drive.account.guestMode")
     }
 
     public func signOut() {

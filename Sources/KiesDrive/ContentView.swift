@@ -10,6 +10,7 @@ struct DriveContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var settings = DriveSettings.shared
     @StateObject private var account = AccountSessionStore.shared
+    @AppStorage("drive.account.guestMode") private var guestMode = false
     @StateObject private var location = LocationService.shared
     @StateObject private var planner = RoutePlanner.shared
     @State private var position: MapCameraPosition = .automatic
@@ -76,7 +77,7 @@ struct DriveContentView: View {
     }
 
     private var accountOnboardingPresented: Binding<Bool> {
-        Binding(get: { account.session == nil && !bypassesAccountForSimulatorPreview }, set: { _ in })
+        Binding(get: { account.session == nil && !guestMode && !bypassesAccountForSimulatorPreview }, set: { _ in })
     }
 
     var body: some View {
@@ -1461,6 +1462,8 @@ struct DriveSettingsView: View {
     @State private var diagnosticEvents = DriveDiagnosticStore.load()
     @State private var accountProfile: AccountProfile?
     @State private var showTwoFactorSetup = false
+    @State private var confirmAccountDeletion = false
+    @AppStorage("drive.account.guestMode") private var guestMode = false
 
     fileprivate enum ConnectionStatus {
         case idle, testing, success, failed(String)
@@ -1472,6 +1475,13 @@ struct DriveSettingsView: View {
                 Section("Kies-Konto") {
                     if let email = account.email {
                         LabeledContent("Angemeldet als", value: email)
+                    } else {
+                        Text("Lokaler Modus: Navigation und gespeicherte Routen funktionieren ohne Konto. Live-Daten und Remotezugriff benötigen eine Anmeldung.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("Konto anmelden oder erstellen") {
+                            guestMode = false
+                            dismiss()
+                        }
                     }
                     Button {
                         connectionStatus = .testing
@@ -1495,6 +1505,7 @@ struct DriveSettingsView: View {
                             dismiss()
                         }
                     }
+                    .disabled(account.session == nil)
 
                     if accountProfile?.twoFactorEnabled == true {
                         Label("Zwei-Faktor-Authentifizierung aktiv", systemImage: "checkmark.shield.fill")
@@ -1503,7 +1514,13 @@ struct DriveSettingsView: View {
                         Button("Zwei-Faktor-Authentifizierung einrichten") {
                             showTwoFactorSetup = true
                         }
+                        .disabled(account.session == nil)
                     }
+
+                    Button("Konto vollständig löschen", role: .destructive) {
+                        confirmAccountDeletion = true
+                    }
+                    .disabled(account.session == nil)
 
                     switch connectionStatus {
                     case .idle:
@@ -1588,6 +1605,18 @@ struct DriveSettingsView: View {
             .sheet(isPresented: $showTwoFactorSetup, onDismiss: {
                 Task { accountProfile = try? await DriveAPI.account() }
             }) { TwoFactorSetupView() }
+            .alert("Konto wirklich löschen?", isPresented: $confirmAccountDeletion) {
+                Button("Abbrechen", role: .cancel) {}
+                Button("Endgültig löschen", role: .destructive) {
+                    Task {
+                        try? await DriveAPI.deleteAccount()
+                        guestMode = true
+                        dismiss()
+                    }
+                }
+            } message: {
+                Text("Dein Konto, Remote-Befehle und gespeicherte Serverdaten werden endgültig entfernt. Lokale Routen auf diesem Gerät bleiben erhalten.")
+            }
         }
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 420)
@@ -1667,6 +1696,7 @@ private struct AccountWelcomeView: View {
     @State private var isWorking = false
     @State private var message: String?
     @State private var isError = false
+    @AppStorage("drive.account.guestMode") private var guestMode = false
 
     var body: some View {
         ZStack {
@@ -1728,6 +1758,10 @@ private struct AccountWelcomeView: View {
                             Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Danach kannst du dich anmelden.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
+
+                        Button("Ohne Konto lokal fortfahren") { guestMode = true }
+                            .buttonStyle(.plain).font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.kiesForest)
                     }
                     .textFieldStyle(.roundedBorder)
                     .padding(22)

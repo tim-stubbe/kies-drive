@@ -142,6 +142,19 @@ def logout(authorization: str | None = Header(None)):
     return {"ok": True}
 
 
+@app.delete("/auth/account")
+def delete_account(authorization: str | None = Header(None)):
+    with db() as conn:
+        user = authenticated_user(conn, authorization)
+        user_id = user["id"]
+        conn.execute("DELETE FROM user_commands WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM user_state WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM email_verifications WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    return {"ok": True}
+
+
 @app.post("/auth/2fa/setup")
 def setup_2fa(authorization: str | None = Header(None)):
     user = current_user(authorization)

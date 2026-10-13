@@ -157,6 +157,11 @@ enum DriveAPI {
         AccountSessionStore.shared.signOut()
     }
 
+    static func deleteAccount() async throws {
+        _ = try await authData(for: authRequest(path: "/auth/account", method: "DELETE", authenticated: true))
+        AccountSessionStore.shared.signOut()
+    }
+
     static func stations(near coordinate: CLLocationCoordinate2D, fuel: FuelKind, radiusKm: Double = 8) async throws -> [FuelStation] {
         let boundedRadius = min(12, max(3, radiusKm))
         let path = String(format: "/api/navigation/fuel-stations?lat=%.6f&lon=%.6f&radius_km=%.1f&fuel=%@",
