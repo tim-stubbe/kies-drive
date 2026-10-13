@@ -16,6 +16,11 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         manager.distanceFilter = 8
+        manager.activityType = .automotiveNavigation
+        #if os(iOS)
+        manager.headingFilter = 3
+        manager.headingOrientation = .portrait
+        #endif
         authorization = manager.authorizationStatus
     }
 

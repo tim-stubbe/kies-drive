@@ -53,7 +53,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var speedLimits: [SpeedLimitResult] = []
 
     private let synthesizer = AVSpeechSynthesizer()
-    private var announcedStepKeys: Set<String> = []
+    private var navigationStepCursor = 0
+    private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
     private var offRouteStrikes = 0
     private var lastRerouteAt: Date?
     private var stationLoadGeneration = UUID()
@@ -98,7 +99,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !legs.isEmpty else { return }
         persistActiveTrip()
         isNavigating = true
-        announcedStepKeys = []
+        resetLiveNavigationProgress()
         lastAnnouncement = nextInstruction ?? "Route gestartet"
         let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
             ?? "Route gestartet."
@@ -237,10 +238,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     var nextInstruction: String? {
-        legs.first?.steps.enumerated().first(where: { index, step in
-            index > 0 && !step.instructions.isEmpty &&
-            !announcedStepKeys.contains("\(index):\(step.instructions)")
-        })?.element.instructions
+        if let nextManeuverInstruction { return nextManeuverInstruction }
+        return legs.lazy
+            .flatMap(\.steps)
+            .first(where: { !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .instructions
     }
 
     func searchDestination(near coordinate: CLLocationCoordinate2D?) async {
@@ -376,7 +378,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 alternatives = []
                 comparisonRoute = nil
             }
-            announcedStepKeys = []
+            resetLiveNavigationProgress()
             offRouteStrikes = 0
             cacheForOffline()
             // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
@@ -432,40 +434,103 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// Überschreitung erkennen und bei Abweichung von der Route automatisch
     /// neu berechnen.
     func updateProgress(at location: CLLocation, settings: DriveSettings) {
-        guard isNavigating, let route = legs.first else { return }
-        updateNextManeuver(at: location, route: route)
+        guard isNavigating, !legs.isEmpty else { return }
+        if let progress = liveNavigationProgress(at: location) {
+            updateNextManeuver(using: progress)
+            if settings.voiceGuidance { announce(progress, at: location) }
+        }
         markReachedWaypoints(at: location, settings: settings)
         checkSpeedLimit(at: location.coordinate, speedMps: location.speed)
-        if settings.voiceGuidance { announceNextStep(near: location.coordinate, in: route) }
-        checkForDeviation(from: location, route: route, settings: settings)
+        checkForDeviation(from: location, settings: settings)
     }
 
-    private func updateNextManeuver(at location: CLLocation, route: MKRoute) {
-        let allSteps = Array(route.steps.enumerated())
-        let usable = allSteps.filter { $0.offset > 0 && !$0.element.instructions.isEmpty }
-        guard !usable.isEmpty else {
+    private struct LiveRouteStep {
+        let legIndex: Int
+        let stepIndex: Int
+        let step: MKRoute.Step
+    }
+
+    private struct LiveNavigationProgress {
+        let maneuver: LiveRouteStep
+        let maneuverFlatIndex: Int
+        let distance: CLLocationDistance
+        let upcomingInstructions: [String]
+    }
+
+    private func resetLiveNavigationProgress() {
+        navigationStepCursor = 0
+        announcedManeuverStages = [:]
+    }
+
+    private func routeSteps() -> [LiveRouteStep] {
+        legs.enumerated().flatMap { legIndex, leg in
+            leg.steps.enumerated().map { LiveRouteStep(legIndex: legIndex, stepIndex: $0.offset, step: $0.element) }
+        }
+    }
+
+    private func liveNavigationProgress(at location: CLLocation) -> LiveNavigationProgress? {
+        let steps = routeSteps()
+        guard !steps.isEmpty else { return nil }
+
+        // Search forward from the last confirmed segment. A small one-step
+        // look-behind tolerates GPS jitter without ever jumping far backwards.
+        let lower = max(0, navigationStepCursor - 1)
+        let upper = min(steps.count - 1, navigationStepCursor + 12)
+        let localRange = lower...upper
+        var currentIndex = localRange.min { lhs, rhs in
+            Self.distance(from: location.coordinate, to: steps[lhs].step.polyline) <
+            Self.distance(from: location.coordinate, to: steps[rhs].step.polyline)
+        } ?? navigationStepCursor
+
+        let localDistance = Self.distance(from: location.coordinate, to: steps[currentIndex].step.polyline)
+        if localDistance > 300,
+           let recovered = steps.indices.min(by: {
+               Self.distance(from: location.coordinate, to: steps[$0].step.polyline) <
+               Self.distance(from: location.coordinate, to: steps[$1].step.polyline)
+           }), recovered >= navigationStepCursor {
+            // Handles returning after a long pause or a large location jump.
+            currentIndex = recovered
+        }
+        navigationStepCursor = max(navigationStepCursor, currentIndex)
+        currentIndex = navigationStepCursor
+
+        guard let maneuverIndex = steps.indices.dropFirst(currentIndex + 1).first(where: {
+            !steps[$0].step.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else {
+            nextManeuverInstruction = "Ziel erreicht"
+            nextManeuverDistance = 0
+            upcomingManeuverInstructions = []
+            return nil
+        }
+
+        var distance = Self.remainingDistance(from: location.coordinate, on: steps[currentIndex].step.polyline)
+        if maneuverIndex > currentIndex + 1 {
+            for index in (currentIndex + 1)..<maneuverIndex { distance += steps[index].step.distance }
+        }
+        if !distance.isFinite {
+            let coordinate = steps[maneuverIndex].step.polyline.coordinate
+            distance = location.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+        }
+        let upcoming = steps[maneuverIndex...].compactMap { item -> String? in
+            let instruction = item.step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+            return instruction.isEmpty ? nil : instruction
+        }
+        return LiveNavigationProgress(
+            maneuver: steps[maneuverIndex], maneuverFlatIndex: maneuverIndex,
+            distance: max(0, distance), upcomingInstructions: Array(upcoming.prefix(5))
+        )
+    }
+
+    private func updateNextManeuver(using progress: LiveNavigationProgress) {
+        guard !progress.upcomingInstructions.isEmpty else {
             nextManeuverInstruction = "Route folgen"
             nextManeuverDistance = nil
             upcomingManeuverInstructions = []
             return
         }
-        let current = allSteps.min { lhs, rhs in
-            Self.distance(from: location.coordinate, to: lhs.element.polyline) <
-            Self.distance(from: location.coordinate, to: rhs.element.polyline)
-        }
-        guard let current else { return }
-        // Die Anweisung des aktuellen Segments wurde bereits ausgeführt; groß
-        // angezeigt wird der nächste noch kommende Abbiegepunkt.
-        let future = usable.filter { $0.offset > current.offset }
-        let upcoming = future.first ?? usable.last!
-        let step = upcoming.element
-        upcomingManeuverInstructions = Array(future.prefix(4).map(\.element.instructions))
-        nextManeuverInstruction = step.instructions
-        nextManeuverDistance = location.distance(from: CLLocation(
-            latitude: step.polyline.coordinate.latitude,
-            longitude: step.polyline.coordinate.longitude
-        ))
-        lastAnnouncement = step.instructions
+        nextManeuverInstruction = progress.maneuver.step.instructions
+        nextManeuverDistance = progress.distance
+        upcomingManeuverInstructions = progress.upcomingInstructions
     }
 
     private func markReachedWaypoints(at location: CLLocation, settings: DriveSettings) {
@@ -494,21 +559,19 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         speedWarning = speedKmh > Double(maxspeed) + 5
     }
 
-    private func announceNextStep(near coordinate: CLLocationCoordinate2D, in route: MKRoute) {
-        let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        for (index, step) in route.steps.enumerated() where index > 0 {
-            let key = "\(index):\(step.instructions)"
-            guard !announcedStepKeys.contains(key) else { continue }
-            let stepStart = step.polyline.coordinate
-            let distance = here.distance(from: CLLocation(latitude: stepStart.latitude, longitude: stepStart.longitude))
-            if distance <= 120 {
-                announcedStepKeys.insert(key)
-                let instruction = step.instructions.isEmpty ? "Weiter geradeaus" : step.instructions
-                speak(NavigationSpeechFormatter.spokenText(instruction, distance: distance))
-                lastAnnouncement = step.instructions
-                break
-            }
-        }
+    private func announce(_ progress: LiveNavigationProgress, at location: CLLocation) {
+        let speedKmh = max(0, location.speed) * 3.6
+        guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
+        let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
+        let completed = announcedManeuverStages[key] ?? []
+        guard !completed.contains(stage) else { return }
+
+        // If a sparse GPS update lands directly in the immediate zone, mark
+        // earlier stages complete as well so they cannot be spoken afterwards.
+        announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
+        let spokenDistance: CLLocationDistance = stage == .now ? min(progress.distance, 35) : progress.distance
+        speak(NavigationSpeechFormatter.spokenText(progress.maneuver.step.instructions, distance: spokenDistance))
+        lastAnnouncement = progress.maneuver.step.instructions
     }
 
     private func speak(_ text: String) {
@@ -542,11 +605,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// Zählt aufeinanderfolgende Positionsmeldungen weit abseits der Route und
     /// löst nach ein paar Treffern (nicht schon beim ersten GPS-Ausreißer) eine
     /// automatische Neuberechnung ab der aktuellen Position aus.
-    private func checkForDeviation(from location: CLLocation, route: MKRoute, settings: DriveSettings) {
+    private func checkForDeviation(from location: CLLocation, settings: DriveSettings) {
         guard !isLoading, !isRecalculating else { return }
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
         if let lastRerouteAt, Date().timeIntervalSince(lastRerouteAt) < 45 { return }
-        let nearest = Self.distance(from: location.coordinate, to: route.polyline)
+        let nearest = legs.map { Self.distance(from: location.coordinate, to: $0.polyline) }.min()
+            ?? .greatestFiniteMagnitude
         if nearest > 150 {
             offRouteStrikes += 1
         } else {
@@ -558,6 +622,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         Task {
             isRecalculating = true
             lastAnnouncement = "Route wird neu berechnet …"
+            if settings.voiceGuidance { speak("Die Route wird neu berechnet.") }
             await calculate(from: location.coordinate, settings: settings)
             isRecalculating = false
         }
@@ -580,6 +645,42 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             best = min(best, target.distance(to: projected))
         }
         return best
+    }
+
+    /// Remaining driven distance from the projection of `coordinate` to the
+    /// end of a step polyline. Unlike air-line distance this remains correct
+    /// on ramps, switchbacks and parallel roads.
+    private static func remainingDistance(from coordinate: CLLocationCoordinate2D,
+                                          on polyline: MKPolyline) -> CLLocationDistance {
+        guard polyline.pointCount > 0 else { return .greatestFiniteMagnitude }
+        let target = MKMapPoint(coordinate)
+        let points = polyline.points()
+        if polyline.pointCount == 1 { return target.distance(to: points[0]) }
+
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        var bestSegment = 0
+        var bestProjection = points[0]
+        for index in 0..<(polyline.pointCount - 1) {
+            let a = points[index], b = points[index + 1]
+            let dx = b.x - a.x, dy = b.y - a.y
+            let lengthSquared = dx * dx + dy * dy
+            let t = lengthSquared == 0 ? 0 : max(0, min(1,
+                ((target.x - a.x) * dx + (target.y - a.y) * dy) / lengthSquared))
+            let projection = MKMapPoint(x: a.x + t * dx, y: a.y + t * dy)
+            let distance = target.distance(to: projection)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestSegment = index
+                bestProjection = projection
+            }
+        }
+        var remaining = bestProjection.distance(to: points[bestSegment + 1])
+        if bestSegment + 1 < polyline.pointCount - 1 {
+            for index in (bestSegment + 1)..<(polyline.pointCount - 1) {
+                remaining += points[index].distance(to: points[index + 1])
+            }
+        }
+        return remaining
     }
 
     /// Lädt Tempolimits für abgetastete Routenpunkte (OpenStreetMap/Overpass).

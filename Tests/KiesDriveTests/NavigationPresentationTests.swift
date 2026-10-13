@@ -53,4 +53,11 @@ final class NavigationPresentationTests: XCTestCase {
             "Jetzt, Links abbiegen."
         )
     }
+
+    func testAnnouncementStagesAdaptToRoadSpeed() {
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 120), .early)
+        XCTAssertNil(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 50))
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 200, speedKmh: 50), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 30, speedKmh: 50), .now)
+    }
 }

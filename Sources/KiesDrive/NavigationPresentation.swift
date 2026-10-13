@@ -110,3 +110,19 @@ enum NavigationSpeechFormatter {
         value.last.map { ".!?".contains($0) } == true ? value : value + "."
     }
 }
+
+enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
+    case early
+    case prepare
+    case now
+
+    static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
+        guard distance.isFinite, distance >= 0 else { return nil }
+        if distance <= 45 { return .now }
+        let prepareDistance: CLLocationDistance = speedKmh >= 80 ? 350 : 220
+        if distance <= prepareDistance { return .prepare }
+        let earlyDistance: CLLocationDistance = speedKmh >= 80 ? 900 : 500
+        if distance <= earlyDistance { return .early }
+        return nil
+    }
+}
