@@ -126,6 +126,11 @@ enum DriveAPI {
         _ = try await authData(for: authRequest(path: "/auth/register", body: body))
     }
 
+    static func requestPasswordReset(email: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["email": email])
+        _ = try await authData(for: authRequest(path: "/auth/password/request", body: body))
+    }
+
     static func login(email: String, password: String, totpCode: String?) async throws -> AccountLoginResponse {
         let body = try JSONEncoder().encode(AccountLoginRequest(email: email, password: password,
                                                                  totpCode: totpCode?.nilIfEmpty))

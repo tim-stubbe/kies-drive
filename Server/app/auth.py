@@ -20,6 +20,7 @@ PASSWORD_HASHER = PasswordHasher(memory_cost=19456, time_cost=2, parallelism=1)
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 SESSION_DAYS = 30
 VERIFY_HOURS = 24
+RESET_MINUTES = 30
 
 
 def utcnow() -> datetime:
@@ -71,6 +72,14 @@ def initialise_auth_schema(conn: sqlite3.Connection) -> None:
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token_hash);
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
     """)
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "totp_pending_secret" not in columns:
@@ -128,6 +137,59 @@ def verify_email_token(conn: sqlite3.Connection, raw_token: str) -> bool:
     return True
 
 
+def create_password_reset(conn: sqlite3.Connection, user_id: int) -> str:
+    raw = secrets.token_urlsafe(32)
+    now = utcnow()
+    conn.execute("DELETE FROM password_resets WHERE user_id=? AND used_at IS NULL", (user_id,))
+    conn.execute(
+        "INSERT INTO password_resets(user_id,token_hash,expires_at) VALUES(?,?,?)",
+        (user_id, token_hash(raw), (now + timedelta(minutes=RESET_MINUTES)).isoformat()),
+    )
+    return raw
+
+
+def send_password_reset_email(email: str, raw_token: str) -> None:
+    public_url = os.getenv("KIES_DRIVE_PUBLIC_URL", "").rstrip("/")
+    host = os.getenv("SMTP_HOST", "").strip()
+    sender = os.getenv("SMTP_FROM", "").strip()
+    if not public_url or not host or not sender:
+        raise RuntimeError("E-Mail-Versand ist noch nicht konfiguriert.")
+    link = f"{public_url}/auth/password/reset?token={raw_token}"
+    message = EmailMessage()
+    message["Subject"] = "Kies-Drive-Passwort zurücksetzen"
+    message["From"] = sender
+    message["To"] = email
+    message.set_content(
+        "Für dein Kies-Drive-Konto wurde ein neues Passwort angefordert.\n\n"
+        f"Lege innerhalb von {RESET_MINUTES} Minuten ein neues Passwort fest:\n{link}\n\n"
+        "Falls du das nicht warst, ignoriere diese Nachricht. Dein Passwort bleibt unverändert."
+    )
+    port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+    with smtplib.SMTP(host, port, timeout=15) as smtp:
+        if os.getenv("SMTP_STARTTLS", "true").lower() == "true":
+            smtp.starttls()
+        if username:
+            smtp.login(username, password)
+        smtp.send_message(message)
+
+
+def consume_password_reset(conn: sqlite3.Connection, raw_token: str, new_password: str) -> bool:
+    validate_password(new_password)
+    row = conn.execute(
+        "SELECT id,user_id,expires_at,used_at FROM password_resets WHERE token_hash=?",
+        (token_hash(raw_token),),
+    ).fetchone()
+    if not row or row["used_at"] or datetime.fromisoformat(row["expires_at"]) < utcnow():
+        return False
+    now = utcnow().isoformat()
+    conn.execute("UPDATE password_resets SET used_at=? WHERE id=?", (now, row["id"]))
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?", (PASSWORD_HASHER.hash(new_password), row["user_id"]))
+    conn.execute("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (now, row["user_id"]))
+    return True
+
+
 def verify_password(stored: str, supplied: str) -> bool:
     try:
         return PASSWORD_HASHER.verify(stored, supplied)
@@ -177,3 +239,14 @@ def verification_html(ok: bool) -> str:
     return f"""<!doctype html><html lang=\"de\"><meta name=\"viewport\" content=\"width=device-width\"><title>{escape(title)}</title>
     <body style=\"margin:0;background:#f5f0e2;color:#123d32;font:18px -apple-system;padding:48px\"><main style=\"max-width:520px;margin:auto\">
     <h1>{escape(title)}</h1><p>{escape(detail)}</p><a href=\"kiesdrive://auth-complete\">Kies Drive öffnen</a></main></body></html>"""
+
+
+def password_reset_html(raw_token: str) -> str:
+    token = escape(raw_token, quote=True)
+    return f"""<!doctype html><html lang=\"de\"><meta name=\"viewport\" content=\"width=device-width\"><title>Passwort zurücksetzen</title>
+    <body style=\"margin:0;background:#f5f0e2;color:#123d32;font:18px -apple-system;padding:32px\"><main style=\"max-width:520px;margin:auto\">
+    <h1>Neues Passwort</h1><p>Verwende mindestens 12 Zeichen.</p>
+    <form id=\"reset\"><input id=\"password\" type=\"password\" minlength=\"12\" required autocomplete=\"new-password\" style=\"box-sizing:border-box;width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid #aaa\">
+    <button style=\"margin-top:16px;width:100%;font:600 18px -apple-system;padding:14px;border:0;border-radius:12px;background:#123d32;color:white\">Passwort speichern</button></form><p id=\"result\"></p>
+    <script>document.getElementById('reset').addEventListener('submit',async(e)=>{{e.preventDefault();const r=await fetch('/auth/password/reset',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{token:'{token}',new_password:document.getElementById('password').value}})}});const j=await r.json();document.getElementById('result').textContent=r.ok?'Passwort geändert. Du kannst dich jetzt in Kies Drive anmelden.':(j.detail||'Der Link ist ungültig oder abgelaufen.');}});</script>
+    </main></body></html>"""

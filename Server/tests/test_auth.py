@@ -58,3 +58,36 @@ def test_password_and_authentication_guards(tmp_path, monkeypatch):
     assert client.post("/auth/register", json={"email": "ok@example.com", "password": "short"}).status_code == 422
     assert client.get("/auth/me").status_code == 401
     assert client.put("/api/navigation/remote/state", json={}).status_code == 401
+
+
+def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
+    verification = {}
+    reset = {}
+    monkeypatch.setattr(main, "send_verification_email",
+                        lambda email, token: verification.update(email=email, token=token))
+    monkeypatch.setattr(main, "send_password_reset_email",
+                        lambda email, token: reset.update(email=email, token=token))
+    main.AUTH_ATTEMPTS.clear()
+    client = TestClient(main.app)
+    email = "reset@example.com"
+    old_password = "the-old-secure-password"
+    new_password = "the-new-secure-password"
+    client.post("/auth/register", json={"email": email, "password": old_password})
+    client.get("/auth/verify-email", params={"token": verification["token"]})
+    signed_in = client.post("/auth/login", json={"email": email, "password": old_password})
+    old_headers = {"Authorization": f"Bearer {signed_in.json()['session']}"}
+
+    unknown = client.post("/auth/password/request", json={"email": "missing@example.com"})
+    requested = client.post("/auth/password/request", json={"email": email})
+    assert unknown.status_code == requested.status_code == 202
+    assert unknown.json()["message"] == requested.json()["message"]
+    assert reset["email"] == email
+    assert client.get("/auth/password/reset", params={"token": reset["token"]}).status_code == 200
+
+    changed = client.post("/auth/password/reset", json={"token": reset["token"], "new_password": new_password})
+    assert changed.status_code == 200
+    assert client.post("/auth/password/reset", json={"token": reset["token"], "new_password": new_password}).status_code == 400
+    assert client.get("/auth/me", headers=old_headers).status_code == 401
+    assert client.post("/auth/login", json={"email": email, "password": old_password}).status_code == 401
+    assert client.post("/auth/login", json={"email": email, "password": new_password}).status_code == 200

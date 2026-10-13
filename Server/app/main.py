@@ -14,8 +14,10 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
-from .auth import (PASSWORD_HASHER, authenticated_user, create_session, create_verification,
+from .auth import (PASSWORD_HASHER, authenticated_user, consume_password_reset, create_password_reset,
+                   create_session, create_verification,
                    initialise_auth_schema, normalise_email, send_verification_email,
+                   password_reset_html, send_password_reset_email,
                    totp_matches, utcnow, validate_password, verification_html,
                    verify_email_token, verify_password)
 
@@ -51,6 +53,15 @@ class LoginRequest(BaseModel):
 
 class TOTPRequest(BaseModel):
     code: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
 
 
 AUTH_ATTEMPTS: dict[str, list[float]] = {}
@@ -125,6 +136,38 @@ def login(payload: LoginRequest, request: Request):
     AUTH_ATTEMPTS.pop(key, None)
     return {"session": raw, "expires_at": expires_at, "email": email,
             "two_factor_enabled": bool(user["totp_secret"])}
+
+
+@app.post("/auth/password/request", status_code=202)
+def request_password_reset(payload: PasswordResetRequest, request: Request):
+    email = normalise_email(payload.email)
+    rate_limit(f"password-reset:{request.client.host if request.client else 'unknown'}", maximum=5, window=3600)
+    delivery = None
+    with db() as conn:
+        user = conn.execute("SELECT id,email_verified_at FROM users WHERE email=?", (email,)).fetchone()
+        if user and user["email_verified_at"]:
+            delivery = create_password_reset(conn, user["id"])
+    if delivery:
+        try:
+            send_password_reset_email(email, delivery)
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    return {"ok": True, "message": "Falls ein Konto existiert, wurde eine E-Mail versendet."}
+
+
+@app.get("/auth/password/reset", response_class=HTMLResponse)
+def password_reset_page(token: str):
+    return HTMLResponse(password_reset_html(token))
+
+
+@app.post("/auth/password/reset")
+def reset_password(payload: PasswordResetConfirm, request: Request):
+    rate_limit(f"password-reset-confirm:{request.client.host if request.client else 'unknown'}")
+    with db() as conn:
+        ok = consume_password_reset(conn, payload.token, payload.new_password)
+    if not ok:
+        raise HTTPException(400, "Der Link ist ungültig oder abgelaufen.")
+    return {"ok": True}
 
 
 @app.get("/auth/me")

@@ -1820,6 +1820,13 @@ private struct AccountWelcomeView: View {
                         .buttonStyle(.borderedProminent).tint(Color.kiesForest)
                         .disabled(isWorking || email.isEmpty || password.isEmpty)
 
+                        if mode == .login {
+                            Button("Passwort vergessen?") { requestPasswordReset() }
+                                .buttonStyle(.plain).font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.kiesForest)
+                                .disabled(isWorking || email.isEmpty)
+                        }
+
                         if mode == .register {
                             Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Danach kannst du dich anmelden.")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -1855,6 +1862,22 @@ private struct AccountWelcomeView: View {
                 } else {
                     _ = try await DriveAPI.login(email: email, password: password, totpCode: totpCode)
                 }
+            } catch {
+                message = error.localizedDescription
+                isError = true
+            }
+            isWorking = false
+        }
+    }
+
+    private func requestPasswordReset() {
+        isWorking = true
+        message = nil
+        Task {
+            do {
+                try await DriveAPI.requestPasswordReset(email: email)
+                message = "Falls ein Konto existiert, ist die E-Mail zum Zurücksetzen unterwegs."
+                isError = false
             } catch {
                 message = error.localizedDescription
                 isError = true
