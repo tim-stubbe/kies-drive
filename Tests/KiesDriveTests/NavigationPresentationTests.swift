@@ -18,4 +18,8 @@ final class NavigationPresentationTests: XCTestCase {
     func testRoadShieldAllowsWhitespace() {
         XCTAssertEqual(NavigationManeuverPresentation("Auf die A 10 fahren").roadLabel, "A10")
     }
+
+    func testMapChoicesExcludePureSatelliteMode() {
+        XCTAssertEqual(DriveMapAppearance.allCases, [.standard, .hybrid])
+    }
 }

@@ -17,6 +17,24 @@ struct DriveContentView: View {
     @State private var showFavorites = false
     @State private var favorites = DriveFavoriteStore.load()
 
+    private var isSimulatorNavigationPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--navigation-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var isSimulatorSearchPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--search-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var showsNavigationUI: Bool { planner.isNavigating || isSimulatorNavigationPreview }
+
     var body: some View {
         #if os(iOS)
         mobileBody
@@ -59,7 +77,7 @@ struct DriveContentView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
-                if planner.isNavigating {
+                if showsNavigationUI {
                     navigationInstructionCard
                 } else {
                     mobileHeader
@@ -75,8 +93,14 @@ struct DriveContentView: View {
         .onAppear {
             location.start()
             #if targetEnvironment(simulator)
-            position = .region(.init(center: .init(latitude: 50.0143, longitude: 8.3522),
-                                     latitudinalMeters: 18_000, longitudinalMeters: 18_000))
+            if isSimulatorNavigationPreview {
+                position = .camera(.init(centerCoordinate: .init(latitude: 50.0143, longitude: 8.3522),
+                                         distance: 1_200, heading: 48, pitch: 58))
+            } else {
+                position = .region(.init(center: .init(latitude: 50.0143, longitude: 8.3522),
+                                         latitudinalMeters: 18_000, longitudinalMeters: 18_000))
+            }
+            if isSimulatorSearchPreview { installSimulatorSearchPreview() }
             didCenterInitialLocation = true
             #else
             if !settings.isReady { showSettings = true }
@@ -103,12 +127,151 @@ struct DriveContentView: View {
         .sheet(isPresented: $showFavorites) { favoritesSheet }
         .sheet(isPresented: $showRouteDetails) {
             NavigationStack {
-                routePanel
+                mobileRouteDetails
                     .navigationTitle("Routendetails")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { Button("Fertig") { showRouteDetails = false } }
             }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
+    }
+
+    private var mobileRouteDetails: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                routeSearchCard
+                routeOverviewCard
+                if let plan = planner.longTripPlan { longTripCards(plan) }
+                if !planner.stations.isEmpty { routeFuelCard }
+                if !planner.legs.isEmpty { routeStepsCard }
+            }
+            .padding(16)
+        }
+        .background(Color.kiesCanvas.ignoresSafeArea())
+    }
+
+    private var routeSearchCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Auf der Route suchen", systemImage: "magnifyingglass")
+                .font(.headline).foregroundStyle(Color.kiesForest)
+            HStack {
+                TextField("Café, Restaurant, Tankstelle …", text: $planner.routeSearchQuery)
+                    .textFieldStyle(.plain)
+                    .onSubmit { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
+                Button { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } } label: {
+                    Image(systemName: "arrow.right.circle.fill").font(.title2).foregroundStyle(Color.kiesForest)
+                }
+            }
+            .padding(12).background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+            ForEach(planner.routeSearchResults.prefix(4), id: \.self) { item in
+                HStack(spacing: 11) {
+                    Image(systemName: "mappin.circle.fill").foregroundStyle(Color.kiesBrass)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name ?? "Zwischenstopp").font(.subheadline.weight(.semibold))
+                        Text(item.placemark.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer()
+                    Button("Hinzufügen") {
+                        guard let start = location.location?.coordinate else { return }
+                        Task { await planner.addRouteStop(item, from: start, settings: settings) }
+                    }.buttonStyle(.bordered).tint(Color.kiesForest)
+                }
+            }
+        }
+        .driveCard()
+    }
+
+    private var routeOverviewCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label(planner.destination?.name ?? planner.destinationText, systemImage: "flag.checkered")
+                    .font(.headline).foregroundStyle(Color.kiesForest).lineLimit(1)
+                Spacer()
+                if settings.avoidTolls { Image(systemName: "eurosign.slash").foregroundStyle(Color.kiesBrass) }
+            }
+            HStack(spacing: 0) {
+                routeOverviewMetric(formatDistance(planner.totalDistance), "Strecke")
+                Divider().frame(height: 36)
+                routeOverviewMetric(formatTime(planner.totalTravelTime), "Fahrzeit")
+                Divider().frame(height: 36)
+                routeOverviewMetric("\(planner.longTripPlan?.results.first?.breaks.count ?? 0)", "Pausen")
+            }
+        }
+        .driveCard()
+    }
+
+    private func routeOverviewMetric(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.headline).monospacedDigit()
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity)
+    }
+
+    private func longTripCards(_ plan: LongTripPlan) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Reiseplanung", systemImage: "sparkles")
+                .font(.headline).foregroundStyle(Color.kiesForest)
+            ForEach(plan.results.prefix(3)) { result in
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Text("\(result.routeTitle) · \(result.scenario.name)").font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(formatTime(result.totalTime)).font(.subheadline.bold()).monospacedDigit()
+                    }
+                    Text(String(format: "%.1f l · %.2f € Kraftstoff", result.fuel.litres, result.fuel.cost))
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(result.breaks) { stop in
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.kiesBrass)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(stop.candidate?.name ?? "Optimale Pause").font(.caption.weight(.semibold))
+                                Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                    }
+                }
+                .padding(12).background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .driveCard()
+    }
+
+    private var routeFuelCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Tanken entlang der Route", systemImage: "fuelpump.fill")
+                .font(.headline).foregroundStyle(Color.kiesForest)
+            ForEach(planner.stations.prefix(5)) { station in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(station.brand.isEmpty ? station.name : station.brand).font(.subheadline.weight(.semibold))
+                        Text("\(station.place) · \(station.distanceKm, specifier: "%.1f") km")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(String(format: "%.3f €", station.price)).font(.subheadline.bold()).monospacedDigit()
+                }
+            }
+        }
+        .driveCard()
+    }
+
+    private var routeStepsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Nächste Schritte", systemImage: "list.bullet")
+                .font(.headline).foregroundStyle(Color.kiesForest)
+            ForEach(Array(planner.legs.flatMap(\.steps).filter { !$0.instructions.isEmpty }.prefix(8).enumerated()), id: \.offset) { _, step in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: NavigationManeuverPresentation(step.instructions).direction.symbolName)
+                        .frame(width: 24).foregroundStyle(Color.kiesBrass)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.instructions).font(.subheadline)
+                        Text(formatDistance(step.distance)).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .driveCard()
     }
 
     private var mobileHeader: some View {
@@ -219,23 +382,26 @@ struct DriveContentView: View {
 
     @ViewBuilder
     private var mobileBottomCard: some View {
-        if planner.isNavigating {
-            VStack(spacing: 10) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(formatArrival(planner.totalTravelTime)).font(.title2.bold()).foregroundStyle(.green)
-                    Text("Ankunft · \(formatTime(planner.totalTravelTime)) · \(formatDistance(planner.totalDistance))")
-                        .font(.subheadline).foregroundStyle(.secondary)
+        if showsNavigationUI {
+            VStack(spacing: 12) {
+                Capsule().fill(Color.kiesForest.opacity(0.16)).frame(width: 36, height: 4)
+                HStack(spacing: 0) {
+                    navigationMetric(isSimulatorNavigationPreview ? "18:42" : formatArrival(planner.totalTravelTime), "Ankunft", emphasized: true)
+                    Divider().frame(height: 38)
+                    navigationMetric(isSimulatorNavigationPreview ? "1:18" : formatTime(planner.totalTravelTime), "Fahrzeit")
+                    Divider().frame(height: 38)
+                    navigationMetric(isSimulatorNavigationPreview ? "112 km" : formatDistance(planner.totalDistance), "Strecke")
                 }
-                Spacer()
-                Button("Trip beenden", role: .destructive) { planner.completeActiveTrip() }
-                    .buttonStyle(.bordered)
+                HStack {
+                    Button("Auf Route suchen", systemImage: "magnifyingglass") { showRouteDetails = true }
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Color.kiesForest)
+                    Spacer()
+                    Button("Beenden", systemImage: "xmark.circle.fill", role: .destructive) { planner.completeActiveTrip() }
+                        .font(.subheadline.weight(.semibold))
+                }
             }
-            Button("Auf Route suchen", systemImage: "fork.knife") { showRouteDetails = true }
-                .font(.subheadline.weight(.semibold))
-            }
-            .padding(.horizontal, 18).padding(.vertical, 14)
-            .background(.ultraThickMaterial)
+            .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 14)
+            .background(Color.kiesIvory)
         } else if planner.route != nil {
             VStack(spacing: 12) {
                 Capsule().fill(.tertiary).frame(width: 36, height: 5)
@@ -263,28 +429,51 @@ struct DriveContentView: View {
             .padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 12)
             .background(Color.kiesIvory)
         } else if planner.destination != nil {
-            Button {
-                guard let start = location.location?.coordinate else {
-                    planner.errorMessage = "Standort ist noch nicht verfügbar."
-                    return
-                }
-                Task {
-                    await planner.calculate(from: start, settings: settings)
-                    if !planner.legs.isEmpty {
-                        planner.startNavigation()
-                        followCurrentLocation()
+            VStack(alignment: .leading, spacing: 14) {
+                Capsule().fill(Color.kiesForest.opacity(0.18)).frame(width: 38, height: 5).frame(maxWidth: .infinity)
+                HStack(spacing: 12) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.title2).foregroundStyle(Color.kiesBrass)
+                        .frame(width: 44, height: 44).background(Color.kiesForest.opacity(0.08), in: Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(planner.destination?.name ?? planner.destinationText).font(.headline).lineLimit(1)
+                        Text(planner.destination?.placemark.title ?? "Ausgewähltes Ziel")
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
+                    Spacer()
+                    Button { saveCurrentDestinationAsFavorite() } label: {
+                        Image(systemName: isCurrentDestinationFavorite ? "heart.fill" : "heart")
+                            .font(.title3).foregroundStyle(Color.kiesBrass)
+                    }.buttonStyle(.plain)
                 }
-            } label: {
-                Label(planner.isLoading ? "Route wird berechnet …" : "Route starten", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                Button {
+                    guard let start = location.location?.coordinate else {
+                        planner.errorMessage = "Standort ist noch nicht verfügbar."
+                        return
+                    }
+                    Task { await planner.calculate(from: start, settings: settings) }
+                } label: {
+                    Label(planner.isLoading ? "Route wird berechnet …" : "Route planen",
+                          systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                        .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
+                }
+                .buttonStyle(.borderedProminent).tint(Color.kiesForest).controlSize(.large)
+                .disabled(planner.isLoading)
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(planner.isLoading)
-            .padding(16).background(Color.kiesIvory)
+            .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 16)
+            .background(Color.kiesIvory)
         } else {
             idleDriveCard
         }
+    }
+
+    private func navigationMetric(_ value: String, _ label: String, emphasized: Bool = false) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.system(size: 21, weight: .bold, design: .rounded)).monospacedDigit()
+                .foregroundStyle(emphasized ? Color.kiesForest : .primary)
+            Text(label).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var idleDriveCard: some View {
@@ -325,6 +514,20 @@ struct DriveContentView: View {
     private func searchNearby(_ query: String) {
         planner.destinationText = query
         Task { await planner.searchDestination(near: location.location?.coordinate) }
+    }
+
+    private func installSimulatorSearchPreview() {
+        planner.destinationText = "Café"
+        let previews: [(String, CLLocationCoordinate2D)] = [
+            ("Café Maldaner", .init(latitude: 50.082, longitude: 8.241)),
+            ("Die Hütte", .init(latitude: 50.013, longitude: 8.353)),
+            ("Café Prego", .init(latitude: 50.014, longitude: 8.430)),
+        ]
+        planner.suggestions = previews.map { name, coordinate in
+            let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+            item.name = name
+            return item
+        }
     }
 
     private func navigateHome() {
@@ -391,11 +594,17 @@ struct DriveContentView: View {
     }
 
     private var navigationInstructionCard: some View {
-        let maneuver = NavigationManeuverPresentation(planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen")
+        let previewInstruction = "Ausfahrt 12 rechts Richtung Wiesbaden auf die A66"
+        let maneuver = NavigationManeuverPresentation(isSimulatorNavigationPreview ? previewInstruction : (planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen"))
+        let maneuverDistance = isSimulatorNavigationPreview ? 450 : planner.nextManeuverDistance
+        let followingInstruction = isSimulatorNavigationPreview ? "Links halten Richtung Frankfurt" : planner.upcomingManeuverInstructions.dropFirst().first
         return VStack(alignment: .leading, spacing: 10) {
-            if !planner.upcomingManeuverInstructions.isEmpty {
+            if isSimulatorNavigationPreview || !planner.upcomingManeuverInstructions.isEmpty {
                 HStack(spacing: 18) {
-                    ForEach(Array(planner.upcomingManeuverInstructions.prefix(5).enumerated()), id: \.offset) { index, instruction in
+                    let instructions = isSimulatorNavigationPreview
+                        ? [previewInstruction, "Links halten", "Geradeaus"]
+                        : Array(planner.upcomingManeuverInstructions.prefix(5))
+                    ForEach(Array(instructions.enumerated()), id: \.offset) { index, instruction in
                         Image(systemName: NavigationManeuverPresentation(instruction).direction.symbolName)
                             .font(.system(size: 25, weight: .bold))
                             .foregroundStyle(index == 0 ? .white : .white.opacity(0.28))
@@ -408,7 +617,7 @@ struct DriveContentView: View {
                     .font(.system(size: 42, weight: .bold)).frame(width: 54)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        if let distance = planner.nextManeuverDistance {
+                        if let distance = maneuverDistance {
                             Text(formatDistance(distance)).font(.title.bold())
                         }
                         Spacer()
@@ -443,18 +652,18 @@ struct DriveContentView: View {
                 Label("Neue Route wird gesucht", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.semibold)).opacity(0.9)
             }
-            if planner.upcomingManeuverInstructions.count > 1 {
+            if let followingInstruction {
                 Divider().overlay(.white.opacity(0.2))
                 HStack(spacing: 12) {
-                    Image(systemName: NavigationManeuverPresentation(planner.upcomingManeuverInstructions[1]).direction.symbolName)
-                    Text("Danach: \(planner.upcomingManeuverInstructions[1])")
+                    Image(systemName: NavigationManeuverPresentation(followingInstruction).direction.symbolName)
+                    Text("Danach: \(followingInstruction)")
                         .font(.subheadline.weight(.semibold)).lineLimit(1)
                 }
                 .foregroundStyle(.white.opacity(0.8))
             }
         }
         .foregroundStyle(.white).padding(14)
-        .background(Color(red: 0.10, green: 0.14, blue: 0.18).opacity(0.94), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
     #endif
@@ -645,7 +854,7 @@ struct DriveContentView: View {
 
     @ViewBuilder
     private var map: some View {
-        if planner.isNavigating {
+        if showsNavigationUI {
             mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
         } else {
             switch settings.mapAppearance {
@@ -657,6 +866,23 @@ struct DriveContentView: View {
 
     private var mapBase: some View {
         Map(position: $position) {
+            #if targetEnvironment(simulator)
+            Annotation("Vorschau", coordinate: .init(latitude: 50.0143, longitude: 8.3522), anchor: .center) {
+                Image(systemName: isSimulatorNavigationPreview ? "car.fill" : "location.north.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(Color.kiesForest, in: Circle())
+                    .overlay(Circle().stroke(Color.kiesIvory, lineWidth: 3))
+                    .shadow(color: .black.opacity(0.25), radius: 5, y: 3)
+            }
+            if isSimulatorNavigationPreview {
+                MapPolyline(simulatorPreviewPolyline)
+                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                MapPolyline(simulatorPreviewPolyline)
+                    .stroke(Color.kiesRouteBlue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            }
+            #else
             if planner.isNavigating, let coordinate = location.location?.coordinate {
                 Annotation("Mein Auto", coordinate: coordinate, anchor: .center) {
                     Image(systemName: "car.fill")
@@ -670,6 +896,7 @@ struct DriveContentView: View {
             } else {
                 UserAnnotation()
             }
+            #endif
             if let destination = planner.destination { Marker(item: destination) }
             ForEach(Array(planner.legs.enumerated()), id: \.offset) { _, leg in
                 MapPolyline(leg.polyline)
@@ -677,7 +904,7 @@ struct DriveContentView: View {
                 MapPolyline(leg.polyline)
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
-            if !planner.isNavigating {
+            if !showsNavigationUI {
                 ForEach(planner.stations) { station in
                     Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
                         VStack(spacing: 2) {
@@ -701,7 +928,7 @@ struct DriveContentView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             #if os(iOS)
-            if planner.isNavigating {
+            if showsNavigationUI {
                 VStack(spacing: 10) {
                     Button(action: showCompleteRoute) {
                         Image(systemName: "map.fill")
@@ -722,6 +949,28 @@ struct DriveContentView: View {
                 // Die untere ETA-Karte liegt als Safe-Area-Inset über der
                 // Karte; genügend Abstand hält beide Knöpfe immer sichtbar.
                 .padding(.trailing, 14).padding(.bottom, 190)
+            } else {
+                VStack(spacing: 10) {
+                    Button { centerIdleMap() } label: {
+                        Image(systemName: "location.fill")
+                            .font(.title3.bold()).padding(13)
+                            .foregroundStyle(Color.kiesForest)
+                            .background(Color.kiesIvory.opacity(0.96), in: Circle())
+                            .shadow(color: .black.opacity(0.18), radius: 7, y: 3)
+                    }
+                    .accessibilityLabel("Karte auf meinen Standort zentrieren")
+                    Button {
+                        settings.mapAppearance = settings.mapAppearance == .standard ? .hybrid : .standard
+                    } label: {
+                        Image(systemName: settings.mapAppearance == .standard ? "square.3.layers.3d" : "map")
+                            .font(.title3.bold()).padding(13)
+                            .foregroundStyle(Color.kiesForest)
+                            .background(Color.kiesIvory.opacity(0.96), in: Circle())
+                            .shadow(color: .black.opacity(0.18), radius: 7, y: 3)
+                    }
+                    .accessibilityLabel(settings.mapAppearance == .standard ? "Hybridkarte anzeigen" : "Standardkarte anzeigen")
+                }
+                .padding(.trailing, 14).padding(.bottom, 220)
             }
             #endif
         }
@@ -730,6 +979,23 @@ struct DriveContentView: View {
                let limit = planner.currentSpeedLimit(near: coordinate) {
                 speedLimitSign(limit).padding()
             }
+        }
+        .overlay(alignment: .bottomLeading) {
+            #if os(iOS)
+            if isSimulatorNavigationPreview {
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle().fill(.white).frame(width: 56, height: 56)
+                        Circle().stroke(.red, lineWidth: 5).frame(width: 52, height: 52)
+                        Text("100").font(.system(size: 17, weight: .heavy)).foregroundStyle(.black)
+                    }
+                    Text("84").font(.title2.bold()).monospacedDigit()
+                        .frame(width: 58, height: 48)
+                        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.leading, 14).padding(.bottom, 190)
+            }
+            #endif
         }
         .overlay(alignment: .top) {
             #if os(macOS)
@@ -759,6 +1025,27 @@ struct DriveContentView: View {
             .padding()
             #endif
         }
+    }
+
+    private var simulatorPreviewPolyline: MKPolyline {
+        var coordinates = [
+            CLLocationCoordinate2D(latitude: 50.001, longitude: 8.315),
+            CLLocationCoordinate2D(latitude: 50.008, longitude: 8.332),
+            CLLocationCoordinate2D(latitude: 50.0143, longitude: 8.3522),
+            CLLocationCoordinate2D(latitude: 50.020, longitude: 8.375),
+            CLLocationCoordinate2D(latitude: 50.027, longitude: 8.402),
+        ]
+        return MKPolyline(coordinates: &coordinates, count: coordinates.count)
+    }
+
+    private func centerIdleMap() {
+        #if targetEnvironment(simulator)
+        position = .region(.init(center: .init(latitude: 50.0143, longitude: 8.3522),
+                                 latitudinalMeters: 18_000, longitudinalMeters: 18_000))
+        #else
+        guard let coordinate = location.location?.coordinate else { return }
+        position = .region(.init(center: coordinate, latitudinalMeters: 18_000, longitudinalMeters: 18_000))
+        #endif
     }
 
     /// Zeigt die zuletzt zwischengespeicherte Route (Ziel, Fahrhinweise,
@@ -990,6 +1277,23 @@ private extension Color {
     static let kiesForest = Color(red: 0.08, green: 0.20, blue: 0.16)
     static let kiesIvory = Color(red: 0.97, green: 0.95, blue: 0.89)
     static let kiesBrass = Color(red: 0.69, green: 0.53, blue: 0.25)
+    static let kiesRouteBlue = Color(red: 0.10, green: 0.43, blue: 0.86)
+    static let kiesCanvas = Color(red: 0.93, green: 0.91, blue: 0.85)
+}
+
+private struct DriveCardModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(16)
+            .background(Color.kiesIvory, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.kiesForest.opacity(0.08), lineWidth: 1))
+            .shadow(color: .black.opacity(0.06), radius: 12, y: 5)
+    }
+}
+
+private extension View {
+    func driveCard() -> some View { modifier(DriveCardModifier()) }
 }
 
 private extension DriveSettingsView.ConnectionStatus {
