@@ -116,6 +116,29 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         return offlinePolylines.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
     }
 
+    var selectedAlternativeIndex: Int? {
+        guard let selected = legs.first else { return nil }
+        return alternatives.firstIndex { $0 === selected }
+    }
+
+    func selectAlternative(at index: Int, settings: DriveSettings) {
+        guard alternatives.indices.contains(index), !isNavigating else { return }
+        legs = [alternatives[index]]
+        resetLiveNavigationProgress()
+        remainingDistanceMetres = totalDistance
+        remainingTravelTime = totalTravelTime
+        stations = []
+        cacheForOffline()
+        buildLongTripPlan(settings: settings)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.loadStations(fuel: settings.fuel)
+            await self.loadSpeedLimits()
+            self.buildLongTripPlan(settings: settings)
+            self.cacheForOffline()
+        }
+    }
+
     func startNavigation() {
         guard !legs.isEmpty else { return }
         persistActiveTrip()

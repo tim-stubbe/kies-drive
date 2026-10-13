@@ -509,6 +509,30 @@ struct DriveContentView: View {
         } else if planner.route != nil {
             VStack(spacing: 12) {
                 Capsule().fill(.tertiary).frame(width: 36, height: 5)
+                if planner.alternatives.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Array(planner.alternatives.prefix(3).enumerated()), id: \.offset) { index, route in
+                                Button {
+                                    planner.selectAlternative(at: index, settings: settings)
+                                    showCompleteRoute()
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(index == 0 ? "Schnellste" : "Alternative \(index + 1)")
+                                            .font(.caption.weight(.bold))
+                                        Text("\(formatTime(route.expectedTravelTime)) · \(formatDistance(route.distance))")
+                                            .font(.caption2)
+                                    }
+                                    .foregroundStyle(planner.selectedAlternativeIndex == index ? Color.kiesIvory : Color.kiesForest)
+                                    .padding(.horizontal, 11).padding(.vertical, 7)
+                                    .background(planner.selectedAlternativeIndex == index ? Color.kiesForest : Color.kiesForest.opacity(0.08),
+                                                in: RoundedRectangle(cornerRadius: 11))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(planner.destination?.name ?? "Route").font(.headline).lineLimit(1)
