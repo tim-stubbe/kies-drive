@@ -79,7 +79,9 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // Keeping this here also guarantees exactly one progress update per
         // delivered GPS fix across the phone, Mac and CarPlay presentations.
         let planner = RoutePlanner.shared
-        if !planner.legs.isEmpty {
+        // `isNavigating` also covers guidance restored from the persisted
+        // offline cache, where no fresh MapKit `legs` exist yet.
+        if planner.isNavigating {
             planner.updateProgress(at: latest, settings: .shared)
         }
 
