@@ -955,7 +955,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate,
                 progress: Double(match.offset) / Double(routeCoordinates.count - 1),
-                detourMetres: detour * 2, isOpen: station.open != false
+                detourMetres: detour * 2, isOpen: station.open != false, supportsFuel: true
             )
         }
         return (fuelCandidates + amenityBreakCandidates)

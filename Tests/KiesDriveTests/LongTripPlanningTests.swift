@@ -15,6 +15,8 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertLessThan(plan.results[1].drivingTime, plan.results[0].drivingTime)
         XCTAssertGreaterThan(plan.results[1].fuel.litres, plan.results[0].fuel.litres)
         XCTAssertGreaterThan(plan.results[1].drivingTime, 3 * 3600, "Limited/traffic time must be preserved")
+        XCTAssertGreaterThan(plan.results[1].fuel.averageConsumptionLPer100km,
+                             plan.results[0].fuel.averageConsumptionLPer100km)
     }
 
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {
@@ -68,7 +70,7 @@ final class LongTripPlanningTests: XCTestCase {
     func testFuelStopsStayBeforeReserveAndPreferRouteCandidate() {
         let candidates = [
             BreakCandidate(id: "station", name: "Route station", coordinate: .init(),
-                           progress: 0.48, detourMetres: 200, isOpen: true)
+                           progress: 0.48, detourMetres: 200, isOpen: true, supportsFuel: true)
         ]
         let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
                                      tankCapacityLitres: 50, usableTankFraction: 0.8)
@@ -77,5 +79,31 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(stops.count, 1)
         XCTAssertEqual(stops.first?.candidate?.id, "station")
         XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
+    }
+
+    func testFuelPlannerNeverTreatsPlainRestAreaAsFuelStation() {
+        let restArea = BreakCandidate(id: "rest", name: "Rastplatz", coordinate: .init(),
+                                      progress: 0.48, detourMetres: 50, isOpen: true)
+        let station = BreakCandidate(id: "fuel", name: "Tankstelle", coordinate: .init(),
+                                     progress: 0.5, detourMetres: 400, isOpen: true, supportsFuel: true)
+        let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+                                     tankCapacityLitres: 50, usableTankFraction: 0.8)
+        let stops = FuelStopPlanner().plan(distanceMetres: 700_000, consumptionLPer100km: 10,
+                                           vehicle: vehicle, candidates: [restArea, station])
+        XCTAssertEqual(stops.first?.candidate?.id, "fuel")
+    }
+
+    func testSegmentedFuelModelDoesNotApplyFastTargetToLimitedDistance() {
+        let profile = VehicleProfile(baseConsumptionLPer100km: 7, referenceSpeedKmh: 100,
+                                     fuelPricePerLitre: 1.8, tankCapacityLitres: 50,
+                                     usableTankFraction: 0.85)
+        let model = FuelModel()
+        let segmented = model.estimate(segments: [(400_000, 90), (100_000, 200)], profile: profile)
+        let falselyFastEverywhere = model.estimate(distanceMetres: 500_000, effectiveSpeedKmh: 200,
+                                                   profile: profile)
+        XCTAssertLessThan(segmented.litres, falselyFastEverywhere.litres)
+        XCTAssertGreaterThan(segmented.litres, model.estimate(distanceMetres: 500_000,
+                                                              effectiveSpeedKmh: 90,
+                                                              profile: profile).litres)
     }
 }

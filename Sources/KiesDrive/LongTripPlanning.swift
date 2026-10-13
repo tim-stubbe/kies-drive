@@ -69,6 +69,22 @@ struct FuelModel {
         let litres = max(0, distanceMetres / 100_000 * average)
         return .init(litres: litres, cost: litres * max(0, profile.fuelPricePerLitre), averageConsumptionLPer100km: average)
     }
+
+    /// Calculates limited/traffic and genuinely unrestricted motorway parts
+    /// separately. A fast target therefore affects only the distance where it
+    /// can actually be driven instead of distorting the whole-trip average.
+    func estimate(segments: [(distanceMetres: Double, effectiveSpeedKmh: Double)],
+                  profile: VehicleProfile) -> FuelEstimate {
+        let estimates = segments.filter { $0.distanceMetres > 0 }.map {
+            estimate(distanceMetres: $0.distanceMetres, effectiveSpeedKmh: $0.effectiveSpeedKmh,
+                     profile: profile)
+        }
+        let totalDistance = segments.reduce(0) { $0 + max(0, $1.distanceMetres) }
+        let litres = estimates.reduce(0) { $0 + $1.litres }
+        let average = totalDistance > 0 ? litres / totalDistance * 100_000 : 0
+        return .init(litres: litres, cost: litres * max(0, profile.fuelPricePerLitre),
+                     averageConsumptionLPer100km: average)
+    }
 }
 
 struct BreakCandidate: Identifiable, Equatable {
@@ -78,6 +94,18 @@ struct BreakCandidate: Identifiable, Equatable {
     let progress: Double
     let detourMetres: Double
     let isOpen: Bool
+    let supportsFuel: Bool
+
+    init(id: String, name: String, coordinate: CLLocationCoordinate2D, progress: Double,
+         detourMetres: Double, isOpen: Bool, supportsFuel: Bool = false) {
+        self.id = id
+        self.name = name
+        self.coordinate = coordinate
+        self.progress = progress
+        self.detourMetres = detourMetres
+        self.isOpen = isOpen
+        self.supportsFuel = supportsFuel
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
@@ -111,7 +139,7 @@ struct FuelStopPlanner {
         let safeRange = usableLitres / consumptionLPer100km * 100_000
         guard safeRange > 0, distanceMetres > safeRange else { return [] }
         let count = Int(ceil(distanceMetres / safeRange)) - 1
-        var remaining = candidates.filter(\.isOpen)
+        var remaining = candidates.filter { $0.isOpen && $0.supportsFuel }
         var lastProgress = 0.0
         return (1...count).map { index in
             let idealDistance = min(distanceMetres * 0.95, Double(index) * safeRange * 0.88)
@@ -251,12 +279,19 @@ struct RouteComparison {
         let baseline = max(1, route.typicalUnlimitedSpeedKmh)
         let target = min(max(80, scenario.targetSpeedKmh), 220)
         let baselineUnlimitedTime = route.mapKitExpectedTravelTime * fraction
-        let adjustedUnlimitedTime = baselineUnlimitedTime * baseline / target
+        let limitedTime = max(0, route.mapKitExpectedTravelTime - baselineUnlimitedTime)
+        let estimatedUnlimitedDistance = baselineUnlimitedTime * baseline / 3.6
+        let unlimitedDistance = min(route.distanceMetres, max(0, estimatedUnlimitedDistance))
+        let limitedDistance = max(0, route.distanceMetres - unlimitedDistance)
+        let adjustedUnlimitedTime = unlimitedDistance / (target / 3.6)
         // Preserve MapKit's limited/urban/traffic component instead of assuming
         // the selected target speed applies to the whole route.
-        let drivingTime = max(route.mapKitExpectedTravelTime * (1 - fraction), route.mapKitExpectedTravelTime - baselineUnlimitedTime) + adjustedUnlimitedTime
-        let averageSpeed = route.distanceMetres / max(1, drivingTime) * 3.6
-        let fuel = fuelModel.estimate(distanceMetres: route.distanceMetres, effectiveSpeedKmh: averageSpeed, profile: vehicle)
+        let drivingTime = limitedTime + adjustedUnlimitedTime
+        let limitedAverageSpeed = limitedDistance / max(1, limitedTime) * 3.6
+        let fuel = fuelModel.estimate(segments: [
+            (limitedDistance, limitedAverageSpeed),
+            (unlimitedDistance, target)
+        ], profile: vehicle)
         let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates)
         let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
                                              consumptionLPer100km: fuel.averageConsumptionLPer100km,
