@@ -154,7 +154,7 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertTrue(BreakPlanner().plan(drivingTime: 90 * 60, candidates: []).isEmpty)
     }
 
-    func testComparisonOnlyCalculatesTollSavingsForKnownPrices() {
+    func testComparisonOnlyCalculatesTollSavingsForKnownPrices() throws {
         let scenario = SpeedScenario.target(150)
         let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)
         let baseline = RouteScenarioResult(id: "a", routeTitle: "A", scenario: scenario, distanceMetres: 500_000, drivingTime: 18_000, totalTime: 19_200, fuel: fuel, toll: .known(amount: 24, currency: "EUR", source: "provider"), breaks: [], fuelStops: [], unlimitedFraction: 0)
@@ -162,7 +162,25 @@ final class LongTripPlanningTests: XCTestCase {
         let free = RouteScenarioResult(id: "c", routeTitle: "C", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .noToll(source: "provider"), breaks: [], fuelStops: [], unlimitedFraction: 0)
 
         XCTAssertNil(RouteComparisonDelta(from: baseline, to: unknown).tollSavings)
-        XCTAssertEqual(RouteComparisonDelta(from: baseline, to: free).tollSavings, 24)
+        let delta = RouteComparisonDelta(from: baseline, to: free)
+        XCTAssertEqual(delta.tollSavings, 24)
+        XCTAssertEqual(try XCTUnwrap(delta.totalCostDifference), -24, accuracy: 0.001)
+    }
+
+    func testComparisonNeverCombinesDifferentTollCurrencies() {
+        let scenario = SpeedScenario.target(150)
+        let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)
+        let euro = RouteScenarioResult(id: "eur", routeTitle: "EUR", scenario: scenario,
+                                       distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
+                                       toll: .known(amount: 20, currency: "EUR", source: "provider"),
+                                       breaks: [], fuelStops: [], unlimitedFraction: 0)
+        let francs = RouteScenarioResult(id: "chf", routeTitle: "CHF", scenario: scenario,
+                                         distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
+                                         toll: .known(amount: 20, currency: "CHF", source: "provider"),
+                                         breaks: [], fuelStops: [], unlimitedFraction: 0)
+        let delta = RouteComparisonDelta(from: euro, to: francs)
+        XCTAssertNil(delta.tollSavings)
+        XCTAssertNil(delta.totalCostDifference)
     }
 
     func testFuelStopsStayBeforeReserveAndPreferRouteCandidate() {

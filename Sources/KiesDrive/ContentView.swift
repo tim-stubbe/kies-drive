@@ -1488,12 +1488,17 @@ struct DriveContentView: View {
         if routeOptions.count >= 2 {
             let delta = RouteComparisonDelta(from: routeOptions[0], to: routeOptions[1])
             VStack(alignment: .leading, spacing: 4) {
-                Text("Mautroute gegenüber Alternative").font(.headline)
+                Text("\(routeOptions[0].routeTitle) → \(routeOptions[1].routeTitle)").font(.headline)
                 Text("\(signedTime(delta.timeDifference)) · \(signed(delta.distanceDifferenceMetres / 1_000, unit: "km")) · \(signed(delta.fuelCostDifference, unit: "€ Kraftstoff"))")
                 if let savings = delta.tollSavings {
-                    Text("Mautersparnis: \(NSDecimalNumber(decimal: savings).doubleValue, format: .currency(code: "EUR"))")
+                    let currency = delta.tollCurrency ?? "EUR"
+                    Text("Mautersparnis der Alternative: \(NSDecimalNumber(decimal: savings).doubleValue, format: .currency(code: currency))")
+                    if let total = delta.totalCostDifference {
+                        Text("Gesamtkosten der Alternative: \(signed(total, unit: "€"))")
+                            .fontWeight(.semibold)
+                    }
                 } else {
-                    Text("Mautersparnis nicht berechenbar: keine verifizierten Preise.").font(.caption).foregroundStyle(.secondary)
+                    Text("Maut- und Gesamtersparnis nicht berechenbar: keine verifizierten Preise.").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

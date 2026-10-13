@@ -295,16 +295,38 @@ struct RouteComparisonDelta: Equatable {
     let fuelDifferenceLitres: Double
     let fuelCostDifference: Double
     let tollSavings: Decimal?
+    let tollCurrency: String?
+    /// Alternative minus baseline. Negative means the alternative is cheaper.
+    let totalCostDifference: Double?
 
     init(from baseline: RouteScenarioResult, to alternative: RouteScenarioResult) {
         timeDifference = alternative.totalTime - baseline.totalTime
         distanceDifferenceMetres = alternative.distanceMetres - baseline.distanceMetres
         fuelDifferenceLitres = alternative.fuel.litres - baseline.fuel.litres
         fuelCostDifference = alternative.fuel.cost - baseline.fuel.cost
-        if let baselineToll = baseline.toll.amount, let alternativeToll = alternative.toll.amount {
-            tollSavings = baselineToll - alternativeToll
-        } else {
+        switch (baseline.toll, alternative.toll) {
+        case let (.known(baselineAmount, baselineCurrency, _),
+                  .known(alternativeAmount, alternativeCurrency, _))
+            where baselineCurrency.caseInsensitiveCompare(alternativeCurrency) == .orderedSame:
+            tollSavings = baselineAmount - alternativeAmount
+            tollCurrency = baselineCurrency.uppercased()
+        case let (.known(amount, currency, _), .noToll):
+            tollSavings = amount
+            tollCurrency = currency.uppercased()
+        case let (.noToll, .known(amount, currency, _)):
+            tollSavings = -amount
+            tollCurrency = currency.uppercased()
+        case (.noToll, .noToll):
+            tollSavings = 0
+            tollCurrency = "EUR"
+        default:
             tollSavings = nil
+            tollCurrency = nil
+        }
+        if tollCurrency == "EUR", let tollSavings {
+            totalCostDifference = fuelCostDifference - NSDecimalNumber(decimal: tollSavings).doubleValue
+        } else {
+            totalCostDifference = nil
         }
     }
 }
