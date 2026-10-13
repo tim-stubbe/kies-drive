@@ -107,6 +107,11 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 120, speedKmh: 200), .now)
     }
 
+    func testManeuverDiagnosticsDetectMissingFinalCue() {
+        XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare, .now]))
+    }
+
     func testRecentDestinationsDeduplicateAndKeepLatestFirst() {
         let suite = "DriveHistoryTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

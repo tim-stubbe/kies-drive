@@ -80,6 +80,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private let synthesizer = AVSpeechSynthesizer()
     private var navigationStepCursor = 0
     private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
+    private var diagnosticManeuverKey: String?
+    private var diagnosticManeuverInstruction: String?
     private var offRouteSince: Date?
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
@@ -187,7 +189,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func setVoiceGuidanceEnabled(_ enabled: Bool) {
-        if !enabled { synthesizer.stopSpeaking(at: .immediate) }
+        if !enabled {
+            synthesizer.stopSpeaking(at: .immediate)
+            diagnosticManeuverKey = nil
+            diagnosticManeuverInstruction = nil
+        }
     }
 
     /// Beendet den Trip bewusst. Ein normales Stoppen/Pausieren der Navigation
@@ -643,17 +649,21 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
         }
 
-        guard settings.voiceGuidance,
+        guard settings.voiceGuidance else { return }
+        let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
+        recordManeuverTransition(key: key, instruction: progress.instruction)
+        guard
               let stage = NavigationAnnouncementStage.stage(
                 distance: progress.distanceToManeuver, speedKmh: max(0, location.speed) * 3.6
               ) else { return }
-        let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
         let completed = announcedManeuverStages[key] ?? []
         guard !completed.contains(stage) else { return }
         announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         let spokenDistance = stage == .now ? min(progress.distanceToManeuver, 35) : progress.distanceToManeuver
         speak(NavigationSpeechFormatter.spokenText(progress.instruction, distance: spokenDistance))
         lastAnnouncement = progress.instruction
+        DriveDiagnosticStore.append(.maneuverAnnounced,
+                                    detail: "\(stage) · \(Int(progress.distanceToManeuver)) m · \(progress.instruction)")
     }
 
     private struct LiveRouteStep {
@@ -673,6 +683,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func resetLiveNavigationProgress() {
         navigationStepCursor = 0
         announcedManeuverStages = [:]
+        diagnosticManeuverKey = nil
+        diagnosticManeuverInstruction = nil
         resetDeviationTracking()
         arrivalStrikes = 0
         lastAcceptedNavigationLocation = nil
@@ -812,8 +824,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func announce(_ progress: LiveNavigationProgress, at location: CLLocation) {
         let speedKmh = max(0, location.speed) * 3.6
-        guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
+        recordManeuverTransition(key: key, instruction: progress.maneuver.step.instructions)
+        guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard !completed.contains(stage) else { return }
 
@@ -823,6 +836,19 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let spokenDistance: CLLocationDistance = stage == .now ? min(progress.distance, 35) : progress.distance
         speak(NavigationSpeechFormatter.spokenText(progress.maneuver.step.instructions, distance: spokenDistance))
         lastAnnouncement = progress.maneuver.step.instructions
+        DriveDiagnosticStore.append(.maneuverAnnounced,
+                                    detail: "\(stage) · \(Int(progress.distance)) m · \(progress.maneuver.step.instructions)")
+    }
+
+    private func recordManeuverTransition(key: String, instruction: String) {
+        guard diagnosticManeuverKey != key else { return }
+        if let previous = diagnosticManeuverKey,
+           ManeuverDiagnosticPolicy.missedFinalCue(stages: announcedManeuverStages[previous] ?? []) {
+            DriveDiagnosticStore.append(.maneuverFinalCueMissed,
+                                        detail: diagnosticManeuverInstruction ?? "Unbekanntes Manöver")
+        }
+        diagnosticManeuverKey = key
+        diagnosticManeuverInstruction = instruction
     }
 
     private func speak(_ text: String) {

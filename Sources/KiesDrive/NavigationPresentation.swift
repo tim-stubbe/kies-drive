@@ -145,6 +145,12 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     }
 }
 
+enum ManeuverDiagnosticPolicy {
+    static func missedFinalCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
+        !stages.contains(.now)
+    }
+}
+
 /// Conservative acceptance rules for live navigation fixes. Core Location can
 /// briefly report cached or wildly displaced positions after tunnels, pauses
 /// and app resumes; those must not advance maneuvers or trigger rerouting.

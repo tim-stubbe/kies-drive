@@ -110,7 +110,7 @@ enum RecentDestinationStore {
 
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
-    case arrivalReached, locationRejected
+    case arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
 }
 
 struct DriveDiagnosticEvent: Codable, Identifiable, Equatable {
