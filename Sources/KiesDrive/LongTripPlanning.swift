@@ -187,7 +187,8 @@ struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
 
-    func plan(drivingTime: TimeInterval, candidates: [BreakCandidate]) -> [PlannedBreak] {
+    func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
+              preferredCandidateIDs: Set<String> = []) -> [PlannedBreak] {
         guard drivingTime > maximumContinuousDriving else { return [] }
         let count = max(1, Int(ceil(drivingTime / maximumContinuousDriving)) - 1)
         var remaining = candidates.filter { $0.isOpen }
@@ -201,7 +202,8 @@ struct BreakPlanner {
             // A distant stop is not an "optimal" pause merely because it is
             // the only search result. Leave the location unverified instead.
             let best = candidatesInWindow.min {
-                score($0, idealProgress: idealProgress) < score($1, idealProgress: idealProgress)
+                score($0, idealProgress: idealProgress, preferredCandidateIDs: preferredCandidateIDs) <
+                score($1, idealProgress: idealProgress, preferredCandidateIDs: preferredCandidateIDs)
             }
             if let best {
                 remaining.removeAll { $0.id == best.id }
@@ -220,8 +222,11 @@ struct BreakPlanner {
         }
     }
 
-    private func score(_ candidate: BreakCandidate, idealProgress: Double) -> Double {
-        abs(candidate.progress - idealProgress) * 100 + min(40, candidate.detourMetres / 1_000 * 8)
+    private func score(_ candidate: BreakCandidate, idealProgress: Double,
+                       preferredCandidateIDs: Set<String>) -> Double {
+        let combinedStopBonus = preferredCandidateIDs.contains(candidate.id) ? 25.0 : 0
+        return abs(candidate.progress - idealProgress) * 100 +
+            min(40, candidate.detourMetres / 1_000 * 8) - combinedStopBonus
     }
 }
 
@@ -312,10 +317,15 @@ struct RouteComparison {
             (limitedDistance, limitedAverageSpeed),
             (unlimitedDistance, target)
         ], profile: vehicle)
-        let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates)
         let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
                                              consumptionLPer100km: fuel.averageConsumptionLPer100km,
                                              vehicle: vehicle, candidates: route.breakCandidates)
+        // Prefer one useful stop over a rest break and a fuel stop a few
+        // minutes apart. The normal pause window still applies, so a distant
+        // station is never pulled forward merely to combine the two jobs.
+        let plannedFuelCandidateIDs = Set(fuelStops.compactMap { $0.candidate?.id })
+        let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates,
+                                       preferredCandidateIDs: plannedFuelCandidateIDs)
         return .init(
             id: "\(route.id)-\(scenario.id)", routeTitle: route.title, scenario: scenario,
             distanceMetres: route.distanceMetres, drivingTime: drivingTime,
