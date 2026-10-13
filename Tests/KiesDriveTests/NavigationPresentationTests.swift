@@ -258,4 +258,13 @@ final class NavigationPresentationTests: XCTestCase {
             lastAttempt: now.addingTimeInterval(-90), now: now
         ))
     }
+
+    func testRouteSearchNeverSuggestsMateriallyPassedStops() {
+        XCTAssertFalse(RouteSearchPolicy.isAhead(candidateIndex: 20, currentIndex: 60,
+                                                 routePointCount: 100))
+        XCTAssertTrue(RouteSearchPolicy.isAhead(candidateIndex: 58, currentIndex: 60,
+                                                routePointCount: 100))
+        XCTAssertTrue(RouteSearchPolicy.isAhead(candidateIndex: 75, currentIndex: 60,
+                                                routePointCount: 100))
+    }
 }

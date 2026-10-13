@@ -356,13 +356,23 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
         }
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        let currentRouteIndex: Int = {
+            guard let location = LocationService.shared.location,
+                  let nearest = routePoints.enumerated().min(by: {
+                      $0.element.distance(from: location) < $1.element.distance(from: location)
+                  }), nearest.element.distance(from: location) <= 5_000 else { return 0 }
+            return nearest.offset
+        }()
         routeSearchResults = matches.values.compactMap { item -> (MKMapItem, Int, Double)? in
             let point = CLLocation(latitude: item.placemark.coordinate.latitude, longitude: item.placemark.coordinate.longitude)
             guard let nearest = routePoints.enumerated().min(by: {
                 $0.element.distance(from: point) < $1.element.distance(from: point)
             }) else { return nil }
             let detour = nearest.element.distance(from: point)
-            guard detour <= 5_000 else { return nil }
+            guard detour <= 5_000,
+                  RouteSearchPolicy.isAhead(candidateIndex: nearest.offset,
+                                            currentIndex: currentRouteIndex,
+                                            routePointCount: routePoints.count) else { return nil }
             return (item, nearest.offset, detour)
         }
         .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 < $1.1 }

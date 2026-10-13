@@ -251,6 +251,16 @@ enum OfflineRouteRecoveryPolicy {
     }
 }
 
+enum RouteSearchPolicy {
+    /// Keeps a tiny tolerance for GPS jitter around the current route point,
+    /// but never sends the driver materially backwards for an added stop.
+    static func isAhead(candidateIndex: Int, currentIndex: Int, routePointCount: Int) -> Bool {
+        guard routePointCount > 0 else { return false }
+        let tolerance = max(2, routePointCount / 50)
+        return candidateIndex >= max(0, currentIndex - tolerance)
+    }
+}
+
 struct OfflineGuidanceStep {
     let instruction: String
     let distance: CLLocationDistance
