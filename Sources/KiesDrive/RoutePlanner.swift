@@ -94,6 +94,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var speedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
+    private var destinationSearchGeneration = UUID()
+    private var routeSearchGeneration = UUID()
     private var didAttemptAutomaticRestore = false
     private static let cacheKey = "drive.offlineRoute"
     private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
@@ -327,6 +329,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     func activateDestination(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                              settings: DriveSettings,
                              requiredWaypoints: [LockedWaypoint] = []) async -> Bool {
+        destinationSearchGeneration = UUID()
+        suggestions = []
         let previousDestination = destination
         let previousDestinationText = destinationText
         let previousLock = routeLockStore.activeLock
@@ -353,19 +357,37 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func searchDestination(near coordinate: CLLocationCoordinate2D?) async {
-        guard destinationText.count > 2 else { suggestions = []; return }
+        let query = destinationText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let generation = UUID()
+        destinationSearchGeneration = generation
+        guard query.count > 2 else { suggestions = []; return }
         let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = destinationText
+        request.naturalLanguageQuery = query
         if let coordinate { request.region = .init(center: coordinate, latitudinalMeters: 100_000, longitudinalMeters: 100_000) }
-        do { suggestions = try await MKLocalSearch(request: request).start().mapItems }
-        catch { errorMessage = "Zielsuche fehlgeschlagen: \(error.localizedDescription)" }
+        do {
+            let items = try await MKLocalSearch(request: request).start().mapItems
+            guard generation == destinationSearchGeneration,
+                  destinationText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
+            suggestions = items
+        } catch {
+            guard generation == destinationSearchGeneration else { return }
+            errorMessage = "Zielsuche fehlgeschlagen: \(error.localizedDescription)"
+        }
     }
 
     /// Sucht POIs entlang der bereits berechneten Route statt nur am aktuellen
     /// Standort. Wenige Suchregionen und ein enger Korridor vermeiden Umwege.
     func searchAlongRoute(_ query: String) async {
-        guard !legs.isEmpty, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        routeSearchQuery = query
+        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let generation = UUID()
+        routeSearchGeneration = generation
+        guard !legs.isEmpty, !cleanQuery.isEmpty else {
+            routeSearchQuery = cleanQuery
+            routeSearchResults = []
+            return
+        }
+        let routeGeneration = routeCalculationGeneration
+        routeSearchQuery = cleanQuery
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
         let searchPoints = evenlySpaced(routeCoordinates, maximum: 5)
         var matches: [String: MKMapItem] = [:]
@@ -373,7 +395,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             for point in searchPoints {
                 group.addTask {
                     let request = MKLocalSearch.Request()
-                    request.naturalLanguageQuery = query
+                    request.naturalLanguageQuery = cleanQuery
                     request.region = .init(center: point, latitudinalMeters: 120_000, longitudinalMeters: 120_000)
                     return (try? await MKLocalSearch(request: request).start().mapItems) ?? []
                 }
@@ -385,6 +407,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 }
             }
         }
+        guard generation == routeSearchGeneration,
+              routeGeneration == routeCalculationGeneration,
+              routeSearchQuery == cleanQuery else { return }
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         let currentRouteIndex: Int = {
             guard let location = LocationService.shared.location,
@@ -464,6 +489,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard let destination else { return false }
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
+        destinationSearchGeneration = UUID()
+        routeSearchGeneration = UUID()
+        routeSearchResults = []
         if showLoading { isLoading = true; stations = [] }
         errorMessage = nil
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
