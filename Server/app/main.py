@@ -125,6 +125,25 @@ def verify_email(token: str):
     return HTMLResponse(verification_html(ok), status_code=200 if ok else 400)
 
 
+@app.post("/auth/verification/resend", status_code=202)
+def resend_verification(payload: PasswordResetRequest, request: Request):
+    email = normalise_email(payload.email)
+    rate_limit(f"verification-resend:{request.client.host if request.client else 'unknown'}",
+               maximum=4, window=3600)
+    delivery = None
+    with db() as conn:
+        user = conn.execute("SELECT id,email_verified_at FROM users WHERE email=?", (email,)).fetchone()
+        if user and not user["email_verified_at"]:
+            delivery = create_verification(conn, user["id"])
+    if delivery:
+        try:
+            send_verification_email(email, delivery)
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    # Do not disclose whether the address has an account or is already verified.
+    return {"ok": True, "message": "Falls nötig, wurde eine E-Mail versendet."}
+
+
 @app.post("/auth/login")
 def login(payload: LoginRequest, request: Request):
     email = normalise_email(payload.email)

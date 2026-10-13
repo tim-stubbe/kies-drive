@@ -1843,10 +1843,19 @@ private struct AccountWelcomeView: View {
                         .disabled(isWorking || email.isEmpty || password.isEmpty)
 
                         if mode == .login {
-                            Button("Passwort vergessen?") { requestPasswordReset() }
-                                .buttonStyle(.plain).font(.footnote.weight(.semibold))
-                                .foregroundStyle(Color.kiesForest)
-                                .disabled(isWorking || email.isEmpty)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 20) {
+                                    Button("Passwort vergessen?") { requestPasswordReset() }
+                                    Button("Bestätigungs-Mail erneut senden") { resendVerification() }
+                                }
+                                VStack(spacing: 12) {
+                                    Button("Passwort vergessen?") { requestPasswordReset() }
+                                    Button("Bestätigungs-Mail erneut senden") { resendVerification() }
+                                }
+                            }
+                            .buttonStyle(.plain).font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.kiesForest)
+                            .disabled(isWorking || email.isEmpty)
                         }
 
                         if mode == .register {
@@ -1899,6 +1908,22 @@ private struct AccountWelcomeView: View {
             do {
                 try await DriveAPI.requestPasswordReset(email: email)
                 message = "Falls ein Konto existiert, ist die E-Mail zum Zurücksetzen unterwegs."
+                isError = false
+            } catch {
+                message = error.localizedDescription
+                isError = true
+            }
+            isWorking = false
+        }
+    }
+
+    private func resendVerification() {
+        isWorking = true
+        message = nil
+        Task {
+            do {
+                try await DriveAPI.resendVerification(email: email)
+                message = "Falls die Adresse noch bestätigt werden muss, ist eine neue E-Mail unterwegs."
                 isError = false
             } catch {
                 message = error.localizedDescription
