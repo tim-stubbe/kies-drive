@@ -1063,14 +1063,20 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         DriveDiagnosticStore.append(.rerouteRequested, detail: "Abweichung \(Int(nearest)) m")
         Task {
             isRecalculating = true
+            defer { isRecalculating = false }
             if settings.voiceGuidance { speak("Die Route wird neu berechnet.") }
-            await calculate(from: location.coordinate, settings: settings)
-            if let errorMessage {
-                DriveDiagnosticStore.append(.rerouteFailed, detail: errorMessage)
-            } else {
+            // Keep the current route, station data and guidance visible while
+            // MapKit searches in the background. The Boolean result is the
+            // source of truth: a superseded/empty request may intentionally
+            // leave `errorMessage` nil and must not be reported as success.
+            let succeeded = await calculate(from: location.coordinate, settings: settings,
+                                            showLoading: false)
+            if succeeded {
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
+            } else {
+                DriveDiagnosticStore.append(.rerouteFailed,
+                                            detail: errorMessage ?? "Keine nutzbare neue Route")
             }
-            isRecalculating = false
         }
     }
 
