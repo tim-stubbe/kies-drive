@@ -63,10 +63,11 @@ final class DriveSettings: ObservableObject {
 }
 
 enum DriveAPIError: LocalizedError {
-    case configuration, twoFactorRequired, response(Int), server(String), invalidData
+    case configuration, insecureConfiguration, twoFactorRequired, response(Int), server(String), invalidData
     var errorDescription: String? {
         switch self {
         case .configuration: "Bitte melde dich bei Kies Drive an."
+        case .insecureConfiguration: "Der Kies-Drive-Server muss öffentlich HTTPS verwenden. HTTP ist nur im lokalen Netz oder über Tailscale erlaubt."
         case .twoFactorRequired: "Gib jetzt den Code aus deiner Authenticator-App ein."
         case .response(let code): "Serverfehler (HTTP \(code))."
         case .server(let message): message
@@ -79,9 +80,12 @@ enum DriveAPIError: LocalizedError {
 enum DriveAPI {
     private static func request(path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
         let settings = DriveSettings.shared
-        guard let session = AccountSessionStore.shared.session, !session.isEmpty,
-              let url = URL(string: settings.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path)
-        else { throw DriveAPIError.configuration }
+        guard let session = AccountSessionStore.shared.session, !session.isEmpty else {
+            throw DriveAPIError.configuration
+        }
+        guard let url = ServerEndpointPolicy.url(baseURL: settings.baseURL, path: path) else {
+            throw DriveAPIError.insecureConfiguration
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -100,8 +104,9 @@ enum DriveAPI {
 
     private static func authRequest(path: String, method: String = "POST", body: Data? = nil,
                                     authenticated: Bool = false) throws -> URLRequest {
-        let base = DriveSettings.shared.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let url = URL(string: base + path) else { throw DriveAPIError.configuration }
+        guard let url = ServerEndpointPolicy.url(baseURL: DriveSettings.shared.baseURL, path: path) else {
+            throw DriveAPIError.insecureConfiguration
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
@@ -242,6 +247,31 @@ enum DriveAPI {
         let body = try JSONSerialization.data(withJSONObject: ["ok": ok, "message": message as Any])
         _ = try await data(for: try request(path: "/api/navigation/remote/commands/\(id)/complete",
                                             method: "POST", body: body))
+    }
+}
+
+enum ServerEndpointPolicy {
+    static func url(baseURL: String, path: String) -> URL? {
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let components = URLComponents(string: base),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased(),
+              scheme == "https" || (scheme == "http" && isPrivateHost(host)) else { return nil }
+        let suffix = path.hasPrefix("/") ? path : "/" + path
+        return URL(string: base + suffix)
+    }
+
+    private static func isPrivateHost(_ host: String) -> Bool {
+        if host == "localhost" || host == "::1" || host.hasSuffix(".local") { return true }
+        let octets = host.split(separator: ".").compactMap { Int($0) }
+        guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else { return false }
+        if octets[0] == 10 || octets[0] == 127 { return true }
+        if octets[0] == 192 && octets[1] == 168 { return true }
+        if octets[0] == 172 && (16...31).contains(octets[1]) { return true }
+        // RFC 6598 shared space, used by Tailscale for tailnet addresses.
+        if octets[0] == 100 && (64...127).contains(octets[1]) { return true }
+        return false
     }
 }
 

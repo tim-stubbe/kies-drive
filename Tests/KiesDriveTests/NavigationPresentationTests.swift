@@ -280,6 +280,24 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(response.twoFactorEnabled)
     }
 
+    func testServerEndpointRequiresHTTPSOutsidePrivateNetworks() {
+        XCTAssertNotNil(ServerEndpointPolicy.url(baseURL: "https://drive.example.com", path: "/auth/login"))
+        XCTAssertNotNil(ServerEndpointPolicy.url(baseURL: "http://100.72.226.91:18080", path: "/auth/login"))
+        XCTAssertNotNil(ServerEndpointPolicy.url(baseURL: "http://192.168.1.20:8080", path: "/auth/login"))
+        XCTAssertNil(ServerEndpointPolicy.url(baseURL: "http://drive.example.com", path: "/auth/login"))
+        XCTAssertNil(ServerEndpointPolicy.url(baseURL: "ftp://drive.example.com", path: "/auth/login"))
+        XCTAssertEqual(ServerEndpointPolicy.url(
+            baseURL: "https://drive.example.com", path: "/stations?fuel=e10&radius=8"
+        )?.query, "fuel=e10&radius=8")
+    }
+
+    func testServerEndpointPreservesBasePathAndNormalisesSlash() throws {
+        let url = try XCTUnwrap(ServerEndpointPolicy.url(
+            baseURL: "https://drive.example.com/service/", path: "auth/login"
+        ))
+        XCTAssertEqual(url.absoluteString, "https://drive.example.com/service/auth/login")
+    }
+
     func testStepSelectionDoesNotJumpToNearbyFutureRamp() {
         let metrics = [
             NavigationStepMetric(distanceFromRoute: 4, remainingOnStep: 600),
