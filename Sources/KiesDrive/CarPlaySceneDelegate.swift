@@ -138,10 +138,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func showRouteOverview() {
-        guard let mapView, !RoutePlanner.shared.legs.isEmpty else { return }
+        guard let mapView else { return }
+        let polylines = visibleRoutePolylines
+        guard !polylines.isEmpty else { return }
         cameraMode = .overview
         mapView.setUserTrackingMode(.none, animated: false)
-        let rect = RoutePlanner.shared.legs.reduce(MKMapRect.null) { $0.union($1.polyline.boundingMapRect) }
+        let rect = polylines.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
         mapView.setVisibleMapRect(rect, edgePadding: .init(top: 90, left: 55, bottom: 90, right: 55), animated: true)
     }
 
@@ -210,24 +212,31 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func redrawRoute() {
         guard let mapView else { return }
         mapView.removeOverlays(mapView.overlays)
-        RoutePlanner.shared.legs.forEach { mapView.addOverlay($0.polyline, level: .aboveRoads) }
+        visibleRoutePolylines.forEach { mapView.addOverlay($0, level: .aboveRoads) }
         if mapView.userTrackingMode == .none { showRouteOverview() }
+    }
+
+    private var visibleRoutePolylines: [MKPolyline] {
+        let live = RoutePlanner.shared.legs.map(\.polyline)
+        return live.isEmpty ? RoutePlanner.shared.offlinePolylines : live
     }
 
     private func synchroniseNavigationSession() {
         let planner = RoutePlanner.shared
-        guard planner.isNavigating, let destination = planner.destination, !planner.legs.isEmpty else {
+        guard planner.isNavigating, let destination = planner.destination,
+              let fallback = visibleRoutePolylines.first?.coordinate else {
             navigationSession?.finishTrip()
             navigationSession = nil
             activeTrip = nil
             return
         }
         if navigationSession == nil, let mapTemplate {
-            let fallback = planner.legs[0].polyline.coordinate
             let origin = MKMapItem(placemark: MKPlacemark(coordinate: LocationService.shared.location?.coordinate ?? fallback))
+            let distance = planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance
+            let time = planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime
             let choice = CPRouteChoice(summaryVariants: [destination.name ?? "Route"],
-                                       additionalInformationVariants: [formatDistance(planner.totalDistance)],
-                                       selectionSummaryVariants: [formatTime(planner.totalTravelTime)])
+                                       additionalInformationVariants: [formatDistance(distance)],
+                                       selectionSummaryVariants: [formatTime(time)])
             let trip = CPTrip(origin: origin, destination: destination, routeChoices: [choice])
             activeTrip = trip
             navigationSession = mapTemplate.startNavigationSession(for: trip)
