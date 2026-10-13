@@ -142,6 +142,20 @@ enum RouteGeometryProgress {
         guard let total = distances.last, total > 0 else { return distances.map { _ in 0 } }
         return distances.map { $0 / total }
     }
+
+    static func nearestProgress(of coordinate: CLLocationCoordinate2D,
+                                on route: [CLLocationCoordinate2D]) -> (progress: Double, distance: Double)? {
+        guard route.count > 1 else { return nil }
+        let fractions = cumulativeFractions(route)
+        let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let match = route.enumerated().min(by: {
+            target.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
+            target.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
+        }) else { return nil }
+        let distance = target.distance(from: CLLocation(latitude: match.element.latitude,
+                                                         longitude: match.element.longitude))
+        return (fractions[match.offset], distance)
+    }
 }
 
 struct PlannedBreak: Identifiable, Equatable {

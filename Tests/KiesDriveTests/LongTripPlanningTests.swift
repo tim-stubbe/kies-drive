@@ -86,6 +86,19 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(progress[1], 1.0 / 11.0, accuracy: 0.01)
     }
 
+    func testCandidateIsReprojectedForEachComparedRoute() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.2)
+        ]
+        let projection = try XCTUnwrap(RouteGeometryProgress.nearestProgress(
+            of: .init(latitude: 50.001, longitude: 8.11), on: route
+        ))
+        XCTAssertEqual(projection.progress, 0.5, accuracy: 0.01)
+        XCTAssertLessThan(projection.distance, 9_000)
+    }
+
     func testUnknownTollNeverTurnsIntoInventedZero() async throws {
         let cost = try await UnknownTollProvider().tollCost(
             for: .init(routeID: "route", distanceMetres: 100_000, countries: ["DE"]),

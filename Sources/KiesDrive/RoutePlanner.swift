@@ -1070,7 +1070,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let mainTime = totalTravelTime
         let knownLimits = speedLimits.filter { $0.maxspeed != nil || $0.unlimited }
         let unlimitedFraction = knownLimits.isEmpty ? 0 : Double(knownLimits.filter(\.unlimited).count) / Double(knownLimits.count)
-        let candidates = breakCandidates(totalDistance: mainDistance)
+        let candidates = breakCandidates(along: legs)
         var inputs = [RoutePlanningInput(
             id: settings.avoidTolls ? "toll-avoiding" : "standard",
             title: settings.avoidTolls ? "Maut vermeiden" : "Schnellste Route",
@@ -1091,7 +1091,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 unlimitedMotorwayFraction: 0,
                 typicalUnlimitedSpeedKmh: 130,
                 toll: settings.avoidTolls ? researchedToll : .unknown(reason: "Mautvermeidung gewählt; Restmaut wird nicht als null angenommen."),
-                breakCandidates: []
+                breakCandidates: breakCandidates(along: [comparisonRoute])
             ))
         }
         let profile = VehicleProfile(
@@ -1126,22 +1126,24 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         buildLongTripPlan(settings: settings)
     }
 
-    private func breakCandidates(totalDistance: Double) -> [BreakCandidate] {
-        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
+    private func breakCandidates(along routes: [MKRoute]) -> [BreakCandidate] {
+        let routeCoordinates = routes.flatMap { sample($0.polyline, maximum: 160) }
         guard routeCoordinates.count > 1 else { return [] }
-        let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
         let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
-            let location = CLLocation(latitude: station.lat, longitude: station.lon)
-            guard let match = routeCoordinates.enumerated().min(by: {
-                location.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
-                location.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
-            }) else { return nil }
-            let detour = location.distance(from: CLLocation(latitude: match.element.latitude, longitude: match.element.longitude))
+            guard let projection = RouteGeometryProgress.nearestProgress(of: station.coordinate, on: routeCoordinates),
+                  projection.distance <= 4_000 else { return nil }
             return BreakCandidateFactory.fuelStation(
-                station, progress: routeProgress[match.offset], detourMetres: detour * 2
+                station, progress: projection.progress, detourMetres: projection.distance * 2
             )
         }
-        return (fuelCandidates + amenityBreakCandidates)
+        let amenities = amenityBreakCandidates.compactMap { candidate -> BreakCandidate? in
+            guard let projection = RouteGeometryProgress.nearestProgress(of: candidate.coordinate, on: routeCoordinates),
+                  projection.distance <= 4_000 else { return nil }
+            return .init(id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
+                         progress: projection.progress, detourMetres: projection.distance * 2,
+                         isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel)
+        }
+        return (fuelCandidates + amenities)
             .reduce(into: [String: BreakCandidate]()) { result, candidate in result[candidate.id] = candidate }
             .values.sorted { $0.progress < $1.progress }
     }
@@ -1269,7 +1271,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let previousStations = viaStations
             let previousLock = routeLockStore.activeLock
             viaStations.append(station)
-            let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(totalDistance: totalDistance)
+            let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(along: legs)
                 .map { ($0.id, $0.progress) })
             viaStations.sort { lhs, rhs in
                 (progressByID[lhs.id] ?? 1) < (progressByID[rhs.id] ?? 1)
