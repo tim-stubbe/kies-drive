@@ -242,6 +242,15 @@ enum NavigationDeviationPolicy {
     }
 }
 
+enum OfflineRouteRecoveryPolicy {
+    static let retryInterval: TimeInterval = 90
+
+    static func shouldAttempt(lastAttempt: Date?, now: Date = Date()) -> Bool {
+        guard let lastAttempt else { return true }
+        return now.timeIntervalSince(lastAttempt) >= retryInterval
+    }
+}
+
 struct OfflineGuidanceStep {
     let instruction: String
     let distance: CLLocationDistance

@@ -247,4 +247,15 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(progress.currentStepIndex, 0)
         XCTAssertEqual(progress.maneuverStepIndex, 1)
     }
+
+    func testOfflineRecoveryIsThrottled() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(OfflineRouteRecoveryPolicy.shouldAttempt(lastAttempt: nil, now: now))
+        XCTAssertFalse(OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: now.addingTimeInterval(-89), now: now
+        ))
+        XCTAssertTrue(OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: now.addingTimeInterval(-90), now: now
+        ))
+    }
 }

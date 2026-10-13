@@ -85,6 +85,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var lastRerouteAt: Date?
     private var lastAcceptedNavigationLocation: CLLocation?
     private var lastLocationRejectionLoggedAt: Date?
+    private var lastOfflineRecoveryAttempt: Date?
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
@@ -408,11 +409,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         activeRouteLock = lock
     }
 
-    func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings) async {
+    func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings,
+                   showLoading: Bool = true) async {
         guard let destination else { return }
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
-        isLoading = true; errorMessage = nil; stations = []
+        if showLoading { isLoading = true; stations = [] }
+        errorMessage = nil
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
             if let existing = routeLockStore.activeLock {
@@ -477,6 +480,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
             resetLiveNavigationProgress()
             isUsingOfflineGuidance = false
+            lastOfflineRecoveryAttempt = nil
             remainingDistanceMetres = totalDistance
             remainingTravelTime = totalTravelTime
             resetDeviationTracking()
@@ -484,7 +488,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             DriveDiagnosticStore.append(.routeCalculated, detail: "\(legs.count) Etappen · \(Int(totalDistance)) m")
             // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
             // duerfen Navigation und UI nicht mehr blockieren.
-            isLoading = false
+            if showLoading { isLoading = false }
             Task { [weak self] in
                 guard let self else { return }
                 await self.loadStations(fuel: settings.fuel)
@@ -500,8 +504,14 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
         } catch {
             guard calculationGeneration == routeCalculationGeneration else { return }
-            isLoading = false
-            errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)"
+            if showLoading {
+                isLoading = false
+                errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)"
+            } else {
+                // Cached guidance remains usable. A background reconnect must
+                // never cover the navigation UI with a transient network error.
+                errorMessage = nil
+            }
         }
     }
 
@@ -583,6 +593,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         resetLiveNavigationProgress()
         errorMessage = nil
         isUsingOfflineGuidance = true
+        lastOfflineRecoveryAttempt = Date()
         isNavigating = true
         hasArrived = false
         remainingDistanceMetres = cache.legs.reduce(0) { $0 + $1.distance }
@@ -613,6 +624,14 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
         let cachedTime = cache.legs.reduce(0) { $0 + $1.travelTime }
         remainingTravelTime = progress.remainingDistance / max(cachedDistance / max(cachedTime, 1), 1)
+
+        if OfflineRouteRecoveryPolicy.shouldAttempt(lastAttempt: lastOfflineRecoveryAttempt) {
+            lastOfflineRecoveryAttempt = Date()
+            Task { [weak self] in
+                guard let self, self.isUsingOfflineGuidance, self.isNavigating else { return }
+                await self.calculate(from: location.coordinate, settings: settings, showLoading: false)
+            }
+        }
 
         guard settings.voiceGuidance,
               let stage = NavigationAnnouncementStage.stage(
