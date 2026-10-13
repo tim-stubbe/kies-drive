@@ -93,8 +93,7 @@ enum NavigationSpeechFormatter {
 
         guard let distance else { return sentence(maneuver) }
         if distance <= 35 { return sentence("Jetzt, \(maneuver)") }
-        let rounded = max(50, Int((distance / 50).rounded()) * 50)
-        return sentence("In \(rounded) Metern, \(maneuver)")
+        return sentence("\(distancePrefix(distance)), \(maneuver)")
     }
 
     private static func replacing(_ pattern: String, in value: String, with replacement: String) -> String {
@@ -109,6 +108,19 @@ enum NavigationSpeechFormatter {
     private static func sentence(_ value: String) -> String {
         value.last.map { ".!?".contains($0) } == true ? value : value + "."
     }
+
+    private static func distancePrefix(_ distance: CLLocationDistance) -> String {
+        if distance >= 950 {
+            let kilometres = ((distance / 1_000) * 2).rounded() / 2
+            if kilometres == 1 { return "In einem Kilometer" }
+            let value = kilometres.rounded() == kilometres
+                ? String(Int(kilometres))
+                : String(format: "%.1f", kilometres).replacingOccurrences(of: ".", with: ",")
+            return "In \(value) Kilometern"
+        }
+        let rounded = max(50, Int((distance / 50).rounded()) * 50)
+        return "In \(rounded) Metern"
+    }
 }
 
 enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
@@ -118,10 +130,15 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
 
     static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
         guard distance.isFinite, distance >= 0 else { return nil }
-        if distance <= 45 { return .now }
-        let prepareDistance: CLLocationDistance = speedKmh >= 80 ? 350 : 220
+        let speedMetresPerSecond = max(0, speedKmh) / 3.6
+        // Time-based horizons keep exits safe at motorway speeds: at 200 km/h
+        // the first cue arrives around 35 seconds and the final cue around
+        // 2.5 seconds before the maneuver, rather than using city distances.
+        let nowDistance = min(140, max(45, speedMetresPerSecond * 2.5))
+        if distance <= nowDistance { return .now }
+        let prepareDistance = min(850, max(220, speedMetresPerSecond * 12))
         if distance <= prepareDistance { return .prepare }
-        let earlyDistance: CLLocationDistance = speedKmh >= 80 ? 900 : 500
+        let earlyDistance = min(2_500, max(500, speedMetresPerSecond * 35))
         if distance <= earlyDistance { return .early }
         return nil
     }

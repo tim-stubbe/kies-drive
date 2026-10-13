@@ -90,11 +90,21 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechUsesNaturalKilometreDistance() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Ausfahrt rechts nehmen", distance: 1_760),
+            "In 2 Kilometern, Ausfahrt rechts nehmen."
+        )
+    }
+
     func testAnnouncementStagesAdaptToRoadSpeed() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 120), .early)
         XCTAssertNil(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 50))
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 200, speedKmh: 50), .prepare)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 30, speedKmh: 50), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 1_700, speedKmh: 200), .early)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 650, speedKmh: 200), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 120, speedKmh: 200), .now)
     }
 
     func testRecentDestinationsDeduplicateAndKeepLatestFirst() {
