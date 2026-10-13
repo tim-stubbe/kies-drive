@@ -155,6 +155,36 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
     }
 
+    func testFuelPlannerRejectsStationBeyondSafeRange() {
+        let tooLate = BreakCandidate(id: "late", name: "Zu spät", coordinate: .init(),
+                                     progress: 0.62, detourMetres: 50, isOpen: true, supportsFuel: true)
+        let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+                                     tankCapacityLitres: 50, usableTankFraction: 0.8)
+        let stops = FuelStopPlanner().plan(distanceMetres: 700_000, consumptionLPer100km: 10,
+                                           vehicle: vehicle, candidates: [tooLate])
+        XCTAssertNil(stops.first?.candidate)
+        XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
+    }
+
+    func testFuelPlannerMeasuresEveryLegFromActualPreviousStop() {
+        let candidates = [
+            BreakCandidate(id: "first", name: "Erster Halt", coordinate: .init(),
+                           progress: 0.36, detourMetres: 100, isOpen: true, supportsFuel: true),
+            BreakCandidate(id: "unsafe-second", name: "Zu weit", coordinate: .init(),
+                           progress: 0.82, detourMetres: 50, isOpen: true, supportsFuel: true)
+        ]
+        let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+                                     tankCapacityLitres: 50, usableTankFraction: 0.8)
+        let stops = FuelStopPlanner().plan(distanceMetres: 1_000_000, consumptionLPer100km: 10,
+                                           vehicle: vehicle, candidates: candidates)
+        XCTAssertEqual(stops.first?.candidate?.id, "first")
+        XCTAssertFalse(stops.contains { $0.candidate?.id == "unsafe-second" })
+        let distances = zip([0.0] + stops.map(\.afterDistanceMetres),
+                            stops.map(\.afterDistanceMetres) + [1_000_000])
+            .map { $1 - $0 }
+        XCTAssertTrue(distances.allSatisfy { $0 <= 400_000 })
+    }
+
     func testFuelPlannerNeverTreatsPlainRestAreaAsFuelStation() {
         let restArea = BreakCandidate(id: "rest", name: "Rastplatz", coordinate: .init(),
                                       progress: 0.48, detourMetres: 50, isOpen: true)
@@ -171,7 +201,7 @@ final class LongTripPlanningTests: XCTestCase {
         let restArea = BreakCandidate(id: "rest", name: "Rastplatz", coordinate: .init(),
                                       progress: 0.4, detourMetres: 50, isOpen: true)
         let fuel = BreakCandidate(id: "fuel", name: "Autohof", coordinate: .init(),
-                                  progress: 0.5, detourMetres: 200, isOpen: true,
+                                  progress: 0.35, detourMetres: 200, isOpen: true,
                                   supportsFuel: true)
         let route = RoutePlanningInput(
             id: "holiday", title: "Urlaubsroute", distanceMetres: 700_000,

@@ -186,13 +186,22 @@ struct FuelStopPlanner {
         let usableLitres = vehicle.tankCapacityLitres * min(0.95, max(0.5, vehicle.usableTankFraction))
         let safeRange = usableLitres / consumptionLPer100km * 100_000
         guard safeRange > 0, distanceMetres > safeRange else { return [] }
-        let count = Int(ceil(distanceMetres / safeRange)) - 1
         var remaining = candidates.filter { $0.isOpen != false && $0.supportsFuel }
-        var lastProgress = 0.0
-        return (1...count).map { index in
-            let idealDistance = min(distanceMetres * 0.95, Double(index) * safeRange * 0.88)
+        var lastStopDistance = 0.0
+        var result: [PlannedFuelStop] = []
+        // Each leg is checked from the actual previous stop, not from a fixed
+        // whole-trip grid. This prevents a slightly late first station from
+        // making the following leg silently exceed the safe tank range.
+        while distanceMetres - lastStopDistance > safeRange {
+            let index = result.count + 1
+            let idealDistance = min(distanceMetres * 0.95, lastStopDistance + safeRange * 0.88)
+            let latestSafeDistance = min(distanceMetres, lastStopDistance + safeRange * 0.95)
             let idealProgress = idealDistance / distanceMetres
-            let ahead = remaining.filter { $0.progress > lastProgress + 0.03 }
+            let ahead = remaining.filter {
+                let candidateDistance = $0.progress * distanceMetres
+                return candidateDistance > lastStopDistance + distanceMetres * 0.03 &&
+                    candidateDistance <= latestSafeDistance
+            }
             let window = ahead.filter { abs($0.progress - idealProgress) <= 0.14 }
             let pool = window.isEmpty ? ahead : window
             let best = pool.min {
@@ -201,14 +210,17 @@ struct FuelStopPlanner {
             }
             if let best { remaining.removeAll { $0.id == best.id } }
             let progress = best?.progress ?? idealProgress
-            lastProgress = progress
-            return .init(
+            let stopDistance = distanceMetres * progress
+            result.append(.init(
                 id: "fuel-\(index)", candidate: best,
-                afterDistanceMetres: distanceMetres * progress, routeProgress: progress,
+                afterDistanceMetres: stopDistance, routeProgress: progress,
                 explanation: best.map { "Tankstopp vor der Reserve · ca. \(Int($0.detourMetres)) m Umweg" }
                     ?? "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
-            )
+            ))
+            guard stopDistance > lastStopDistance else { break }
+            lastStopDistance = stopDistance
         }
+        return result
     }
 }
 
