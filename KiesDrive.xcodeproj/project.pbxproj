@@ -441,6 +441,7 @@
 				DEVELOPMENT_TEAM = NGBW8LC6RA;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Sources/KiesDrive/Info-iOS-PersonalTeam.plist";
+				KIES_DRIVE_SERVER_URL = "http://100.72.226.91:18080";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -464,6 +465,7 @@
 				DEVELOPMENT_TEAM = NGBW8LC6RA;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Sources/KiesDrive/Info-iOS-PersonalTeam.plist";
+				KIES_DRIVE_SERVER_URL = "http://100.72.226.91:18080";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -502,6 +504,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Sources/KiesDrive/Info-macOS.plist";
+				KIES_DRIVE_SERVER_URL = "http://100.72.226.91:18080";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -521,6 +524,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Sources/KiesDrive/Info-macOS.plist";
+				KIES_DRIVE_SERVER_URL = "http://100.72.226.91:18080";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

@@ -5,7 +5,8 @@ import KiesDriveCore
 @MainActor
 final class DriveSettings: ObservableObject {
     static let shared = DriveSettings()
-    static let standaloneBaseURL = "http://100.72.226.91:18080"
+    nonisolated static let standaloneBaseURL = "http://100.72.226.91:18080"
+    nonisolated static let serverURLInfoKey = "KiesDriveServerURL"
     private static let legacyBaseURLs: Set<String> = [
         "https://100.72.226.91:8000",
         "http://100.72.226.91:8000",
@@ -28,14 +29,18 @@ final class DriveSettings: ObservableObject {
     @Published var targetSpeedKmh: Double { didSet { UserDefaults.standard.set(targetSpeedKmh, forKey: "drive.targetSpeedKmh") } }
 
     private init() {
+        let configuredBaseURL = Self.configuredBaseURL()
         let savedBaseURL = UserDefaults.standard.string(forKey: "drive.baseURL")
-        if let savedBaseURL, !Self.legacyBaseURLs.contains(savedBaseURL) {
+        if let savedBaseURL,
+           savedBaseURL != Self.standaloneBaseURL,
+           !Self.legacyBaseURLs.contains(savedBaseURL) {
             baseURL = savedBaseURL
         } else {
-            // Kies Drive is now an independent TrueNAS app. Migrate existing
-            // installations away from the former monolithic Kies endpoint.
-            baseURL = Self.standaloneBaseURL
-            UserDefaults.standard.set(Self.standaloneBaseURL, forKey: "drive.baseURL")
+            // Release builds can provide the public HTTPS address through the
+            // Info.plist. Existing development installations using the old
+            // built-in address automatically follow that managed setting.
+            baseURL = configuredBaseURL
+            UserDefaults.standard.set(configuredBaseURL, forKey: "drive.baseURL")
         }
         fuel = FuelKind(rawValue: UserDefaults.standard.string(forKey: "drive.fuel") ?? "diesel") ?? .diesel
         avoidTolls = UserDefaults.standard.object(forKey: "drive.avoidTolls") as? Bool ?? true
@@ -50,6 +55,17 @@ final class DriveSettings: ObservableObject {
         tankCapacityL = UserDefaults.standard.object(forKey: "drive.tankCapacityL") as? Double ?? 50.0
         fuelPricePerLitre = UserDefaults.standard.object(forKey: "drive.fuelPricePerLitre") as? Double ?? 1.75
         targetSpeedKmh = UserDefaults.standard.object(forKey: "drive.targetSpeedKmh") as? Double ?? 150
+    }
+
+    nonisolated static func configuredBaseURL(info: [String: Any] = Bundle.main.infoDictionary ?? [:]) -> String {
+        guard let value = info[serverURLInfoKey] as? String else { return standaloneBaseURL }
+        let candidate = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty,
+              !candidate.contains("$("),
+              ServerEndpointPolicy.url(baseURL: candidate, path: "/healthz") != nil else {
+            return standaloneBaseURL
+        }
+        return candidate.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
     var isReady: Bool { !baseURL.isEmpty && AccountSessionStore.shared.session != nil }
     /// App-Version + Build, z.B. "1.0 (3)" - zur Diagnose, ob ein Gerät noch

@@ -3,6 +3,21 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testManagedServerURLUsesProductionHTTPSConfiguration() {
+        XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
+            DriveSettings.serverURLInfoKey: " https://drive.example.test/ "
+        ]), "https://drive.example.test")
+    }
+
+    func testManagedServerURLRejectsUnsafeOrUnexpandedConfiguration() {
+        XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
+            DriveSettings.serverURLInfoKey: "http://drive.example.test"
+        ]), DriveSettings.standaloneBaseURL)
+        XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
+            DriveSettings.serverURLInfoKey: "$(KIES_DRIVE_SERVER_URL)"
+        ]), DriveSettings.standaloneBaseURL)
+    }
+
     func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
         XCTAssertEqual(NavigationMotionPolicy.reliableSpeed(
             speedMetresPerSecond: 27, speedAccuracy: 1.5, horizontalAccuracy: 12), 27)

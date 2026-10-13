@@ -31,6 +31,9 @@ install before that approval.
   Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
   `KIES_DRIVE_PUBLIC_URL` muss die öffentliche HTTPS-Adresse des gesamten
   Dienstes sein, damit Konto-Bestätigung und MCP-OAuth dieselbe Domain nutzen.
+  Für einen öffentlichen App-Build wird dieselbe Adresse als Xcode-Buildwert
+  `KIES_DRIVE_SERVER_URL=https://…` gesetzt. Die App übernimmt sie automatisch;
+  Nutzer sehen weder Serveradresse noch Zugangstoken.
 - Mautrecherche: `SEARXNG_URL` auf die interne URL der SearXNG-Instanz setzen.
   Kies Drive übernimmt nur ausdrücklich als Gesamtmaut bezeichnete Beträge aus
   HTTPS-Quellen; andernfalls bleibt der Preis bewusst unbekannt.
