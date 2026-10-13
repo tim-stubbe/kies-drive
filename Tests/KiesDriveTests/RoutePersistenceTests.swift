@@ -4,6 +4,20 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testRouteLockTransactionCanRestoreEmptySnapshot() {
+        let suite = "RouteLockTransaction-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RouteLockStore(defaults: defaults)
+        store.save(.croatiaSplit())
+        XCTAssertNotNil(store.activeLock)
+
+        store.replace(with: nil)
+
+        XCTAssertNil(store.activeLock)
+        XCTAssertNil(RouteLockStore(defaults: defaults).activeLock)
+    }
+
     func testInsertedStopKeepsRouteOrderAndInheritedSegmentRules() {
         let now = Date(timeIntervalSince1970: 1)
         let avoidMotorway = LockedRouteOptions(avoidTolls: false, avoidHighways: true)

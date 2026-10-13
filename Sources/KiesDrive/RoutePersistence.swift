@@ -202,6 +202,17 @@ final class RouteLockStore: ObservableObject {
         if let data = try? JSONEncoder().encode(lock) { defaults.set(data, forKey: key) }
     }
 
+    /// Restores a transaction snapshot. Used when adding/removing a stop made
+    /// the route impossible, so persisted constraints and visible UI agree.
+    func replace(with lock: ActiveRouteLock?) {
+        guard let lock else {
+            activeLock = nil
+            defaults.removeObject(forKey: key)
+            return
+        }
+        save(lock)
+    }
+
     func update(_ change: (inout ActiveRouteLock) -> Void) {
         guard var lock = activeLock else { return }
         change(&lock)

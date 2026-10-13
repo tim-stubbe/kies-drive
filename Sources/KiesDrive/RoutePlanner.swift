@@ -386,6 +386,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
+        let previousLock = routeLockStore.activeLock
         // A user may add a stop while merely previewing a calculated route,
         // before tapping Start. Materialise the lock here so the action never
         // appears to succeed while silently doing nothing.
@@ -398,8 +399,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
                              coordinate: coordinate)
         routeSearchResults = []
-        await calculate(from: start, settings: settings)
-        if !legs.isEmpty { startNavigation() }
+        let succeeded = await calculate(from: start, settings: settings)
+        guard succeeded else {
+            routeLockStore.replace(with: previousLock)
+            activeRouteLock = previousLock
+            return
+        }
+        startNavigation()
     }
 
     /// Every user-selected stop is written into the persistent trip lock. This
@@ -425,9 +431,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         activeRouteLock = lock
     }
 
+    @discardableResult
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings,
-                   showLoading: Bool = true) async {
-        guard let destination else { return }
+                   showLoading: Bool = true) async -> Bool {
+        guard let destination else { return false }
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
         if showLoading { isLoading = true; stations = [] }
@@ -450,7 +457,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let lockedWaypoints = lock?.waypoints.filter { $0.required && !visited.contains($0.id) } ?? []
             if viaStations.isEmpty && lockedWaypoints.isEmpty {
                 let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
-                guard calculationGeneration == routeCalculationGeneration else { return }
+                guard calculationGeneration == routeCalculationGeneration else { return false }
                 // A strict trip corridor may reject every MapKit alternative.
                 // Never replace an active, still usable route with an empty
                 // result; retaining it lets guidance continue and retry later.
@@ -464,7 +471,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                     from: startItem, to: destination, settings: settings,
                     alternates: false, avoidTollsOverride: !settings.avoidTolls
                 ).first
-                guard calculationGeneration == routeCalculationGeneration else { return }
+                guard calculationGeneration == routeCalculationGeneration else { return false }
             } else {
                 // MapKit kennt keine mehrgliedrigen Routen als ein einziges Objekt.
                 // Daher Teilstrecken sequentiell (Start→wp1→wp2→…→Ziel) berechnen.
@@ -491,7 +498,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                                                             alternates: false, lockedOptions: lockedOptions).first else {
                         throw DriveAPIError.invalidData
                     }
-                    guard calculationGeneration == routeCalculationGeneration else { return }
+                    guard calculationGeneration == routeCalculationGeneration else { return false }
                     newLegs.append(leg)
                 }
                 legs = newLegs
@@ -522,8 +529,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 self.buildLongTripPlan(settings: settings)
                 self.cacheForOffline()
             }
+            return true
         } catch {
-            guard calculationGeneration == routeCalculationGeneration else { return }
+            guard calculationGeneration == routeCalculationGeneration else { return false }
             if showLoading {
                 isLoading = false
                 errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)"
@@ -532,6 +540,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 // never cover the navigation UI with a transient network error.
                 errorMessage = nil
             }
+            return false
         }
     }
 
@@ -1208,6 +1217,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// wenn sie bereits als Zwischenstopp gesetzt ist) und berechnet die
     /// Route neu.
     func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
+        let previousStations = viaStations
+        let previousLock = routeLockStore.activeLock
         if let index = viaStations.firstIndex(where: { $0.id == station.id }) {
             viaStations.remove(at: index)
             routeLockStore.update { lock in
@@ -1222,13 +1233,20 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 coordinate: station.coordinate
             )
         }
-        await calculate(from: start, settings: settings)
+        guard await calculate(from: start, settings: settings) else {
+            viaStations = previousStations
+            routeLockStore.replace(with: previousLock)
+            activeRouteLock = previousLock
+            return
+        }
     }
 
     func addPlannedBreak(_ plannedBreak: PlannedBreak, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
         guard let candidate = plannedBreak.candidate else { return }
         if let station = stations.first(where: { $0.id == candidate.id }) {
             guard !viaStations.contains(where: { $0.id == station.id }) else { return }
+            let previousStations = viaStations
+            let previousLock = routeLockStore.activeLock
             viaStations.append(station)
             let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(totalDistance: totalDistance)
                 .map { ($0.id, $0.progress) })
@@ -1240,7 +1258,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate
             )
-            await calculate(from: start, settings: settings)
+            guard await calculate(from: start, settings: settings) else {
+                viaStations = previousStations
+                routeLockStore.replace(with: previousLock)
+                activeRouteLock = previousLock
+                return
+            }
         } else {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
             item.name = candidate.name
