@@ -1830,6 +1830,7 @@ private struct AccountWelcomeView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var totpCode = ""
+    @State private var needsTwoFactor = false
     @State private var isWorking = false
     @State private var message: String?
     @State private var isError = false
@@ -1854,7 +1855,13 @@ private struct AccountWelcomeView: View {
                     VStack(spacing: 16) {
                         Picker("Konto", selection: $mode) {
                             ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                        }.pickerStyle(.segmented)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: mode) { _, _ in
+                            needsTwoFactor = false
+                            totpCode = ""
+                            message = nil
+                        }
 
                         #if os(iOS)
                         TextField("E-Mail-Adresse", text: $email)
@@ -1866,7 +1873,7 @@ private struct AccountWelcomeView: View {
                         #endif
                         SecureField("Passwort (mindestens 12 Zeichen)", text: $password)
                             .textContentType(mode == .login ? .password : .newPassword)
-                        if mode == .login {
+                        if mode == .login && needsTwoFactor {
                             #if os(iOS)
                             TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
                                 .textContentType(.oneTimeCode).textInputAutocapitalization(.characters)
@@ -1943,6 +1950,10 @@ private struct AccountWelcomeView: View {
                 } else {
                     _ = try await DriveAPI.login(email: email, password: password, totpCode: totpCode)
                 }
+            } catch DriveAPIError.twoFactorRequired {
+                needsTwoFactor = true
+                message = "Dein Konto ist geschützt. Gib den Code aus deiner Authenticator-App ein."
+                isError = false
             } catch {
                 message = error.localizedDescription
                 isError = true

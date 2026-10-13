@@ -63,10 +63,11 @@ final class DriveSettings: ObservableObject {
 }
 
 enum DriveAPIError: LocalizedError {
-    case configuration, response(Int), server(String), invalidData
+    case configuration, twoFactorRequired, response(Int), server(String), invalidData
     var errorDescription: String? {
         switch self {
         case .configuration: "Bitte melde dich bei Kies Drive an."
+        case .twoFactorRequired: "Gib jetzt den Code aus deiner Authenticator-App ein."
         case .response(let code): "Serverfehler (HTTP \(code))."
         case .server(let message): message
         case .invalidData: "Die Serverantwort konnte nicht gelesen werden."
@@ -92,6 +93,7 @@ enum DriveAPI {
     private static func data(for request: URLRequest) async throws -> Data {
         let (data, response) = try await KiesHTTP.session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw DriveAPIError.invalidData }
+        if http.statusCode == 401 { AccountSessionStore.shared.signOut() }
         guard 200..<300 ~= http.statusCode else { throw DriveAPIError.response(http.statusCode) }
         return data
     }
@@ -115,6 +117,10 @@ enum DriveAPI {
         let (data, response) = try await KiesHTTP.session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw DriveAPIError.invalidData }
         guard 200..<300 ~= http.statusCode else {
+            if request.value(forHTTPHeaderField: "Authorization") != nil && http.statusCode == 401 {
+                AccountSessionStore.shared.signOut()
+            }
+            if http.statusCode == 428 { throw DriveAPIError.twoFactorRequired }
             let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
             throw DriveAPIError.server(detail ?? "Anmeldung fehlgeschlagen (HTTP \(http.statusCode)).")
         }

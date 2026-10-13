@@ -82,7 +82,9 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
     recovery_codes = enabled.json()["recovery_codes"]
     assert len(recovery_codes) == 8
 
-    assert client.post("/auth/login", json={"email": email, "password": password}).status_code == 401
+    two_factor_prompt = client.post("/auth/login", json={"email": email, "password": password})
+    assert two_factor_prompt.status_code == 428
+    assert two_factor_prompt.json()["detail"] == "Zwei-Faktor-Code erforderlich."
     signed_in = client.post("/auth/login", json={
         "email": email, "password": password, "totp_code": pyotp.TOTP(secret).now()
     })

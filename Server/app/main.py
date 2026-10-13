@@ -316,6 +316,8 @@ def login(payload: LoginRequest, request: Request):
             raise HTTPException(403, "Bitte bestätige zuerst deine E-Mail-Adresse.")
         if user["totp_secret"]:
             supplied = payload.totp_code or ""
+            if not supplied:
+                raise HTTPException(428, "Zwei-Faktor-Code erforderlich.")
             if not totp_matches(user["totp_secret"], supplied) and not consume_recovery_code(conn, user["id"], supplied):
                 raise HTTPException(401, "Der Authenticator- oder Wiederherstellungscode fehlt oder ist ungültig.")
         raw, expires_at = create_session(conn, user["id"])
