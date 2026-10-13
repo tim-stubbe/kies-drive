@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 struct DriveCoordinate: Codable, Equatable, Sendable {
     let latitude: Double
@@ -9,6 +10,42 @@ struct DriveCoordinate: Codable, Equatable, Sendable {
 extension DriveCoordinate {
     var clLocationCoordinate: CLLocationCoordinate2D {
         .init(latitude: latitude, longitude: longitude)
+    }
+}
+
+enum RouteCorridorPolicy {
+    /// Accepts a reroute when almost all of its sampled geometry remains near
+    /// the persisted corridor polyline. Measuring against line segments is
+    /// essential: stored corridor anchors can be many kilometres apart on a
+    /// long holiday route, so endpoint-only checks reject the road between
+    /// two perfectly valid anchors.
+    static func contains(route: [CLLocationCoordinate2D], corridor: [DriveCoordinate],
+                         widthMetres: CLLocationDistance,
+                         requiredFraction: Double = 0.9) -> Bool {
+        guard !route.isEmpty, corridor.count >= 2, widthMetres > 0 else { return false }
+        let corridorPoints = corridor.map { MKMapPoint($0.clLocationCoordinate) }
+        let allowedFraction = min(1, max(0, requiredFraction))
+        let insideCount = route.reduce(into: 0) { count, coordinate in
+            let point = MKMapPoint(coordinate)
+            var nearest = CLLocationDistance.greatestFiniteMagnitude
+            for index in 0..<(corridorPoints.count - 1) {
+                nearest = min(nearest, distance(point, toSegmentFrom: corridorPoints[index],
+                                                to: corridorPoints[index + 1]))
+            }
+            if nearest <= widthMetres { count += 1 }
+        }
+        return Double(insideCount) / Double(route.count) >= allowedFraction
+    }
+
+    private static func distance(_ point: MKMapPoint, toSegmentFrom start: MKMapPoint,
+                                 to end: MKMapPoint) -> CLLocationDistance {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        let fraction = lengthSquared == 0 ? 0 : max(0, min(1,
+            ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+        let projection = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+        return point.distance(to: projection)
     }
 }
 

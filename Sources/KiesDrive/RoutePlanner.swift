@@ -1122,15 +1122,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     private func routeInsideLockedCorridor(_ route: MKRoute, points: [DriveCoordinate], width: Double) -> Bool {
-        let anchors = points.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         let routePoints = sample(route.polyline, maximum: 100)
-        guard !anchors.isEmpty, !routePoints.isEmpty else { return false }
         // Einzelne Anschlussstellen duerfen den Korridor leicht verlassen;
         // mindestens 90 % der Neuberechnung muessen innerhalb bleiben.
-        let inside = routePoints.filter { coordinate in
-            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            return anchors.contains { $0.distance(from: location) <= width }
-        }.count
-        return Double(inside) / Double(routePoints.count) >= 0.9
+        return RouteCorridorPolicy.contains(route: routePoints, corridor: points,
+                                            widthMetres: width, requiredFraction: 0.9)
     }
 }

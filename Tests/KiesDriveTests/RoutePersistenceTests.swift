@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import Kies_Drive
 
 @MainActor
@@ -109,6 +110,32 @@ final class RoutePersistenceTests: XCTestCase {
 
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 0)), ["one"])
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
+    }
+
+    func testSparseCorridorAcceptsRoadBetweenStoredAnchors() {
+        let corridor = [
+            DriveCoordinate(latitude: 50, longitude: 8),
+            DriveCoordinate(latitude: 50, longitude: 8.4),
+        ]
+        let route = (0...20).map {
+            CLLocationCoordinate2D(latitude: 50.001, longitude: 8 + Double($0) * 0.02)
+        }
+
+        XCTAssertTrue(RouteCorridorPolicy.contains(route: route, corridor: corridor,
+                                                   widthMetres: 2_000))
+    }
+
+    func testCorridorRejectsSubstantialDeparture() {
+        let corridor = [
+            DriveCoordinate(latitude: 50, longitude: 8),
+            DriveCoordinate(latitude: 50, longitude: 8.4),
+        ]
+        let route = (0...20).map {
+            CLLocationCoordinate2D(latitude: 50.2, longitude: 8 + Double($0) * 0.02)
+        }
+
+        XCTAssertFalse(RouteCorridorPolicy.contains(route: route, corridor: corridor,
+                                                    widthMetres: 2_000))
     }
 
     func testOldOfflineCacheWithoutGeometryStillDecodes() throws {
