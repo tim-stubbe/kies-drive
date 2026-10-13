@@ -22,7 +22,7 @@ final class OfflineMapPackageTests: XCTestCase {
     func testInstallActivateResolveAndRemovePackage() throws {
         try writeManifest(id: "alpen-2026")
         let tile = source.appendingPathComponent("tiles/8/132/87.png")
-        try Data([1, 2, 3]).write(to: tile)
+        try validPNG().write(to: tile)
         let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
 
         let installed = try store.install(from: source)
@@ -44,6 +44,23 @@ final class OfflineMapPackageTests: XCTestCase {
         try FileManager.default.removeItem(at: source.appendingPathComponent("tiles"))
         try writeManifest(id: "safe")
         XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
+    }
+
+    func testRejectsEmptyCorruptAndOutOfRangeTilePackages() throws {
+        try writeManifest(id: "empty")
+        XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
+
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("tiles/8/132/87.png"))
+        XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
+
+        try FileManager.default.createDirectory(at: source.appendingPathComponent("tiles/7/66"),
+                                                withIntermediateDirectories: true)
+        try validPNG().write(to: source.appendingPathComponent("tiles/7/66/43.png"))
+        XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
+    }
+
+    private func validPNG() -> Data {
+        Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
     }
 
     private func writeManifest(id: String) throws {

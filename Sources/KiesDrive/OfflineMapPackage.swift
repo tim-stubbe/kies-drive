@@ -54,6 +54,7 @@ enum OfflineMapPackageError: LocalizedError {
     case missingManifest
     case invalidManifest
     case missingTiles
+    case invalidTiles
     case packageAlreadyExists
 
     var errorDescription: String? {
@@ -61,6 +62,7 @@ enum OfflineMapPackageError: LocalizedError {
         case .missingManifest: "Im gewählten Ordner fehlt manifest.json."
         case .invalidManifest: "Das Kartenpaket hat ungültige oder nicht unterstützte Metadaten."
         case .missingTiles: "Im Kartenpaket fehlt der Ordner tiles mit Kartenkacheln."
+        case .invalidTiles: "Das Kartenpaket enthält keine gültige PNG-Kachel im angegebenen Zoombereich."
         case .packageAlreadyExists: "Ein Kartenpaket mit dieser Kennung ist bereits installiert."
         }
     }
@@ -149,11 +151,42 @@ final class OfflineMapPackageStore: ObservableObject {
         guard fileManager.fileExists(atPath: tilesURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw OfflineMapPackageError.missingTiles
         }
+        guard containsValidTile(in: tilesURL, manifest: manifest, fileManager: fileManager) else {
+            throw OfflineMapPackageError.invalidTiles
+        }
         return InstalledOfflineMapPackage(
             manifest: manifest,
             directoryURL: url,
             byteCount: directorySize(at: url, fileManager: fileManager)
         )
+    }
+
+    private static func containsValidTile(in tilesURL: URL, manifest: OfflineMapManifest,
+                                          fileManager: FileManager) -> Bool {
+        guard let enumerator = fileManager.enumerator(
+            at: tilesURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let rootComponents = tilesURL.resolvingSymlinksInPath().pathComponents
+        for case let tileURL as URL in enumerator {
+            guard tileURL.pathExtension.lowercased() == "png",
+                  let values = try? tileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                  values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            let tileComponents = tileURL.resolvingSymlinksInPath().pathComponents
+            guard tileComponents.starts(with: rootComponents) else { continue }
+            let relative = tileComponents.dropFirst(rootComponents.count)
+            guard relative.count == 3,
+                  let zoom = Int(relative[relative.startIndex]),
+                  let x = Int(relative[relative.index(after: relative.startIndex)]),
+                  let y = Int(tileURL.deletingPathExtension().lastPathComponent),
+                  (manifest.minimumZoom...manifest.maximumZoom).contains(zoom), x >= 0, y >= 0,
+                  let data = try? Data(contentsOf: tileURL, options: .mappedIfSafe),
+                  data.count > pngSignature.count, data.prefix(pngSignature.count) == pngSignature else { continue }
+            return true
+        }
+        return false
     }
 
     private static func directorySize(at url: URL, fileManager: FileManager) -> Int64 {
