@@ -126,6 +126,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         stops.image = UIImage(systemName: "list.bullet")
         let audio = CPMapButton { button in
             DriveSettings.shared.voiceGuidance.toggle()
+            RoutePlanner.shared.setVoiceGuidanceEnabled(DriveSettings.shared.voiceGuidance)
             button.image = UIImage(systemName: DriveSettings.shared.voiceGuidance
                                    ? "speaker.wave.2.fill" : "speaker.slash.fill")
         }
@@ -151,6 +152,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func showDestinationsAndStops() {
         let planner = RoutePlanner.shared
         var items: [CPListItem] = []
+        var routeSearchItems: [CPListItem] = []
         let home = DriveSettings.shared.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !home.isEmpty {
             let item = CPListItem(text: "Zuhause", detailText: home,
@@ -183,6 +185,43 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 Task {
                     await self?.navigate(to: recent)
                     completion()
+                }
+            }
+            items.append(item)
+        }
+        for stop in planner.removableRouteStops.prefix(3) {
+            let item = CPListItem(text: stop.name, detailText: "Zwischenstopp entfernen",
+                                  image: UIImage(systemName: "minus.circle.fill"))
+            item.handler = { [weak self] _, completion in
+                Task {
+                    guard let start = LocationService.shared.location?.coordinate else {
+                        completion()
+                        self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                        return
+                    }
+                    let succeeded = await planner.removeRouteStop(id: stop.id, from: start, settings: .shared)
+                    completion()
+                    if succeeded { self?.showDestinationsAndStopsReplacingCurrentList() }
+                    else { self?.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht entfernt werden.") }
+                }
+            }
+            items.append(item)
+        }
+        for station in planner.viaStations.prefix(2) {
+            let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
+                                  detailText: "Tankstopp entfernen",
+                                  image: UIImage(systemName: "fuelpump.slash.fill"))
+            item.handler = { [weak self] _, completion in
+                Task {
+                    guard let start = LocationService.shared.location?.coordinate else {
+                        completion()
+                        self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                        return
+                    }
+                    let succeeded = await planner.toggleWaypoint(station, from: start, settings: .shared)
+                    completion()
+                    if succeeded { self?.showDestinationsAndStopsReplacingCurrentList() }
+                    else { self?.showFailure(planner.errorMessage ?? "Der Tankstopp konnte nicht entfernt werden.") }
                 }
             }
             items.append(item)
@@ -222,14 +261,24 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                         }
                     }
                 }
-                items.append(item)
+                routeSearchItems.append(item)
             }
         }
+        // CarPlay limits list length while driving. Always reserve the final
+        // slots for route actions so a long favorites/history list can never
+        // hide McDonald's, food or rest-area search.
+        items = Array(items.prefix(max(0, 12 - routeSearchItems.count))) + routeSearchItems
         if items.isEmpty {
             items = [CPListItem(text: "Noch keine Ziele", detailText: "Lege Zuhause oder ein Ziel auf dem iPhone fest.")]
         }
-        let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: Array(items.prefix(12)))])
+        let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(list, animated: true, completion: nil)
+    }
+
+    private func showDestinationsAndStopsReplacingCurrentList() {
+        interfaceController?.popTemplate(animated: false, completion: { [weak self] _, _ in
+            self?.showDestinationsAndStops()
+        })
     }
 
     private func navigateHome(_ address: String) async {
@@ -366,6 +415,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         session.upcomingManeuvers = instructions.enumerated().map { index, instruction in
             let maneuver = CPManeuver()
             maneuver.instructionVariants = [instruction]
+            let presentation = NavigationManeuverPresentation(instruction)
+            maneuver.symbolImage = UIImage(systemName: presentation.direction.symbolName)
             if index == 0 {
                 maneuver.initialTravelEstimates = CPTravelEstimates(
                     distanceRemaining: Measurement(value: max(planner.nextManeuverDistance ?? 0, 0),
