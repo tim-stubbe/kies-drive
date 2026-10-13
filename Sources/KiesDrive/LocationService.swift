@@ -44,6 +44,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #endif
         manager.startUpdatingLocation()
         if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
+        DriveRemoteBridge.shared.start()
         #endif
     }
 

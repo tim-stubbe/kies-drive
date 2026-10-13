@@ -71,16 +71,44 @@ enum JSONValue: Codable {
     var object: [String: JSONValue]? { if case .object(let value) = self { value } else { nil } }
 }
 
+enum DriveRemoteSyncPolicy {
+    static func interval(navigationActive: Bool) -> TimeInterval { navigationActive ? 5 : 15 }
+
+    static func accepts(_ location: CLLocation) -> Bool {
+        location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 100 &&
+        abs(location.timestamp.timeIntervalSinceNow) <= 30
+    }
+}
+
 @MainActor
 final class DriveRemoteBridge {
     static let shared = DriveRemoteBridge()
     private var lastSync = Date.distantPast
     private var handledCommandIDs: Set<Int> = []
     private var syncing = false
+    private var pollingTask: Task<Void, Never>?
+
+    func start() {
+        guard pollingTask == nil else { return }
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let planner = RoutePlanner.shared
+                if DriveSettings.shared.isReady,
+                   let location = LocationService.shared.location,
+                   DriveRemoteSyncPolicy.accepts(location) {
+                    await self.sync(location: location)
+                }
+                let interval = DriveRemoteSyncPolicy.interval(navigationActive: planner.isNavigating)
+                try? await Task.sleep(for: .seconds(interval))
+            }
+        }
+    }
 
     func sync(location: CLLocation) async {
-        guard DriveSettings.shared.isReady, !syncing,
-              Date().timeIntervalSince(lastSync) >= 5 else { return }
+        let interval = DriveRemoteSyncPolicy.interval(navigationActive: RoutePlanner.shared.isNavigating)
+        guard DriveSettings.shared.isReady, DriveRemoteSyncPolicy.accepts(location), !syncing,
+              Date().timeIntervalSince(lastSync) >= interval else { return }
         syncing = true
         defer { syncing = false; lastSync = Date() }
         let planner = RoutePlanner.shared
@@ -104,6 +132,9 @@ final class DriveRemoteBridge {
             try await DriveAPI.publishRemoteState(state)
             for command in try await DriveAPI.remoteCommands() where !handledCommandIDs.contains(command.id) {
                 handledCommandIDs.insert(command.id)
+                if handledCommandIDs.count > 256 {
+                    handledCommandIDs = Set(handledCommandIDs.sorted().suffix(128))
+                }
                 do {
                     try await execute(command, at: location.coordinate)
                     try await DriveAPI.completeRemoteCommand(command.id, ok: true, message: "In Kies Drive ausgeführt")

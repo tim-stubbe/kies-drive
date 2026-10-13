@@ -23,6 +23,19 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 20), 12)
         XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 30), 8)
     }
+
+    func testRemoteSyncPolicyIsFastOnlyDuringNavigationAndRejectsBadFixes() {
+        XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: true), 5)
+        XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: false), 15)
+        XCTAssertTrue(DriveRemoteSyncPolicy.accepts(CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 20, verticalAccuracy: 20, timestamp: Date()
+        )))
+        XCTAssertFalse(DriveRemoteSyncPolicy.accepts(CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 250, verticalAccuracy: 20, timestamp: Date()
+        )))
+    }
     func testExitNumberAndDirectionAreExtracted() {
         let presentation = NavigationManeuverPresentation("Ausfahrt 69 rechts Richtung Neufahrn nehmen")
         XCTAssertEqual(presentation.exitLabel, "Ausfahrt 69")
