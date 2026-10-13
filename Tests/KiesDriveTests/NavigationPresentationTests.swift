@@ -230,6 +230,15 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 12), 2)
     }
 
+    func testStepRecoveryDoesNotSnapToDistantRouteCrossing() {
+        var metrics = Array(repeating: NavigationStepMetric(distanceFromRoute: 600, remainingOnStep: 0),
+                            count: 30)
+        metrics[3] = .init(distanceFromRoute: 35, remainingOnStep: 400)
+        metrics[25] = .init(distanceFromRoute: 2, remainingOnStep: 20_000)
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(current: 0, metrics: metrics,
+                                                                    transitionRadius: 12), 3)
+    }
+
     func testOfflineGuidanceFindsNextManeuverAlongCachedGeometry() throws {
         let steps = [
             OfflineGuidanceStep(instruction: "", distance: 1_000, coordinates: [

@@ -192,6 +192,10 @@ struct NavigationStepMetric: Equatable {
 /// (parallel carriageway, bridge or cloverleaf ramp) is not enough to skip
 /// ahead; normal advancement is allowed only at the current step's end.
 enum NavigationStepSelectionPolicy {
+    /// Prevents a crossing or parallel piece of the same long route from
+    /// snapping guidance hours ahead after one inaccurate tunnel fix.
+    private static let maximumRecoveryStepAdvance = 16
+
     static func selectedIndex(current: Int, metrics: [NavigationStepMetric],
                               transitionRadius: CLLocationDistance) -> Int {
         guard metrics.indices.contains(current) else { return 0 }
@@ -199,8 +203,9 @@ enum NavigationStepSelectionPolicy {
 
         // A large discontinuity is the explicit recovery path after a tunnel,
         // long pause or sparse background update. Recovery only moves forward.
+        let recoveryEnd = min(metrics.count, current + maximumRecoveryStepAdvance + 1)
         if metrics[current].distanceFromRoute > 250,
-           let recovered = metrics.indices.dropFirst(current).min(by: {
+           let recovered = (current..<recoveryEnd).min(by: {
                metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
            }), metrics[recovered].distanceFromRoute + 80 < metrics[current].distanceFromRoute {
             return recovered
