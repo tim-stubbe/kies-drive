@@ -237,3 +237,14 @@ final class RouteLockStore: ObservableObject {
         return lock
     }
 }
+
+enum RouteWaypointProgressPolicy {
+    /// Keeps persisted visit order stable and appends newly passed mandatory
+    /// points exactly once when a route calculation is committed.
+    static func merging(existing: [String]?, newlyPassed: Set<String>) -> [String] {
+        var result = existing ?? []
+        let known = Set(result)
+        result.append(contentsOf: newlyPassed.subtracting(known).sorted())
+        return result
+    }
+}

@@ -496,20 +496,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         errorMessage = nil
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
-            if let existing = routeLockStore.activeLock {
-                let passed = existing.passedWaypointIDs(at: .init(latitude: start.latitude, longitude: start.longitude))
-                if !passed.isEmpty {
-                    routeLockStore.update { lock in
-                        var visited = Set(lock.visitedWaypointIDs ?? [])
-                        visited.formUnion(passed)
-                        lock.visitedWaypointIDs = Array(visited)
-                    }
-                    activeRouteLock = routeLockStore.activeLock
-                }
-            }
             let lock = routeLockStore.activeLock
-            let visited = Set(lock?.visitedWaypointIDs ?? [])
+            let newlyPassed = Set(lock?.passedWaypointIDs(at: .init(
+                latitude: start.latitude, longitude: start.longitude
+            )) ?? [])
+            let visited = Set(lock?.visitedWaypointIDs ?? []).union(newlyPassed)
             let lockedWaypoints = lock?.waypoints.filter { $0.required && !visited.contains($0.id) } ?? []
+            let computedLegs: [MKRoute]
+            let computedAlternatives: [MKRoute]
+            let computedComparison: MKRoute?
             if viaStations.isEmpty && lockedWaypoints.isEmpty {
                 let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
                 guard calculationGeneration == routeCalculationGeneration else { return false }
@@ -517,12 +512,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 // Never replace an active, still usable route with an empty
                 // result; retaining it lets guidance continue and retry later.
                 guard let firstRoute = routes.first else { throw DriveAPIError.invalidData }
-                alternatives = routes
-                legs = [firstRoute]
+                computedAlternatives = routes
+                computedLegs = [firstRoute]
                 // Request the opposite toll preference for an honest route-level
                 // distance/time comparison. MapKit exposes no toll price; that
                 // remains explicitly unknown until a verified provider responds.
-                comparisonRoute = try? await computeRoutes(
+                computedComparison = try? await computeRoutes(
                     from: startItem, to: destination, settings: settings,
                     alternates: false, avoidTollsOverride: !settings.avoidTolls
                 ).first
@@ -556,10 +551,26 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                     guard calculationGeneration == routeCalculationGeneration else { return false }
                     newLegs.append(leg)
                 }
-                legs = newLegs
-                alternatives = []
-                comparisonRoute = nil
+                computedLegs = newLegs
+                computedAlternatives = []
+                computedComparison = nil
             }
+            guard calculationGeneration == routeCalculationGeneration,
+                  lock?.id == routeLockStore.activeLock?.id else { return false }
+            // Commit route and trip progress together. A superseded request
+            // therefore cannot flash an old route or permanently skip a
+            // mandatory waypoint merely because it finished later.
+            if !newlyPassed.isEmpty {
+                routeLockStore.update { current in
+                    current.visitedWaypointIDs = RouteWaypointProgressPolicy.merging(
+                        existing: current.visitedWaypointIDs, newlyPassed: newlyPassed
+                    )
+                }
+                activeRouteLock = routeLockStore.activeLock
+            }
+            legs = computedLegs
+            alternatives = computedAlternatives
+            comparisonRoute = computedComparison
             resetLiveNavigationProgress()
             isUsingOfflineGuidance = false
             lastOfflineRecoveryAttempt = nil

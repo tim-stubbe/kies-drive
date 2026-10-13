@@ -126,6 +126,15 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
     }
 
+    func testCommittedWaypointProgressIsStableAndDeduplicated() {
+        XCTAssertEqual(
+            RouteWaypointProgressPolicy.merging(
+                existing: ["first", "second"], newlyPassed: ["second", "fourth", "third"]
+            ),
+            ["first", "second", "fourth", "third"]
+        )
+    }
+
     func testSparseCorridorAcceptsRoadBetweenStoredAnchors() {
         let corridor = [
             DriveCoordinate(latitude: 50, longitude: 8),
