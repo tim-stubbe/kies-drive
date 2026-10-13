@@ -276,13 +276,13 @@ final class LongTripPlanningTests: XCTestCase {
                                   progress: 0.35, detourMetres: 200, isOpen: true,
                                   supportsFuel: true)
         let route = RoutePlanningInput(
-            id: "holiday", title: "Urlaubsroute", distanceMetres: 700_000,
+            id: "holiday", title: "Urlaubsroute", distanceMetres: 450_000,
             mapKitExpectedTravelTime: 5 * 3600, unlimitedMotorwayFraction: 0,
             typicalUnlimitedSpeedKmh: 130, toll: .unknown(reason: "test"),
             breakCandidates: [restArea, fuel]
         )
         let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
-                                     tankCapacityLitres: 50, usableTankFraction: 0.8)
+                                     tankCapacityLitres: 35, usableTankFraction: 0.8)
         let result = RouteComparison(fuelModel: .init(), breakPlanner: .init())
             .compare(routes: [route], scenarios: [.target(130)], vehicle: vehicle)
             .results[0]
@@ -290,6 +290,38 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(result.fuelStops.first?.candidate?.id, "fuel")
         XCTAssertEqual(result.breaks.first?.candidate?.id, "fuel",
                        "A safe nearby fuel stop should also serve as the planned rest break")
+        XCTAssertEqual(result.plannedStopDetourMetres, 200, accuracy: 0.01,
+                       "A combined stop must count its detour only once")
+        XCTAssertEqual(result.additionalFuelStopTime, 0,
+                       "Refuelling during the planned rest break must not add a second dwell time")
+        XCTAssertGreaterThan(result.totalDistanceMetres, route.distanceMetres)
+    }
+
+    func testSeparateFuelStopAddsDetourFuelDrivingAndServiceTime() {
+        let fuelStop = BreakCandidate(id: "fuel", name: "Tankstelle", coordinate: .init(),
+                                      progress: 0.48, detourMetres: 2_000, isOpen: true,
+                                      supportsFuel: true)
+        let route = RoutePlanningInput(
+            id: "fuel-trip", title: "Fahrt", distanceMetres: 180_000,
+            mapKitExpectedTravelTime: 108 * 60, unlimitedMotorwayFraction: 0,
+            typicalUnlimitedSpeedKmh: 130, toll: .unknown(reason: "test"),
+            breakCandidates: [fuelStop]
+        )
+        let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+                                     tankCapacityLitres: 20, usableTankFraction: 0.8)
+        let baselineFuel = FuelModel().estimate(distanceMetres: route.distanceMetres,
+                                                effectiveSpeedKmh: route.distanceMetres / route.mapKitExpectedTravelTime * 3.6,
+                                                profile: vehicle)
+        let result = RouteComparison(fuelModel: .init(), breakPlanner: .init())
+            .compare(routes: [route], scenarios: [.target(130)], vehicle: vehicle).results[0]
+
+        XCTAssertTrue(result.breaks.isEmpty)
+        XCTAssertEqual(result.plannedStopDetourMetres, 2_000, accuracy: 0.01)
+        XCTAssertEqual(result.totalDistanceMetres, 182_000, accuracy: 0.01)
+        XCTAssertEqual(result.additionalFuelStopTime, 10 * 60, accuracy: 0.01)
+        XCTAssertEqual(result.drivingTime, route.mapKitExpectedTravelTime + 144, accuracy: 1)
+        XCTAssertEqual(result.totalTime, result.drivingTime + 10 * 60, accuracy: 1)
+        XCTAssertGreaterThan(result.fuel.litres, baselineFuel.litres)
     }
 
     func testSegmentedFuelModelDoesNotApplyFastTargetToLimitedDistance() {

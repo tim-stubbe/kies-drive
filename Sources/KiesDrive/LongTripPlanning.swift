@@ -324,7 +324,7 @@ struct RouteComparisonDelta: Equatable {
 
     init(from baseline: RouteScenarioResult, to alternative: RouteScenarioResult) {
         timeDifference = alternative.totalTime - baseline.totalTime
-        distanceDifferenceMetres = alternative.distanceMetres - baseline.distanceMetres
+        distanceDifferenceMetres = alternative.totalDistanceMetres - baseline.totalDistanceMetres
         fuelDifferenceLitres = alternative.fuel.litres - baseline.fuel.litres
         fuelCostDifference = alternative.fuel.cost - baseline.fuel.cost
         switch (baseline.toll, alternative.toll) {
@@ -377,6 +377,13 @@ struct RouteScenarioResult: Identifiable, Equatable {
     let breaks: [PlannedBreak]
     let fuelStops: [PlannedFuelStop]
     let unlimitedFraction: Double
+    /// Round-trip distance from the main route to the selected real stops.
+    /// A combined fuel/rest stop is counted only once.
+    var plannedStopDetourMetres: Double = 0
+    /// Time spent refuelling outside an already planned rest break.
+    var additionalFuelStopTime: TimeInterval = 0
+
+    var totalDistanceMetres: Double { distanceMetres + plannedStopDetourMetres }
 }
 
 struct LongTripPlan: Equatable {
@@ -416,12 +423,12 @@ struct RouteComparison {
         // the selected target speed applies to the whole route.
         let drivingTime = limitedTime + adjustedUnlimitedTime
         let limitedAverageSpeed = limitedDistance / max(1, limitedTime) * 3.6
-        let fuel = fuelModel.estimate(segments: [
+        let routeFuel = fuelModel.estimate(segments: [
             (limitedDistance, limitedAverageSpeed),
             (unlimitedDistance, target)
         ], profile: vehicle)
         let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
-                                             consumptionLPer100km: fuel.averageConsumptionLPer100km,
+                                             consumptionLPer100km: routeFuel.averageConsumptionLPer100km,
                                              vehicle: vehicle, candidates: route.breakCandidates)
         // Prefer one useful stop over a rest break and a fuel stop a few
         // minutes apart. The normal pause window still applies, so a distant
@@ -429,11 +436,40 @@ struct RouteComparison {
         let plannedFuelCandidateIDs = Set(fuelStops.compactMap { $0.candidate?.id })
         let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates,
                                        preferredCandidateIDs: plannedFuelCandidateIDs)
+        let selectedCandidates = (breaks.compactMap(\.candidate) + fuelStops.compactMap(\.candidate))
+            .reduce(into: [String: BreakCandidate]()) { candidates, candidate in
+                candidates[candidate.id] = candidate
+            }
+        let detourDistance = selectedCandidates.values.reduce(0) { $0 + max(0, $1.detourMetres) }
+        // Service areas and petrol stations are normally reached on slower
+        // access roads. Counting their detour at motorway target speed would
+        // make the time and fuel comparison unrealistically optimistic.
+        let detourSpeedKmh = 50.0
+        let detourDrivingTime = detourDistance / (detourSpeedKmh / 3.6)
+        let detourFuel = fuelModel.estimate(distanceMetres: detourDistance,
+                                            effectiveSpeedKmh: detourSpeedKmh,
+                                            profile: vehicle)
+        let totalDistance = route.distanceMetres + detourDistance
+        let totalLitres = routeFuel.litres + detourFuel.litres
+        let fuel = FuelEstimate(
+            litres: totalLitres,
+            cost: routeFuel.cost + detourFuel.cost,
+            averageConsumptionLPer100km: totalDistance > 0 ? totalLitres / totalDistance * 100_000 : 0
+        )
+        let breaksCoveringFuel = Set(breaks.compactMap { $0.candidate?.id })
+        let uncoveredFuelStops = fuelStops.filter { stop in
+            if let id = stop.candidate?.id { return !breaksCoveringFuel.contains(id) }
+            return !breaks.contains { abs($0.routeProgress - stop.routeProgress) <= 0.03 }
+        }.count
+        let additionalFuelStopTime = TimeInterval(uncoveredFuelStops * 10 * 60)
+        let adjustedDrivingTime = drivingTime + detourDrivingTime
         return .init(
             id: "\(route.id)-\(scenario.id)", routeTitle: route.title, scenario: scenario,
-            distanceMetres: route.distanceMetres, drivingTime: drivingTime,
-            totalTime: drivingTime + breaks.reduce(0) { $0 + $1.duration }, fuel: fuel,
-            toll: route.toll, breaks: breaks, fuelStops: fuelStops, unlimitedFraction: fraction
+            distanceMetres: route.distanceMetres, drivingTime: adjustedDrivingTime,
+            totalTime: adjustedDrivingTime + breaks.reduce(0) { $0 + $1.duration } + additionalFuelStopTime,
+            fuel: fuel, toll: route.toll, breaks: breaks, fuelStops: fuelStops,
+            unlimitedFraction: fraction, plannedStopDetourMetres: detourDistance,
+            additionalFuelStopTime: additionalFuelStopTime
         )
     }
 }

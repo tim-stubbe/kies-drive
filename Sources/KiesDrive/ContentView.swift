@@ -342,6 +342,11 @@ struct DriveContentView: View {
                     }
                     Text(String(format: "%.1f l · %.2f € Kraftstoff", result.fuel.litres, result.fuel.cost))
                         .font(.caption).foregroundStyle(.secondary)
+                    if result.plannedStopDetourMetres > 0 || result.additionalFuelStopTime > 0 {
+                        Text("Inklusive \(formatDistance(result.plannedStopDetourMetres)) Halt-Umweg" +
+                             (result.additionalFuelStopTime > 0 ? " und \(formatTime(result.additionalFuelStopTime)) Tankzeit" : ""))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                     ForEach(result.breaks) { stop in
                         VStack(alignment: .leading, spacing: 7) {
                             HStack(alignment: .top, spacing: 9) {
@@ -1119,7 +1124,7 @@ struct DriveContentView: View {
                         ForEach(plan.results) { result in
                             VStack(alignment: .leading, spacing: 5) {
                                 Text("\(result.routeTitle) · \(result.scenario.name)").font(.headline)
-                                Text("\(formatDistance(result.distanceMetres)) · \(formatTime(result.totalTime)) inkl. \(result.breaks.count) Pause(n)")
+                                Text("\(formatDistance(result.totalDistanceMetres)) · \(formatTime(result.totalTime)) inkl. \(result.breaks.count) Pause(n)")
                                 Text(String(format: "%.1f l · %.2f € Kraftstoff · %.1f l/100 km", result.fuel.litres, result.fuel.cost, result.fuel.averageConsumptionLPer100km))
                                 switch result.toll {
                                 case .known(let amount, let currency, let source):
