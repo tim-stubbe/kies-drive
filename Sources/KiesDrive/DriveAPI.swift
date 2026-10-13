@@ -51,7 +51,7 @@ final class DriveSettings: ObservableObject {
         fuelPricePerLitre = UserDefaults.standard.object(forKey: "drive.fuelPricePerLitre") as? Double ?? 1.75
         targetSpeedKmh = UserDefaults.standard.object(forKey: "drive.targetSpeedKmh") as? Double ?? 150
     }
-    var isReady: Bool { !baseURL.isEmpty && DeviceTokenStore.shared.token != nil }
+    var isReady: Bool { !baseURL.isEmpty && AccountSessionStore.shared.session != nil }
     /// App-Version + Build, z.B. "1.0 (3)" - zur Diagnose, ob ein Gerät noch
     /// eine veraltete Build-Version ausführt.
     static var appVersionString: String {
@@ -63,11 +63,12 @@ final class DriveSettings: ObservableObject {
 }
 
 enum DriveAPIError: LocalizedError {
-    case configuration, response(Int), invalidData
+    case configuration, response(Int), server(String), invalidData
     var errorDescription: String? {
         switch self {
-        case .configuration: "Server-Adresse oder Geräte-Token fehlt."
+        case .configuration: "Bitte melde dich bei Kies Drive an."
         case .response(let code): "Serverfehler (HTTP \(code))."
+        case .server(let message): message
         case .invalidData: "Die Serverantwort konnte nicht gelesen werden."
         }
     }
@@ -77,13 +78,13 @@ enum DriveAPIError: LocalizedError {
 enum DriveAPI {
     private static func request(path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
         let settings = DriveSettings.shared
-        guard let token = DeviceTokenStore.shared.token, !token.isEmpty,
+        guard let session = AccountSessionStore.shared.session, !session.isEmpty,
               let url = URL(string: settings.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path)
         else { throw DriveAPIError.configuration }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
-        request.setValue(token, forHTTPHeaderField: "X-Kies-Device-Token")
+        request.setValue("Bearer \(session)", forHTTPHeaderField: "Authorization")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         return request
     }
@@ -93,6 +94,67 @@ enum DriveAPI {
         guard let http = response as? HTTPURLResponse else { throw DriveAPIError.invalidData }
         guard 200..<300 ~= http.statusCode else { throw DriveAPIError.response(http.statusCode) }
         return data
+    }
+
+    private static func authRequest(path: String, method: String = "POST", body: Data? = nil,
+                                    authenticated: Bool = false) throws -> URLRequest {
+        let base = DriveSettings.shared.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: base + path) else { throw DriveAPIError.configuration }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if authenticated {
+            guard let session = AccountSessionStore.shared.session else { throw DriveAPIError.configuration }
+            request.setValue("Bearer \(session)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    private static func authData(for request: URLRequest) async throws -> Data {
+        let (data, response) = try await KiesHTTP.session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw DriveAPIError.invalidData }
+        guard 200..<300 ~= http.statusCode else {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw DriveAPIError.server(detail ?? "Anmeldung fehlgeschlagen (HTTP \(http.statusCode)).")
+        }
+        return data
+    }
+
+    static func register(email: String, password: String) async throws {
+        let body = try JSONEncoder().encode(AccountCredentials(email: email, password: password))
+        _ = try await authData(for: authRequest(path: "/auth/register", body: body))
+    }
+
+    static func login(email: String, password: String, totpCode: String?) async throws -> AccountLoginResponse {
+        let body = try JSONEncoder().encode(AccountLoginRequest(email: email, password: password,
+                                                                 totpCode: totpCode?.nilIfEmpty))
+        let data = try await authData(for: authRequest(path: "/auth/login", body: body))
+        let response = try JSONDecoder().decode(AccountLoginResponse.self, from: data)
+        AccountSessionStore.shared.signIn(session: response.session, email: response.email)
+        return response
+    }
+
+    static func account() async throws -> AccountProfile {
+        let data = try await authData(for: authRequest(path: "/auth/me", method: "GET", authenticated: true))
+        return try JSONDecoder().decode(AccountProfile.self, from: data)
+    }
+
+    static func setupTwoFactor() async throws -> TwoFactorSetup {
+        let data = try await authData(for: authRequest(path: "/auth/2fa/setup", authenticated: true))
+        return try JSONDecoder().decode(TwoFactorSetup.self, from: data)
+    }
+
+    static func enableTwoFactor(code: String) async throws {
+        let body = try JSONEncoder().encode(TwoFactorCode(code: code))
+        _ = try await authData(for: authRequest(path: "/auth/2fa/enable", body: body, authenticated: true))
+    }
+
+    static func logout() async {
+        if let request = try? authRequest(path: "/auth/logout", authenticated: true) {
+            _ = try? await authData(for: request)
+        }
+        AccountSessionStore.shared.signOut()
     }
 
     static func stations(near coordinate: CLLocationCoordinate2D, fuel: FuelKind, radiusKm: Double = 8) async throws -> [FuelStation] {
@@ -146,7 +208,7 @@ enum DriveAPI {
 
     /// Lightweight authenticated end-to-end check used by the settings UI.
     /// Reading the command queue has no side effects and verifies both the
-    /// standalone service and the device token.
+    /// standalone service and the signed-in account session.
     static func testConnection() async throws {
         _ = try await remoteCommands()
     }
@@ -157,6 +219,49 @@ enum DriveAPI {
                                             method: "POST", body: body))
     }
 }
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+private struct AccountCredentials: Encodable { let email: String; let password: String }
+private struct AccountLoginRequest: Encodable {
+    let email: String
+    let password: String
+    let totpCode: String?
+    enum CodingKeys: String, CodingKey { case email, password; case totpCode = "totp_code" }
+}
+
+struct AccountLoginResponse: Decodable {
+    let session: String
+    let expiresAt: String
+    let email: String
+    let twoFactorEnabled: Bool
+    enum CodingKeys: String, CodingKey {
+        case session, email
+        case expiresAt = "expires_at"
+        case twoFactorEnabled = "two_factor_enabled"
+    }
+}
+
+struct AccountProfile: Decodable {
+    let email: String
+    let emailVerified: Bool
+    let twoFactorEnabled: Bool
+    enum CodingKeys: String, CodingKey {
+        case email
+        case emailVerified = "email_verified"
+        case twoFactorEnabled = "two_factor_enabled"
+    }
+}
+
+struct TwoFactorSetup: Decodable {
+    let secret: String
+    let provisioningURI: String
+    enum CodingKeys: String, CodingKey { case secret; case provisioningURI = "provisioning_uri" }
+}
+
+private struct TwoFactorCode: Encodable { let code: String }
 
 private struct TollSearchRequest: Encodable { let origin: String; let destination: String }
 private struct TollSearchSource: Decodable { let title: String; let url: String; let snippet: String }

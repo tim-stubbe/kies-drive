@@ -20,6 +20,12 @@ restoration and route-stop selection. The entitlement template is stored in
 Signing Entitlements after Apple has granted the team the CarPlay navigation
 capability; keeping it detached lets ordinary development builds continue to
 install before that approval.
-- Kies-Anbindung: `KIES_BASE_URL` und ein widerrufbarer Kies-Gerätetoken
+- Öffentliche Konten: Registrierung, E-Mail-Bestätigung, Argon2id-Passwortschutz
+  und optionale Authenticator-2FA. Sitzungen werden in der App automatisch im
+  Apple-Schlüsselbund verwaltet; Nutzer müssen keine Geräte-Tokens eingeben.
+- E-Mail: `KIES_DRIVE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_FROM` sowie je nach
+  Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
+- Die optionale Anbindung an den bisherigen Kies-Dienst bleibt ausschließlich
+  serverseitig über `KIES_BASE_URL` und `KIES_DEVICE_TOKEN` gekapselt.
 
 Secrets werden ausschließlich in TrueNAS als Umgebungsvariablen gesetzt.

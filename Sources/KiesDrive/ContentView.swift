@@ -9,6 +9,7 @@ import UIKit
 struct DriveContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var settings = DriveSettings.shared
+    @StateObject private var account = AccountSessionStore.shared
     @StateObject private var location = LocationService.shared
     @StateObject private var planner = RoutePlanner.shared
     @State private var position: MapCameraPosition = .automatic
@@ -66,6 +67,18 @@ struct DriveContentView: View {
 
     private var showsNavigationUI: Bool { planner.isNavigating || isSimulatorNavigationPreview }
 
+    private var bypassesAccountForSimulatorPreview: Bool {
+        #if targetEnvironment(simulator)
+        return ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("-preview") }
+        #else
+        return false
+        #endif
+    }
+
+    private var accountOnboardingPresented: Binding<Bool> {
+        Binding(get: { account.session == nil && !bypassesAccountForSimulatorPreview }, set: { _ in })
+    }
+
     var body: some View {
         #if os(iOS)
         mobileBody
@@ -87,7 +100,6 @@ struct DriveContentView: View {
         }
         .onAppear {
             location.start()
-            if !settings.isReady { showSettings = true }
         }
         .onReceive(location.$location) { newValue in
             guard let newValue else { return }
@@ -99,6 +111,9 @@ struct DriveContentView: View {
         }
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
+        .sheet(isPresented: accountOnboardingPresented) {
+            AccountWelcomeView().frame(minWidth: 520, minHeight: 680)
+        }
     }
 
     #if os(iOS)
@@ -156,8 +171,6 @@ struct DriveContentView: View {
                 )
             }
             didCenterInitialLocation = true
-            #else
-            if !settings.isReady { showSettings = true }
             #endif
         }
         .onChange(of: scenePhase) { _, phase in
@@ -189,6 +202,7 @@ struct DriveContentView: View {
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
         .sheet(isPresented: $showFavorites) { favoritesSheet }
         .sheet(item: $selectedStation) { station in stationDetailSheet(station) }
+        .fullScreenCover(isPresented: accountOnboardingPresented) { AccountWelcomeView() }
         .sheet(isPresented: $showRouteDetails) {
             NavigationStack {
                 mobileRouteDetails
@@ -387,9 +401,6 @@ struct DriveContentView: View {
         let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
             item.value.map { (item.name, $0) }
         })
-        if let token = values["token"], !token.isEmpty {
-            DeviceTokenStore.shared.setToken(token)
-        }
         if values["trip"] == "croatia-split" {
             planner.installCroatiaSplitTripLock()
             showSettings = false
@@ -1445,10 +1456,11 @@ struct DriveSettingsView: View {
     @ObservedObject var planner: RoutePlanner
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var settings = DriveSettings.shared
-    @ObservedObject private var tokens = DeviceTokenStore.shared
-    @State private var token = ""
+    @ObservedObject private var account = AccountSessionStore.shared
     @State private var connectionStatus: ConnectionStatus = .idle
     @State private var diagnosticEvents = DriveDiagnosticStore.load()
+    @State private var accountProfile: AccountProfile?
+    @State private var showTwoFactorSetup = false
 
     fileprivate enum ConnectionStatus {
         case idle, testing, success, failed(String)
@@ -1457,10 +1469,10 @@ struct DriveSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Kies & Jarvis") {
-                    TextField("Server-Adresse", text: $settings.baseURL)
-                    SecureField(tokens.token == nil ? "Geräte-Token" : "Neuer Geräte-Token (optional)", text: $token)
-                    Button("Token sicher speichern") { if !token.isEmpty { tokens.setToken(token); token = "" } }
+                Section("Kies-Konto") {
+                    if let email = account.email {
+                        LabeledContent("Angemeldet als", value: email)
+                    }
                     Button {
                         connectionStatus = .testing
                         Task {
@@ -1477,13 +1489,29 @@ struct DriveSettingsView: View {
                     }
                     .disabled(connectionStatus.isTesting || !settings.isReady)
 
+                    Button("Abmelden", role: .destructive) {
+                        Task {
+                            await DriveAPI.logout()
+                            dismiss()
+                        }
+                    }
+
+                    if accountProfile?.twoFactorEnabled == true {
+                        Label("Zwei-Faktor-Authentifizierung aktiv", systemImage: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Button("Zwei-Faktor-Authentifizierung einrichten") {
+                            showTwoFactorSetup = true
+                        }
+                    }
+
                     switch connectionStatus {
                     case .idle:
                         EmptyView()
                     case .testing:
                         ProgressView()
                     case .success:
-                        Label("Kies-Drive-Server und Geräte-Token funktionieren.", systemImage: "checkmark.circle.fill")
+                        Label("Kies-Drive-Server und Anmeldung funktionieren.", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -1551,15 +1579,188 @@ struct DriveSettingsView: View {
                 Section("Über") {
                     LabeledContent("App-Version", value: DriveSettings.appVersionString)
                 }
-                Section { Text("Der Tankpreis-Schlüssel bleibt ausschließlich auf deinem TrueNAS-Server. Der Geräte-Token liegt im Apple-Schlüsselbund.").font(.caption).foregroundStyle(.secondary) }
+                Section { Text("Interne Schlüssel für Tankpreise und Zusatzdienste bleiben ausschließlich auf deinem TrueNAS-Server. Deine Anmeldung wird automatisch im Apple-Schlüsselbund geschützt.").font(.caption).foregroundStyle(.secondary) }
             }
             .formStyle(.grouped)
             .navigationTitle("Einstellungen")
             .toolbar { Button("Fertig") { dismiss() } }
+            .task { accountProfile = try? await DriveAPI.account() }
+            .sheet(isPresented: $showTwoFactorSetup, onDismiss: {
+                Task { accountProfile = try? await DriveAPI.account() }
+            }) { TwoFactorSetupView() }
         }
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 420)
         #endif
+    }
+}
+
+private struct TwoFactorSetupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var setup: TwoFactorSetup?
+    @State private var code = ""
+    @State private var message: String?
+    @State private var isWorking = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Authenticator verbinden") {
+                    if let setup {
+                        Text("Öffne deine Authenticator-App und füge dieses Konto hinzu.")
+                        Link("In Authenticator öffnen", destination: URL(string: setup.provisioningURI)!)
+                        LabeledContent("Schlüssel", value: setup.secret)
+                            .textSelection(.enabled)
+                        #if os(iOS)
+                        TextField("6-stelliger Code", text: $code)
+                            .textContentType(.oneTimeCode).keyboardType(.numberPad)
+                        #else
+                        TextField("6-stelliger Code", text: $code).textContentType(.oneTimeCode)
+                        #endif
+                        Button("2FA aktivieren") { enable() }
+                            .disabled(isWorking || code.count != 6)
+                    } else if let message {
+                        Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    } else {
+                        ProgressView("Sichere Einrichtung wird vorbereitet …")
+                    }
+                }
+                Section {
+                    Text("Nach der Aktivierung brauchst du bei jeder neuen Anmeldung zusätzlich den sechsstelligen Code aus deiner Authenticator-App.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Zwei-Faktor-Schutz")
+            .toolbar { Button("Abbrechen") { dismiss() } }
+            .task {
+                do { setup = try await DriveAPI.setupTwoFactor() }
+                catch { message = error.localizedDescription }
+            }
+        }
+    }
+
+    private func enable() {
+        isWorking = true
+        Task {
+            do {
+                try await DriveAPI.enableTwoFactor(code: code)
+                dismiss()
+            } catch {
+                message = error.localizedDescription
+            }
+            isWorking = false
+        }
+    }
+}
+
+private struct AccountWelcomeView: View {
+    private enum Mode: String, CaseIterable, Identifiable {
+        case login = "Anmelden"
+        case register = "Registrieren"
+        var id: String { rawValue }
+    }
+
+    @State private var mode: Mode = .login
+    @State private var email = ""
+    @State private var password = ""
+    @State private var totpCode = ""
+    @State private var isWorking = false
+    @State private var message: String?
+    @State private var isError = false
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color.kiesForest, Color.kiesForest.opacity(0.82)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 54)
+                    Image(systemName: "location.north.circle.fill")
+                        .font(.system(size: 66)).foregroundStyle(Color.kiesBrass)
+                    VStack(spacing: 7) {
+                        Text("KIES DRIVE").font(.title.bold()).tracking(3)
+                        Text("Deine Route. Dein Konto. Auf jedem Gerät.")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.72))
+                    }.foregroundStyle(.white)
+
+                    VStack(spacing: 16) {
+                        Picker("Konto", selection: $mode) {
+                            ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                        }.pickerStyle(.segmented)
+
+                        #if os(iOS)
+                        TextField("E-Mail-Adresse", text: $email)
+                            .textContentType(.emailAddress).textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                        #else
+                        TextField("E-Mail-Adresse", text: $email)
+                            .textContentType(.emailAddress)
+                        #endif
+                        SecureField("Passwort (mindestens 12 Zeichen)", text: $password)
+                            .textContentType(mode == .login ? .password : .newPassword)
+                        if mode == .login {
+                            #if os(iOS)
+                            TextField("Authenticator-Code, falls aktiviert", text: $totpCode)
+                                .textContentType(.oneTimeCode).keyboardType(.numberPad)
+                            #else
+                            TextField("Authenticator-Code, falls aktiviert", text: $totpCode)
+                                .textContentType(.oneTimeCode)
+                            #endif
+                        }
+
+                        if let message {
+                            Label(message, systemImage: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .font(.footnote).foregroundStyle(isError ? .red : Color.kiesForest)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        Button(action: submit) {
+                            Group {
+                                if isWorking { ProgressView().tint(.white) }
+                                else { Text(mode.rawValue).fontWeight(.semibold) }
+                            }.frame(maxWidth: .infinity).frame(height: 24)
+                        }
+                        .buttonStyle(.borderedProminent).tint(Color.kiesForest)
+                        .disabled(isWorking || email.isEmpty || password.isEmpty)
+
+                        if mode == .register {
+                            Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Danach kannst du dich anmelden.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .textFieldStyle(.roundedBorder)
+                    .padding(22)
+                    .background(Color.kiesIvory, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .environment(\.colorScheme, .light)
+                    Spacer(minLength: 30)
+                }
+                .padding(.horizontal, 22)
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+
+    private func submit() {
+        isWorking = true
+        message = nil
+        Task {
+            do {
+                if mode == .register {
+                    try await DriveAPI.register(email: email, password: password)
+                    message = "E-Mail ist unterwegs. Bitte bestätige sie und melde dich danach an."
+                    isError = false
+                    mode = .login
+                    password = ""
+                } else {
+                    _ = try await DriveAPI.login(email: email, password: password, totpCode: totpCode)
+                }
+            } catch {
+                message = error.localizedDescription
+                isError = true
+            }
+            isWorking = false
+        }
     }
 }
 

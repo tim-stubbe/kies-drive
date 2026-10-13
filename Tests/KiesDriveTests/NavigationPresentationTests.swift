@@ -123,4 +123,12 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationArrivalPolicy.isArrivalFix(nearAndSlow, destination: destination))
         XCTAssertFalse(NavigationArrivalPolicy.isArrivalFix(fast, destination: destination))
     }
+
+    func testAccountLoginResponseDecodesServerSession() throws {
+        let data = Data(#"{"session":"secure-session","expires_at":"2026-11-01T00:00:00Z","email":"driver@example.com","two_factor_enabled":true}"#.utf8)
+        let response = try JSONDecoder().decode(AccountLoginResponse.self, from: data)
+        XCTAssertEqual(response.session, "secure-session")
+        XCTAssertEqual(response.email, "driver@example.com")
+        XCTAssertTrue(response.twoFactorEnabled)
+    }
 }
