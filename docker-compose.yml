@@ -7,7 +7,10 @@ services:
       - "18080:8080"
     environment:
       KIES_BASE_URL: ${KIES_BASE_URL:-https://100.72.226.91:8000}
-      KIES_DEVICE_TOKEN: ${KIES_DEVICE_TOKEN:?set KIES_DEVICE_TOKEN}
+      # Optional legacy bridge for fuel/speed/Jarvis until those providers are
+      # moved too. Account login and the direct SearXNG toll search need no token.
+      KIES_DEVICE_TOKEN: ${KIES_DEVICE_TOKEN:-}
+      SEARXNG_URL: ${SEARXNG_URL:-}
       KIES_DRIVE_PUBLIC_URL: ${KIES_DRIVE_PUBLIC_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

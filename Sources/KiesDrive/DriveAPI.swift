@@ -195,8 +195,11 @@ enum DriveAPI {
         let body = try JSONEncoder().encode(TollSearchRequest(origin: origin, destination: destination))
         let payload = try await data(for: try request(path: "/api/navigation/toll-search", method: "POST", body: body))
         let result = try JSONDecoder().decode(TollSearchResponse.self, from: payload)
-        if result.status == "known", let amount = result.amount {
-            return .known(amount: Decimal(amount), currency: result.currency, source: result.source)
+        if let evidence = TollEvidenceValidator.validate(
+            status: result.status, amount: result.amount, currency: result.currency,
+            source: result.source, sourceURL: result.sourceURL
+        ) {
+            return .known(amount: Decimal(evidence.amount), currency: evidence.currency, source: evidence.source)
         }
         let titles = result.sources.prefix(3).map(\.title).joined(separator: " · ")
         return .unknown(reason: titles.isEmpty ? "SearXNG fand keinen eindeutig belegten Gesamtpreis." : "SearXNG geprüft: \(titles)")
@@ -280,5 +283,25 @@ private struct TollSearchResponse: Decodable {
     let amount: Double?
     let currency: String
     let source: String
+    let sourceURL: String?
     let sources: [TollSearchSource]
+
+    enum CodingKeys: String, CodingKey {
+        case status, amount, currency, source, sources
+        case sourceURL = "source_url"
+    }
+}
+
+enum TollEvidenceValidator {
+    struct Evidence: Equatable { let amount: Double; let currency: String; let source: String }
+
+    static func validate(status: String, amount: Double?, currency: String,
+                         source: String, sourceURL: String?) -> Evidence? {
+        guard status == "known", let amount, amount.isFinite, (0...5_000).contains(amount),
+              !currency.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
+              url.host != nil else { return nil }
+        return Evidence(amount: amount, currency: currency, source: source)
+    }
 }

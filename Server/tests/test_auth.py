@@ -4,6 +4,13 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+def test_toll_amount_parser_accepts_only_explicit_total():
+    assert main.explicit_toll_amount("Mautkosten: 27,40 EUR") == 27.4
+    assert main.explicit_toll_amount("27.40 € Gesamtmaut") == 27.4
+    assert main.explicit_toll_amount("Vignette 11,50 € und Tunnel 14 €") is None
+    assert main.explicit_toll_amount("Mautkosten: 99999 EUR") is None
+
+
 def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "auth.db"))
     sent = {}

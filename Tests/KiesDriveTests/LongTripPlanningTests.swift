@@ -52,6 +52,24 @@ final class LongTripPlanningTests: XCTestCase {
         guard case .unknown = cost else { return XCTFail("Expected unknown toll cost") }
     }
 
+    func testTollEvidenceRequiresPlausibleAmountAndHTTPSSource() {
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR", source: "Official toll provider",
+            sourceURL: "https://example.test/tolls"
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR", source: "Search result", sourceURL: nil
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: .infinity, currency: "EUR", source: "Provider",
+            sourceURL: "https://example.test/tolls"
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR", source: "Provider",
+            sourceURL: "http://example.test/tolls"
+        ))
+    }
+
     func testShortTripDoesNotAddBreak() {
         XCTAssertTrue(BreakPlanner().plan(drivingTime: 90 * 60, candidates: []).isEmpty)
     }

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -53,6 +54,11 @@ class LoginRequest(BaseModel):
 
 class TOTPRequest(BaseModel):
     code: str
+
+
+class TollSearchRequest(BaseModel):
+    origin: str
+    destination: str
 
 
 class PasswordResetRequest(BaseModel):
@@ -219,6 +225,54 @@ def enable_2fa(payload: TOTPRequest, authorization: str | None = Header(None)):
     return {"ok": True}
 
 
+def explicit_toll_amount(text: str) -> float | None:
+    """Accept only an amount explicitly labelled as the total toll price."""
+    patterns = (
+        r"(?:gesamtmaut|mautkosten|toll costs?)\s*(?:von|:|-)?\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|eur)",
+        r"(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|eur)\s*(?:gesamtmaut|mautkosten|toll costs?)",
+    )
+    lowered = text.lower()
+    for pattern in patterns:
+        if match := re.search(pattern, lowered):
+            amount = float(match.group(1).replace(",", "."))
+            return amount if 0 <= amount <= 5_000 else None
+    return None
+
+
+@app.post("/api/navigation/toll-search")
+async def toll_search(payload: TollSearchRequest, authorization: str | None = Header(None)):
+    current_user(authorization)
+    searxng_url = os.getenv("SEARXNG_URL", "").strip().rstrip("/")
+    if not searxng_url.startswith(("http://", "https://")):
+        raise HTTPException(503, "SearXNG ist im Kies-Drive-Container noch nicht eingerichtet.")
+    origin = payload.origin.strip()[:180]
+    destination = payload.destination.strip()[:180]
+    if len(origin) < 2 or len(destination) < 2:
+        raise HTTPException(422, "Start und Ziel fehlen.")
+    query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination} {date.today().year}"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(f"{searxng_url}/search", params={
+                "q": query, "format": "json", "language": "de-DE", "safesearch": 1,
+            })
+            response.raise_for_status()
+            results = response.json().get("results", [])
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        raise HTTPException(502, "SearXNG ist gerade nicht erreichbar.") from exc
+    sources = [{
+        "title": str(item.get("title") or "Suchtreffer")[:300],
+        "url": str(item.get("url") or "")[:2_000],
+        "snippet": str(item.get("content") or item.get("snippet") or "")[:1_000],
+    } for item in results[:5] if isinstance(item, dict)]
+    for source in sources:
+        amount = explicit_toll_amount(f"{source['title']} {source['snippet']}")
+        if amount is not None and source["url"].startswith("https://"):
+            return {"status": "known", "amount": amount, "currency": "EUR",
+                    "source": source["title"], "source_url": source["url"], "sources": sources}
+    return {"status": "unknown", "amount": None, "currency": "EUR",
+            "source": "SearXNG", "source_url": None, "sources": sources}
+
+
 @app.put("/api/navigation/remote/state")
 async def put_state(request: Request, authorization: str | None = Header(None)):
     user = current_user(authorization)
@@ -309,7 +363,10 @@ async def kies_proxy(path: str, request: Request, authorization: str | None = He
     # Navigation data that still belongs to Kies (fuel, toll/search, Jarvis) is
     # consumed through this narrow authenticated proxy.
     current_user(authorization)
-    headers = {"X-Kies-Device-Token": os.getenv("KIES_DEVICE_TOKEN", "")}
+    legacy_token = os.getenv("KIES_DEVICE_TOKEN", "").strip()
+    if not legacy_token:
+        raise HTTPException(503, "Der optionale Kies-Zusatzdienst ist nicht eingerichtet.")
+    headers = {"X-Kies-Device-Token": legacy_token}
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         upstream = await client.request(request.method, f"{KIES_BASE_URL}/api/navigation/{path}", params=request.query_params,
                                         content=await request.body(), headers=headers)
@@ -320,7 +377,10 @@ async def kies_proxy(path: str, request: Request, authorization: str | None = He
 async def jarvis_proxy(request: Request, authorization: str | None = Header(None)):
     """Keep the existing assistant integration while Kies Drive is deployed separately."""
     current_user(authorization)
-    headers = {"X-Kies-Device-Token": os.getenv("KIES_DEVICE_TOKEN", "")}
+    legacy_token = os.getenv("KIES_DEVICE_TOKEN", "").strip()
+    if not legacy_token:
+        raise HTTPException(503, "Der optionale Kies-Assistent ist nicht eingerichtet.")
+    headers = {"X-Kies-Device-Token": legacy_token}
     async with httpx.AsyncClient(verify=False, timeout=30) as client:
         upstream = await client.post(
             f"{KIES_BASE_URL}/api/jarvis/chat",

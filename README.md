@@ -2,8 +2,9 @@
 
 Eigenständige iOS-/macOS-Navigations-App mit persistentem Trip-Lock und einem
 eigenen TrueNAS-Dienst für Live-Daten und MCP. Kies Drive bleibt bei Ausfällen
-des Servers vollständig navigationsfähig. Die normale Kies-App liefert nur
-optionale Dienste wie Jarvis, Tankpreise und verifizierte Mautinformationen.
+des Servers vollständig navigationsfähig. Der eigenständige Dienst recherchiert
+Mautinformationen über das konfigurierte SearXNG. Die normale Kies-App liefert
+nur noch optionale Zusatzdienste wie Jarvis und Tankpreise.
 
 ## Dienste
 
@@ -25,7 +26,11 @@ install before that approval.
   Apple-Schlüsselbund verwaltet; Nutzer müssen keine Geräte-Tokens eingeben.
 - E-Mail: `KIES_DRIVE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_FROM` sowie je nach
   Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
+- Mautrecherche: `SEARXNG_URL` auf die interne URL der SearXNG-Instanz setzen.
+  Kies Drive übernimmt nur ausdrücklich als Gesamtmaut bezeichnete Beträge aus
+  HTTPS-Quellen; andernfalls bleibt der Preis bewusst unbekannt.
 - Die optionale Anbindung an den bisherigen Kies-Dienst bleibt ausschließlich
-  serverseitig über `KIES_BASE_URL` und `KIES_DEVICE_TOKEN` gekapselt.
+  serverseitig über `KIES_BASE_URL` und das optionale `KIES_DEVICE_TOKEN`
+  gekapselt. Ohne dieses Legacy-Token starten Konto, MCP und Mautsuche trotzdem.
 
 Secrets werden ausschließlich in TrueNAS als Umgebungsvariablen gesetzt.
