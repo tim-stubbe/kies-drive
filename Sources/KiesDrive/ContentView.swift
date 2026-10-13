@@ -1686,6 +1686,12 @@ struct DriveSettingsView: View {
                     LabeledContent("Letzte Ansage verpasst", value: "\(missedFinalCues)")
                     Text("Die Diagnose bleibt lokal auf diesem Gerät und enthält keine vollständige Standortspur.")
                         .font(.caption).foregroundStyle(.secondary)
+                    ShareLink(item: DriveDiagnosticReport.text(
+                        events: diagnosticEvents, appVersion: DriveSettings.appVersionString
+                    )) {
+                        Label("Diagnosebericht teilen", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(diagnosticEvents.isEmpty)
                     Button("Diagnose zurücksetzen", role: .destructive) {
                         DriveDiagnosticStore.clear()
                         diagnosticEvents = []

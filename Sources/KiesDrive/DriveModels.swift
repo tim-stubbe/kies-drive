@@ -176,3 +176,20 @@ enum DriveDiagnosticStore {
 
     static func clear(defaults: UserDefaults = .standard) { defaults.removeObject(forKey: key) }
 }
+
+enum DriveDiagnosticReport {
+    static func text(events: [DriveDiagnosticEvent], appVersion: String) -> String {
+        var lines = [
+            "Kies Drive Fahrdiagnose",
+            "App-Version: \(appVersion)",
+            "Ereignisse: \(events.count)",
+            "Hinweis: Keine vollständige Standortspur enthalten.",
+            ""
+        ]
+        let formatter = ISO8601DateFormatter()
+        lines += events.map {
+            "\(formatter.string(from: $0.date)) | \($0.kind.rawValue) | \($0.detail.replacingOccurrences(of: "\n", with: " "))"
+        }
+        return lines.joined(separator: "\n")
+    }
+}

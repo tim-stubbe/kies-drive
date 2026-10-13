@@ -158,6 +158,19 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(events.last?.detail, "119")
     }
 
+    func testDiagnosticReportIsReadableAndContainsNoInventedLocationTrail() {
+        let event = DriveDiagnosticEvent(
+            kind: .maneuverFinalCueMissed,
+            date: Date(timeIntervalSince1970: 0),
+            detail: "Rechts abbiegen\nauf die A66"
+        )
+        let report = DriveDiagnosticReport.text(events: [event], appVersion: "1.0 (42)")
+        XCTAssertTrue(report.contains("App-Version: 1.0 (42)"))
+        XCTAssertTrue(report.contains("maneuverFinalCueMissed"))
+        XCTAssertTrue(report.contains("Rechts abbiegen auf die A66"))
+        XCTAssertTrue(report.contains("Keine vollständige Standortspur"))
+    }
+
     func testNavigationLocationPolicyRejectsImpossibleJumpAndStaleFix() {
         let now = Date()
         let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
