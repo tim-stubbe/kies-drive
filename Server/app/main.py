@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from .auth import (PASSWORD_HASHER, authenticated_user, consume_password_reset, create_password_reset,
-                   create_session, create_verification,
+                   consume_recovery_code, create_recovery_codes, create_session, create_verification,
                    initialise_auth_schema, normalise_email, send_verification_email,
                    password_reset_html, send_password_reset_email,
                    totp_matches, utcnow, validate_password, verification_html,
@@ -155,8 +155,10 @@ def login(payload: LoginRequest, request: Request):
             raise HTTPException(401, "E-Mail-Adresse oder Passwort ist falsch.")
         if not user["email_verified_at"]:
             raise HTTPException(403, "Bitte bestätige zuerst deine E-Mail-Adresse.")
-        if user["totp_secret"] and (not payload.totp_code or not totp_matches(user["totp_secret"], payload.totp_code)):
-            raise HTTPException(401, "Der Authenticator-Code fehlt oder ist ungültig.")
+        if user["totp_secret"]:
+            supplied = payload.totp_code or ""
+            if not totp_matches(user["totp_secret"], supplied) and not consume_recovery_code(conn, user["id"], supplied):
+                raise HTTPException(401, "Der Authenticator- oder Wiederherstellungscode fehlt oder ist ungültig.")
         raw, expires_at = create_session(conn, user["id"])
     AUTH_ATTEMPTS.pop(key, None)
     return {"session": raw, "expires_at": expires_at, "email": email,
@@ -218,6 +220,8 @@ def delete_account(authorization: str | None = Header(None)):
         conn.execute("DELETE FROM user_commands WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM user_state WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM email_verifications WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM password_resets WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM two_factor_recovery_codes WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     return {"ok": True}
@@ -241,7 +245,8 @@ def enable_2fa(payload: TOTPRequest, authorization: str | None = Header(None)):
         raise HTTPException(422, "Der Authenticator-Code ist ungültig.")
     with db() as conn:
         conn.execute("UPDATE users SET totp_secret=?,totp_pending_secret=NULL WHERE id=?", (pending, user["id"]))
-    return {"ok": True}
+        recovery_codes = create_recovery_codes(conn, user["id"])
+    return {"ok": True, "recovery_codes": recovery_codes}
 
 
 def explicit_toll_amount(text: str) -> float | None:

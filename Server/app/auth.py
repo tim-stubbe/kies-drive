@@ -80,6 +80,14 @@ def initialise_auth_schema(conn: sqlite3.Connection) -> None:
         used_at TEXT,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS two_factor_recovery_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        code_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        used_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
     """)
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "totp_pending_secret" not in columns:
@@ -231,6 +239,31 @@ def user_dependency(conn_factory, authorization: str | None = Header(None)) -> s
 def totp_matches(secret: str, code: str) -> bool:
     clean = re.sub(r"\s", "", code)
     return bool(re.fullmatch(r"\d{6}", clean)) and pyotp.TOTP(secret).verify(clean, valid_window=1)
+
+
+def create_recovery_codes(conn: sqlite3.Connection, user_id: int, count: int = 8) -> list[str]:
+    codes = [f"{secrets.token_hex(2)}-{secrets.token_hex(2)}".upper() for _ in range(count)]
+    now = utcnow().isoformat()
+    conn.execute("DELETE FROM two_factor_recovery_codes WHERE user_id=?", (user_id,))
+    conn.executemany(
+        "INSERT INTO two_factor_recovery_codes(user_id,code_hash,created_at) VALUES(?,?,?)",
+        [(user_id, token_hash(code.replace("-", "").lower()), now) for code in codes],
+    )
+    return codes
+
+
+def consume_recovery_code(conn: sqlite3.Connection, user_id: int, supplied: str) -> bool:
+    clean = re.sub(r"[^0-9a-f]", "", supplied.lower())
+    if not re.fullmatch(r"[0-9a-f]{8}", clean):
+        return False
+    row = conn.execute(
+        "SELECT id FROM two_factor_recovery_codes WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+        (user_id, token_hash(clean)),
+    ).fetchone()
+    if not row:
+        return False
+    conn.execute("UPDATE two_factor_recovery_codes SET used_at=? WHERE id=?", (utcnow().isoformat(), row["id"]))
+    return True
 
 
 def verification_html(ok: bool) -> str:

@@ -22,8 +22,9 @@ Signing Entitlements after Apple has granted the team the CarPlay navigation
 capability; keeping it detached lets ordinary development builds continue to
 install before that approval.
 - Öffentliche Konten: Registrierung, E-Mail-Bestätigung, Argon2id-Passwortschutz
-  und optionale Authenticator-2FA. Sitzungen werden in der App automatisch im
-  Apple-Schlüsselbund verwaltet; Nutzer müssen keine Geräte-Tokens eingeben.
+  und optionale Authenticator-2FA mit einmaligen Wiederherstellungscodes.
+  Sitzungen werden in der App automatisch im Apple-Schlüsselbund verwaltet;
+  Nutzer müssen keine Geräte-Tokens eingeben.
 - E-Mail: `KIES_DRIVE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_FROM` sowie je nach
   Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
 - Mautrecherche: `SEARXNG_URL` auf die interne URL der SearXNG-Instanz setzen.

@@ -84,6 +84,14 @@ struct DriveContentView: View {
         #endif
     }
 
+    private var isSimulatorAccountPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--account-preview")
+        #else
+        false
+        #endif
+    }
+
     private var showsNavigationUI: Bool { planner.isNavigating || isSimulatorNavigationPreview }
 
     private var bypassesAccountForSimulatorPreview: Bool {
@@ -95,7 +103,9 @@ struct DriveContentView: View {
     }
 
     private var accountOnboardingPresented: Binding<Bool> {
-        Binding(get: { account.session == nil && !guestMode && !bypassesAccountForSimulatorPreview }, set: { _ in })
+        Binding(get: {
+            isSimulatorAccountPreview || (account.session == nil && !guestMode && !bypassesAccountForSimulatorPreview)
+        }, set: { _ in })
     }
 
     var body: some View {
@@ -1718,12 +1728,21 @@ private struct TwoFactorSetupView: View {
     @State private var code = ""
     @State private var message: String?
     @State private var isWorking = false
+    @State private var recoveryCodes: [String] = []
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Authenticator verbinden") {
-                    if let setup {
+                    if !recoveryCodes.isEmpty {
+                        Label("Zwei-Faktor-Schutz ist aktiv", systemImage: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                        Text("Speichere diese einmaligen Wiederherstellungscodes jetzt sicher. Sie werden nicht noch einmal angezeigt.")
+                        Text(recoveryCodes.joined(separator: "\n"))
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                        Button("Fertig") { dismiss() }.buttonStyle(.borderedProminent)
+                    } else if let setup {
                         Text("Öffne deine Authenticator-App und füge dieses Konto hinzu.")
                         Link("In Authenticator öffnen", destination: URL(string: setup.provisioningURI)!)
                         LabeledContent("Schlüssel", value: setup.secret)
@@ -1760,8 +1779,7 @@ private struct TwoFactorSetupView: View {
         isWorking = true
         Task {
             do {
-                try await DriveAPI.enableTwoFactor(code: code)
-                dismiss()
+                recoveryCodes = try await DriveAPI.enableTwoFactor(code: code)
             } catch {
                 message = error.localizedDescription
             }
@@ -1819,10 +1837,11 @@ private struct AccountWelcomeView: View {
                             .textContentType(mode == .login ? .password : .newPassword)
                         if mode == .login {
                             #if os(iOS)
-                            TextField("Authenticator-Code, falls aktiviert", text: $totpCode)
-                                .textContentType(.oneTimeCode).keyboardType(.numberPad)
+                            TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
+                                .textContentType(.oneTimeCode).textInputAutocapitalization(.characters)
+                                .keyboardType(.asciiCapable)
                             #else
-                            TextField("Authenticator-Code, falls aktiviert", text: $totpCode)
+                            TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
                                 .textContentType(.oneTimeCode)
                             #endif
                         }

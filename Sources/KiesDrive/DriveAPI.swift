@@ -155,9 +155,10 @@ enum DriveAPI {
         return try JSONDecoder().decode(TwoFactorSetup.self, from: data)
     }
 
-    static func enableTwoFactor(code: String) async throws {
+    static func enableTwoFactor(code: String) async throws -> [String] {
         let body = try JSONEncoder().encode(TwoFactorCode(code: code))
-        _ = try await authData(for: authRequest(path: "/auth/2fa/enable", body: body, authenticated: true))
+        let data = try await authData(for: authRequest(path: "/auth/2fa/enable", body: body, authenticated: true))
+        return try JSONDecoder().decode(TwoFactorEnableResponse.self, from: data).recoveryCodes
     }
 
     static func logout() async {
@@ -280,6 +281,10 @@ struct TwoFactorSetup: Decodable {
 }
 
 private struct TwoFactorCode: Encodable { let code: String }
+private struct TwoFactorEnableResponse: Decodable {
+    let recoveryCodes: [String]
+    enum CodingKeys: String, CodingKey { case recoveryCodes = "recovery_codes" }
+}
 
 private struct TollSearchRequest: Encodable { let origin: String; let destination: String }
 private struct TollSearchSource: Decodable { let title: String; let url: String; let snippet: String }

@@ -62,12 +62,21 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
     enabled = client.post("/auth/2fa/enable", headers=headers,
                           json={"code": pyotp.TOTP(secret).now()})
     assert enabled.status_code == 200
+    recovery_codes = enabled.json()["recovery_codes"]
+    assert len(recovery_codes) == 8
 
     assert client.post("/auth/login", json={"email": email, "password": password}).status_code == 401
     signed_in = client.post("/auth/login", json={
         "email": email, "password": password, "totp_code": pyotp.TOTP(secret).now()
     })
     assert signed_in.status_code == 200
+    recovered = client.post("/auth/login", json={
+        "email": email, "password": password, "totp_code": recovery_codes[0]
+    })
+    assert recovered.status_code == 200
+    assert client.post("/auth/login", json={
+        "email": email, "password": password, "totp_code": recovery_codes[0]
+    }).status_code == 401
     final_headers = {"Authorization": f"Bearer {signed_in.json()['session']}"}
     assert client.delete("/auth/account", headers=final_headers).status_code == 200
     assert client.get("/auth/me", headers=final_headers).status_code == 401
