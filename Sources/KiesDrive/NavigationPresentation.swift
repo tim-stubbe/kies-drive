@@ -337,6 +337,24 @@ enum OfflineRouteRecoveryPolicy {
     }
 }
 
+enum OfflineRouteCachePolicy {
+    /// New caches are tied to a geographic destination, not merely a place
+    /// label that may occur in several cities. Name-only matching remains as
+    /// a compatibility path for caches from older app versions.
+    static func matches(cacheName: String, cacheCoordinate: CLLocationCoordinate2D?,
+                        destinationName: String, destinationCoordinate: CLLocationCoordinate2D?) -> Bool {
+        if let cacheCoordinate, let destinationCoordinate {
+            return CLLocation(latitude: cacheCoordinate.latitude, longitude: cacheCoordinate.longitude)
+                .distance(from: CLLocation(latitude: destinationCoordinate.latitude,
+                                           longitude: destinationCoordinate.longitude)) <= 250
+        }
+        return cacheName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .localizedCaseInsensitiveCompare(
+                destinationName.trimmingCharacters(in: .whitespacesAndNewlines)
+            ) == .orderedSame
+    }
+}
+
 enum RouteSearchPolicy {
     /// Keeps a tiny tolerance for GPS jitter around the current route point,
     /// but never sends the driver materially backwards for an added stop.

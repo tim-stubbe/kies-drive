@@ -373,6 +373,31 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
+        let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
+        XCTAssertTrue(OfflineRouteCachePolicy.matches(
+            cacheName: "Hauptstraße 1", cacheCoordinate: cached,
+            destinationName: "Anderer Anzeigename",
+            destinationCoordinate: .init(latitude: 50.0010, longitude: 8.0000)
+        ))
+        XCTAssertFalse(OfflineRouteCachePolicy.matches(
+            cacheName: "Hauptstraße 1", cacheCoordinate: cached,
+            destinationName: "Hauptstraße 1",
+            destinationCoordinate: .init(latitude: 51.0000, longitude: 8.0000)
+        ), "An identical place label must never override a clearly different coordinate")
+    }
+
+    func testLegacyOfflineCacheFallsBackToTrimmedName() {
+        XCTAssertTrue(OfflineRouteCachePolicy.matches(
+            cacheName: "  Hochheim am Main ", cacheCoordinate: nil,
+            destinationName: "hochheim am main", destinationCoordinate: .init(latitude: 50, longitude: 8)
+        ))
+        XCTAssertFalse(OfflineRouteCachePolicy.matches(
+            cacheName: "Hochheim am Main", cacheCoordinate: nil,
+            destinationName: "Hochheim bei Erfurt", destinationCoordinate: .init(latitude: 51, longitude: 11)
+        ))
+    }
+
     func testRouteSearchNeverSuggestsMateriallyPassedStops() {
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateIndex: 20, currentIndex: 60,
                                                  routePointCount: 100))

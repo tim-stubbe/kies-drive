@@ -34,6 +34,9 @@ struct CachedRoute: Codable {
         let coordinates: [DriveCoordinate]?
     }
     let destinationName: String
+    /// Optional for backwards compatibility with caches written before the
+    /// destination identity was anchored geographically.
+    let destinationCoordinate: DriveCoordinate?
     let legs: [Leg]
     let stations: [FuelStation]
     let savedAt: Date
@@ -654,6 +657,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !legs.isEmpty else { return }
         let cached = CachedRoute(
             destinationName: destination?.name ?? destinationText,
+            destinationCoordinate: destination.map {
+                .init(latitude: $0.placemark.coordinate.latitude,
+                      longitude: $0.placemark.coordinate.longitude)
+            },
             legs: legs.map { leg in
                 CachedRoute.Leg(distance: leg.distance, travelTime: leg.expectedTravelTime,
                                  steps: leg.steps.map { step in
@@ -719,7 +726,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @discardableResult
     private func startOfflineGuidanceIfAvailable() -> Bool {
         guard legs.isEmpty, let cache = offlineRoute,
-              cache.destinationName.localizedCaseInsensitiveCompare(destination?.name ?? destinationText) == .orderedSame,
+              OfflineRouteCachePolicy.matches(
+                cacheName: cache.destinationName,
+                cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
+                destinationName: destination?.name ?? destinationText,
+                destinationCoordinate: destination?.placemark.coordinate
+              ),
               cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {
             return false
         }
