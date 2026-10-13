@@ -7,6 +7,7 @@ import UIKit
 #endif
 
 struct DriveContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var settings = DriveSettings.shared
     @StateObject private var location = LocationService()
     @StateObject private var planner = RoutePlanner.shared
@@ -129,6 +130,7 @@ struct DriveContentView: View {
                 .environment(\.colorScheme, .light)
         }
         .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
             location.start()
             #if targetEnvironment(simulator)
             if isSimulatorNavigationPreview {
@@ -155,6 +157,14 @@ struct DriveContentView: View {
             #else
             if !settings.isReady { showSettings = true }
             #endif
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Keep the screen awake only while Kies Drive is actually visible.
+            // Backgrounding the app restores the user's normal lock timeout.
+            UIApplication.shared.isIdleTimerDisabled = phase == .active
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
         }
         .onReceive(location.$location) { newValue in
             guard let newValue else { return }
@@ -514,7 +524,7 @@ struct DriveContentView: View {
                         planner.errorMessage = "Standort ist noch nicht verfügbar."
                         return
                     }
-                    Task { await planner.calculate(from: start, settings: settings) }
+                    Task { await calculateRouteAndShowOverview(from: start) }
                 } label: {
                     Label(planner.isLoading ? "Route wird berechnet …" : "Route planen",
                           systemImage: "arrow.triangle.turn.up.right.diamond.fill")
@@ -577,6 +587,12 @@ struct DriveContentView: View {
     private func searchNearby(_ query: String) {
         planner.destinationText = query
         Task { await planner.searchDestination(near: location.location?.coordinate) }
+    }
+
+    private func calculateRouteAndShowOverview(from start: CLLocationCoordinate2D) async {
+        await planner.calculate(from: start, settings: settings)
+        guard planner.route != nil else { return }
+        showCompleteRoute()
     }
 
     private func installSimulatorSearchPreview() {
