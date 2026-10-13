@@ -451,8 +451,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             if viaStations.isEmpty && lockedWaypoints.isEmpty {
                 let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
                 guard calculationGeneration == routeCalculationGeneration else { return }
+                // A strict trip corridor may reject every MapKit alternative.
+                // Never replace an active, still usable route with an empty
+                // result; retaining it lets guidance continue and retry later.
+                guard let firstRoute = routes.first else { throw DriveAPIError.invalidData }
                 alternatives = routes
-                legs = routes.first.map { [$0] } ?? []
+                legs = [firstRoute]
                 // Request the opposite toll preference for an honest route-level
                 // distance/time comparison. MapKit exposes no toll price; that
                 // remains explicitly unknown until a verified provider responds.
