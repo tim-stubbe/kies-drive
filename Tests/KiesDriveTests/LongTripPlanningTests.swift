@@ -53,6 +53,30 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.routeProgress ?? 0, 2.0 / 3.0, accuracy: 0.001)
     }
 
+    func testBreakPlannerRejectsStopTooLateForContinuousDrivingLimit() {
+        let tooLate = BreakCandidate(id: "late", name: "Zu spät", coordinate: .init(),
+                                     progress: 0.8, detourMetres: 20, isOpen: true)
+        let breaks = BreakPlanner().plan(drivingTime: 3 * 3600, candidates: [tooLate])
+        XCTAssertNil(breaks.first?.candidate)
+        XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
+    }
+
+    func testBreakPlannerResetsLimitAtActualEarlyStop() {
+        let candidates = [
+            BreakCandidate(id: "early", name: "Früher Halt", coordinate: .init(),
+                           progress: 0.3, detourMetres: 100, isOpen: true),
+            BreakCandidate(id: "late", name: "Später Halt", coordinate: .init(),
+                           progress: 0.75, detourMetres: 100, isOpen: true)
+        ]
+        let drivingTime = 6 * 3600.0
+        let breaks = BreakPlanner().plan(drivingTime: drivingTime, candidates: candidates)
+        let times = breaks.map(\.afterDriving)
+        let legs = zip([0.0] + times, times + [drivingTime]).map { $1 - $0 }
+        XCTAssertTrue(legs.allSatisfy { $0 <= 2 * 3600 + 10 * 60 })
+        XCTAssertFalse(breaks.contains { $0.candidate?.id == "late" },
+                       "A later stop must be measured from the actual early break")
+    }
+
     func testBreakPlannerKeepsUnknownOpeningStatusHonest() {
         let unknown = BreakCandidate(id: "unknown", name: "Rastplatz", coordinate: .init(),
                                      progress: 2.0 / 3.0, detourMetres: 100, isOpen: nil)

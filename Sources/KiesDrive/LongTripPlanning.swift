@@ -227,18 +227,24 @@ struct FuelStopPlanner {
 struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
+    var latestStopTolerance: TimeInterval = 10 * 60
 
     func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
               preferredCandidateIDs: Set<String> = []) -> [PlannedBreak] {
         guard drivingTime > maximumContinuousDriving else { return [] }
-        let count = max(1, Int(ceil(drivingTime / maximumContinuousDriving)) - 1)
         var remaining = candidates.filter { $0.isOpen != false }
-        var lastProgress = 0.0
-        return (1...count).map { index in
-            // Stop after each maximum driving interval, not at evenly split
-            // fractions (e.g. a five-hour trip should pause near 2h and 4h).
-            let idealProgress = min(0.95, Double(index) * maximumContinuousDriving / drivingTime)
-            let candidatesAhead = remaining.filter { $0.progress > lastProgress + 0.05 }
+        var lastBreakDrivingTime = 0.0
+        var result: [PlannedBreak] = []
+        while drivingTime - lastBreakDrivingTime > maximumContinuousDriving {
+            let index = result.count + 1
+            let idealDrivingTime = lastBreakDrivingTime + maximumContinuousDriving
+            let idealProgress = min(0.95, idealDrivingTime / drivingTime)
+            let latestDrivingTime = min(drivingTime, idealDrivingTime + latestStopTolerance)
+            let candidatesAhead = remaining.filter {
+                let candidateTime = $0.progress * drivingTime
+                return candidateTime > lastBreakDrivingTime + drivingTime * 0.03 &&
+                    candidateTime <= latestDrivingTime
+            }
             let candidatesInWindow = candidatesAhead.filter { abs($0.progress - idealProgress) <= 0.12 }
             // A distant stop is not an "optimal" pause merely because it is
             // the only search result. Leave the location unverified instead.
@@ -248,19 +254,20 @@ struct BreakPlanner {
             }
             if let best {
                 remaining.removeAll { $0.id == best.id }
-                lastProgress = best.progress
-            } else {
-                lastProgress = idealProgress
             }
             let progress = best?.progress ?? idealProgress
+            let breakDrivingTime = drivingTime * progress
             let detour = best.map { " · \(Int($0.detourMetres / 100) * 100) m Umweg" } ?? ""
-            return PlannedBreak(
+            result.append(PlannedBreak(
                 id: "break-\(index)", candidate: best,
-                afterDriving: drivingTime * progress, duration: defaultBreakDuration,
+                afterDriving: breakDrivingTime, duration: defaultBreakDuration,
                 routeProgress: progress,
                 explanation: explanation(for: best, detour: detour)
-            )
+            ))
+            guard breakDrivingTime > lastBreakDrivingTime else { break }
+            lastBreakDrivingTime = breakDrivingTime
         }
+        return result
     }
 
     private func explanation(for candidate: BreakCandidate?, detour: String) -> String {
