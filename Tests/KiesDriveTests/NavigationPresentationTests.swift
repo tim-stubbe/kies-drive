@@ -458,6 +458,23 @@ final class NavigationPresentationTests: XCTestCase {
         ), ["Route folgen"])
     }
 
+    func testCarPlayGuidanceKeepsExitAndRoadVisibleOnSmallDisplays() {
+        let variants = CarPlayGuidancePresentationPolicy.variants(
+            for: "Ausfahrt 69 rechts auf die A 9 Richtung München nehmen"
+        )
+        XCTAssertEqual(variants.first, "Ausfahrt 69 rechts auf die A 9 Richtung München nehmen")
+        XCTAssertTrue(variants.contains("Ausfahrt 69, Richtung München"))
+        XCTAssertTrue(variants.contains("A9, Richtung München"))
+        XCTAssertTrue(variants.contains("Ausfahrt 69"))
+        XCTAssertTrue(variants.contains("A9"))
+    }
+
+    func testCarPlayGuidanceVariantsAreNonemptyAndUnique() {
+        let variants = CarPlayGuidancePresentationPolicy.variants(for: "A 66 folgen")
+        XCTAssertFalse(variants.contains(where: { $0.isEmpty }))
+        XCTAssertEqual(variants.count, Set(variants).count)
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)

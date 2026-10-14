@@ -270,6 +270,30 @@ enum CarPlayGuidancePresentationPolicy {
         let cleanedNext = next?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return [cleanedNext.isEmpty ? "Route folgen" : cleanedNext]
     }
+
+    /// CarPlay chooses the first variant that fits the current dashboard.
+    /// Supplying only MapKit's long sentence can hide the exit number on a
+    /// narrow instrument display, so progressively shorter variants retain
+    /// the decisive road/exit information.
+    static func variants(for instruction: String) -> [String] {
+        let presentation = NavigationManeuverPresentation(instruction)
+        var candidates = [presentation.instruction]
+        if let exit = presentation.exitLabel, let destination = presentation.destinationLabel {
+            candidates.append("\(exit), Richtung \(destination)")
+        }
+        if let road = presentation.roadLabel, let destination = presentation.destinationLabel {
+            candidates.append("\(road), Richtung \(destination)")
+        }
+        if let exit = presentation.exitLabel { candidates.append(exit) }
+        if let road = presentation.roadLabel { candidates.append(road) }
+
+        var seen = Set<String>()
+        return candidates.compactMap { value in
+            let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty, seen.insert(cleaned).inserted else { return nil }
+            return cleaned
+        }
+    }
 }
 
 /// Builds the first guidance card directly from a newly committed route.

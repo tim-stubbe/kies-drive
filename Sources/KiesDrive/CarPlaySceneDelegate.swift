@@ -558,7 +558,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         )
         session.upcomingManeuvers = instructions.enumerated().map { index, instruction in
             let maneuver = CPManeuver()
-            maneuver.instructionVariants = [instruction]
+            let variants = CarPlayGuidancePresentationPolicy.variants(for: instruction)
+            maneuver.instructionVariants = variants
+            maneuver.dashboardInstructionVariants = variants
+            maneuver.notificationInstructionVariants = variants
             let presentation = NavigationManeuverPresentation(instruction)
             maneuver.symbolImage = UIImage(systemName: presentation.direction.symbolName)
             if index == 0 {
