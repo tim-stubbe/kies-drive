@@ -158,6 +158,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var routeCalculationGeneration = UUID()
     private var destinationSearchGeneration = UUID()
     private var routeSearchGeneration = UUID()
+    private var activeDestinationSearch: MKLocalSearch?
+    private var activeRouteSearches: [MKLocalSearch] = []
+    private var activeAmenitySearches: [MKLocalSearch] = []
     private var automaticRestoreInProgress = false
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
@@ -458,17 +461,23 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let query = destinationText.trimmingCharacters(in: .whitespacesAndNewlines)
         let generation = UUID()
         destinationSearchGeneration = generation
+        activeDestinationSearch?.cancel()
+        activeDestinationSearch = nil
         guard query.count > 2 else { suggestions = []; return }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         if let coordinate { request.region = .init(center: coordinate, latitudinalMeters: 100_000, longitudinalMeters: 100_000) }
+        let search = MKLocalSearch(request: request)
+        activeDestinationSearch = search
         do {
-            let items = try await MKLocalSearch(request: request).start().mapItems
+            let items = try await search.start().mapItems
             guard generation == destinationSearchGeneration,
                   destinationText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
+            activeDestinationSearch = nil
             suggestions = items
         } catch {
             guard generation == destinationSearchGeneration else { return }
+            activeDestinationSearch = nil
             errorMessage = "Zielsuche fehlgeschlagen: \(error.localizedDescription)"
         }
     }
@@ -479,6 +488,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let generation = UUID()
         routeSearchGeneration = generation
+        activeRouteSearches.forEach { $0.cancel() }
+        activeRouteSearches = []
         guard !legs.isEmpty, !cleanQuery.isEmpty else {
             routeSearchQuery = cleanQuery
             routeSearchResults = []
@@ -505,14 +516,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             routeCoordinates: remainingCoordinates, searchPointCount: searchPoints.count
         )
         var matches: [String: MKMapItem] = [:]
+        let searches = searchPoints.map { point -> MKLocalSearch in
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = cleanQuery
+            request.region = .init(center: point, latitudinalMeters: searchRadius,
+                                   longitudinalMeters: searchRadius)
+            return MKLocalSearch(request: request)
+        }
+        activeRouteSearches = searches
         await withTaskGroup(of: [MKMapItem].self) { group in
-            for point in searchPoints {
+            for search in searches {
                 group.addTask {
-                    let request = MKLocalSearch.Request()
-                    request.naturalLanguageQuery = cleanQuery
-                    request.region = .init(center: point, latitudinalMeters: searchRadius,
-                                           longitudinalMeters: searchRadius)
-                    return (try? await MKLocalSearch(request: request).start().mapItems) ?? []
+                    (try? await search.start().mapItems) ?? []
                 }
             }
             for await items in group {
@@ -525,6 +540,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard generation == routeSearchGeneration,
               routeGeneration == routeCalculationGeneration,
               routeSearchQuery == cleanQuery else { return }
+        activeRouteSearches = []
         let candidates = matches.values.compactMap {
             item -> (item: MKMapItem, progress: Double, airDistance: Double,
                      routeCoordinate: CLLocationCoordinate2D)? in
@@ -699,6 +715,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         routeCalculationGeneration = calculationGeneration
         destinationSearchGeneration = UUID()
         routeSearchGeneration = UUID()
+        activeDestinationSearch?.cancel()
+        activeDestinationSearch = nil
+        activeRouteSearches.forEach { $0.cancel() }
+        activeRouteSearches = []
+        activeAmenitySearches.forEach { $0.cancel() }
+        activeAmenitySearches = []
         routeSearchResults = []
         isSearchingAlongRoute = false
         if showLoading { isLoading = true; stations = [] }
@@ -1784,19 +1806,25 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !legs.isEmpty else { amenityBreakCandidates = []; return }
         let generation = UUID()
         breakCandidateLoadGeneration = generation
+        activeAmenitySearches.forEach { $0.cancel() }
+        activeAmenitySearches = []
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
         let searchPoints = evenlySpaced(routeCoordinates, maximum: 4)
         var matches: [String: MKMapItem] = [:]
+        let searches = searchPoints.flatMap { point in
+            ["Raststätte Autohof", "Rastplatz"].map { query -> MKLocalSearch in
+                let request = MKLocalSearch.Request()
+                request.naturalLanguageQuery = query
+                request.region = .init(center: point, latitudinalMeters: 90_000,
+                                       longitudinalMeters: 90_000)
+                return MKLocalSearch(request: request)
+            }
+        }
+        activeAmenitySearches = searches
         await withTaskGroup(of: [MKMapItem].self) { group in
-            for point in searchPoints {
-                for query in ["Raststätte Autohof", "Rastplatz"] {
-                    group.addTask {
-                        let request = MKLocalSearch.Request()
-                        request.naturalLanguageQuery = query
-                        request.region = .init(center: point, latitudinalMeters: 90_000,
-                                               longitudinalMeters: 90_000)
-                        return (try? await MKLocalSearch(request: request).start().mapItems) ?? []
-                    }
+            for search in searches {
+                group.addTask {
+                    (try? await search.start().mapItems) ?? []
                 }
             }
             for await items in group {
@@ -1807,6 +1835,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             }
         }
         guard generation == breakCandidateLoadGeneration else { return }
+        activeAmenitySearches = []
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
         guard routePoints.count > 1 else { amenityBreakCandidates = []; return }
