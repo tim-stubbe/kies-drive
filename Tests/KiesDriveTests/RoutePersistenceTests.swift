@@ -72,6 +72,40 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.waypoints.map(\.id), ["first", "poi", "last"])
     }
 
+    func testWaypointVisitRequiresNextPointAndRoadLevelProximity() {
+        let waypoints = [
+            LockedWaypoint(id: "first", name: "First",
+                           coordinate: .init(latitude: 50, longitude: 8), required: true,
+                           optionsAfter: nil),
+            LockedWaypoint(id: "later", name: "Later",
+                           coordinate: .init(latitude: 51, longitude: 9), required: true,
+                           optionsAfter: nil),
+        ]
+        let besideLaterPoint = CLLocation(
+            coordinate: .init(latitude: 51, longitude: 9), altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 5, timestamp: Date()
+        )
+        XCTAssertNil(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: waypoints, visitedIDs: [], location: besideLaterPoint
+        ))
+
+        let besideParallelRoad = CLLocation(
+            coordinate: .init(latitude: 50.0015, longitude: 8), altitude: 0,
+            horizontalAccuracy: 10, verticalAccuracy: 5, timestamp: Date()
+        )
+        XCTAssertNil(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: waypoints, visitedIDs: [], location: besideParallelRoad
+        ))
+
+        let onRequiredRoad = CLLocation(
+            coordinate: .init(latitude: 50.0003, longitude: 8), altitude: 0,
+            horizontalAccuracy: 10, verticalAccuracy: 5, timestamp: Date()
+        )
+        XCTAssertEqual(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: waypoints, visitedIDs: [], location: onRequiredRoad
+        ), "first")
+    }
+
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")

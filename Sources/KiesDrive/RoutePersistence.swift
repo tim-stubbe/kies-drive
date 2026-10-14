@@ -13,6 +13,22 @@ extension DriveCoordinate {
     }
 }
 
+enum RouteWaypointVisitPolicy {
+    /// Only the first remaining mandatory point can be completed. This keeps a
+    /// nearby later overpass or parallel road from silently skipping the route
+    /// rules attached to an earlier border crossing or mountain pass.
+    static func reachedWaypointID(waypoints: [LockedWaypoint], visitedIDs: Set<String>,
+                                  location: CLLocation) -> String? {
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 100,
+              let next = waypoints.first(where: { $0.required && !visitedIDs.contains($0.id) })
+        else { return nil }
+        let radius = min(120, max(45, location.horizontalAccuracy * 2))
+        let target = CLLocation(latitude: next.coordinate.latitude,
+                                longitude: next.coordinate.longitude)
+        return location.distance(from: target) <= radius ? next.id : nil
+    }
+}
+
 enum RouteCorridorPolicy {
     /// Accepts a reroute when almost all of its sampled geometry remains near
     /// the persisted corridor polyline. Measuring against line segments is

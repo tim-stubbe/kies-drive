@@ -972,13 +972,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func markReachedWaypoints(at location: CLLocation, settings: DriveSettings) {
         guard let lock = routeLockStore.activeLock else { return }
         let visited = Set(lock.visitedWaypointIDs ?? [])
-        guard let reached = lock.waypoints.first(where: {
-            !visited.contains($0.id) && location.distance(from: CLLocation(
-                latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)) <= 250
-        }) else { return }
+        guard let reachedID = RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: lock.waypoints, visitedIDs: visited, location: location
+        ) else { return }
         routeLockStore.update { current in
             var ids = current.visitedWaypointIDs ?? []
-            if !ids.contains(reached.id) { ids.append(reached.id) }
+            if !ids.contains(reachedID) { ids.append(reachedID) }
             current.visitedWaypointIDs = ids
         }
         activeRouteLock = routeLockStore.activeLock
