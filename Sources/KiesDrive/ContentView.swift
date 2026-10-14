@@ -1820,7 +1820,7 @@ struct DriveSettingsView: View {
                     if let latestSummary {
                         LabeledContent("Letzte Fahrt", value: latestSummary.quality.rawValue)
                         if latestSummary.quality != .good {
-                            Text("Letzte Fahrt: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n).")
+                            Text("Letzte Fahrt: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     } else {

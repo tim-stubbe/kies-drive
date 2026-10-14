@@ -148,6 +148,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var lastLocationRejectionLoggedAt: Date?
     private var lastOfflineRecoveryAttempt: Date?
     private var offlineNeedsInitialPositionMatch = false
+    private var offlineDeviationWarningActive = false
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
@@ -969,14 +970,6 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             allowsFullRecovery: offlineNeedsInitialPositionMatch
         ) else { return }
         offlineNeedsInitialPositionMatch = false
-        navigationStepCursor = progress.currentStepIndex
-        nextManeuverInstruction = progress.instruction
-        nextManeuverDistance = progress.distanceToManeuver
-        upcomingManeuverInstructions = progress.upcomingInstructions
-        remainingDistanceMetres = progress.remainingDistance
-        let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
-        let cachedTime = cache.legs.reduce(0) { $0 + $1.travelTime }
-        remainingTravelTime = progress.remainingDistance / max(cachedDistance / max(cachedTime, 1), 1)
 
         if OfflineRouteRecoveryPolicy.shouldAttempt(lastAttempt: lastOfflineRecoveryAttempt) {
             lastOfflineRecoveryAttempt = Date()
@@ -985,6 +978,72 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 await self.calculate(from: location.coordinate, settings: settings, showLoading: false)
             }
         }
+
+        let reliableSpeed = NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
+        let isOutsideCorridor = NavigationDeviationPolicy.isOutsideCorridor(
+            distanceFromRoute: progress.distanceFromRoute,
+            horizontalAccuracy: location.horizontalAccuracy,
+            speedMetresPerSecond: reliableSpeed
+        )
+        let isDeparting = NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: progress.distanceFromRoute,
+            previousDistance: previousOffRouteDistance,
+            horizontalAccuracy: location.horizontalAccuracy,
+            speedMetresPerSecond: reliableSpeed
+        )
+        previousOffRouteDistance = progress.distanceFromRoute
+        if isOutsideCorridor {
+            if isDeparting {
+                if offRouteSince == nil {
+                    offRouteSince = location.timestamp
+                    offRouteFixCount = 1
+                } else {
+                    offRouteFixCount += 1
+                }
+                if let offRouteSince,
+                   NavigationDeviationPolicy.isConfirmed(
+                    elapsed: location.timestamp.timeIntervalSince(offRouteSince),
+                    consecutiveFixes: offRouteFixCount,
+                    speedMetresPerSecond: reliableSpeed
+                   ), !offlineDeviationWarningActive {
+                    offlineDeviationWarningActive = true
+                    DriveDiagnosticStore.append(
+                        .offlineRouteDeparture,
+                        detail: DriveDiagnosticDetail.navigationSample(
+                            "Abstand zum Offline-Korridor \(Int(progress.distanceFromRoute.rounded())) m",
+                            location: location
+                        )
+                    )
+                    if settings.voiceGuidance {
+                        _ = speak(
+                            "Du hast die gespeicherte Route verlassen. Sobald eine Verbindung verfügbar ist, wird neu berechnet.",
+                            priority: .critical
+                        )
+                    }
+                }
+            } else if !offlineDeviationWarningActive {
+                resetDeviationTracking(keepingDistance: progress.distanceFromRoute)
+            }
+            // Freeze the last trustworthy instruction while outside the
+            // cached corridor. Snapping to the nearest distant segment can
+            // otherwise announce an unrelated junction or future crossing.
+            return
+        }
+        if offlineDeviationWarningActive {
+            offlineDeviationWarningActive = false
+            if settings.voiceGuidance {
+                _ = speak("Du bist wieder auf der gespeicherten Route.", priority: .status)
+            }
+        }
+        resetDeviationTracking(keepingDistance: progress.distanceFromRoute)
+        navigationStepCursor = progress.currentStepIndex
+        nextManeuverInstruction = progress.instruction
+        nextManeuverDistance = progress.distanceToManeuver
+        upcomingManeuverInstructions = progress.upcomingInstructions
+        remainingDistanceMetres = progress.remainingDistance
+        let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
+        let cachedTime = cache.legs.reduce(0) { $0 + $1.travelTime }
+        remainingTravelTime = progress.remainingDistance / max(cachedDistance / max(cachedTime, 1), 1)
 
         guard settings.voiceGuidance else { return }
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
@@ -1038,6 +1097,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastReliableGuidanceSpeedAt = nil
         consecutiveRerouteFailures = 0
         offlineNeedsInitialPositionMatch = false
+        offlineDeviationWarningActive = false
     }
 
     /// Publishes a maneuver belonging to the newly installed route before the

@@ -442,11 +442,23 @@ enum NavigationDeviationPolicy {
         max(100, horizontalAccuracy * 3, min(220, max(speedMetresPerSecond, 0) * 4))
     }
 
+    static func isOutsideCorridor(distanceFromRoute: Double,
+                                  horizontalAccuracy: Double,
+                                  speedMetresPerSecond: Double) -> Bool {
+        guard distanceFromRoute.isFinite,
+              horizontalAccuracy >= 0, horizontalAccuracy <= 65 else { return false }
+        return distanceFromRoute > threshold(
+            horizontalAccuracy: horizontalAccuracy,
+            speedMetresPerSecond: speedMetresPerSecond
+        )
+    }
+
     static func shouldAccumulate(distanceFromRoute: Double, previousDistance: Double?,
                                  horizontalAccuracy: Double, speedMetresPerSecond: Double) -> Bool {
-        guard horizontalAccuracy >= 0, horizontalAccuracy <= 65, speedMetresPerSecond >= 2.5 else { return false }
-        guard distanceFromRoute > threshold(horizontalAccuracy: horizontalAccuracy,
-                                            speedMetresPerSecond: speedMetresPerSecond) else { return false }
+        guard speedMetresPerSecond >= 2.5,
+              isOutsideCorridor(distanceFromRoute: distanceFromRoute,
+                                horizontalAccuracy: horizontalAccuracy,
+                                speedMetresPerSecond: speedMetresPerSecond) else { return false }
         if let previousDistance, distanceFromRoute + 30 < previousDistance { return false }
         return true
     }
@@ -620,6 +632,7 @@ struct OfflineGuidanceProgress: Equatable {
     let remainingDistance: CLLocationDistance
     let upcomingInstructions: [String]
     let followingManeuverDistance: CLLocationDistance?
+    let distanceFromRoute: CLLocationDistance
 }
 
 enum OfflineGuidanceEngine {
@@ -646,7 +659,8 @@ enum OfflineGuidanceEngine {
                          instruction: "Dem Straßenverlauf bis zum Ziel folgen",
                          distanceToManeuver: routeRemaining, remainingDistance: routeRemaining,
                          upcomingInstructions: ["Dem Straßenverlauf bis zum Ziel folgen"],
-                         followingManeuverDistance: nil)
+                         followingManeuverDistance: nil,
+                         distanceFromRoute: metrics[selected].distanceFromRoute)
         }
         let distanceToManeuver = metrics[selected].remainingOnStep +
             steps[(selected + 1)..<maneuver].reduce(0) { $0 + $1.distance }
@@ -664,7 +678,8 @@ enum OfflineGuidanceEngine {
                      distanceToManeuver: max(0, distanceToManeuver),
                      remainingDistance: routeRemaining,
                      upcomingInstructions: Array(upcoming.prefix(5)),
-                     followingManeuverDistance: followingDistance)
+                     followingManeuverDistance: followingDistance,
+                     distanceFromRoute: metrics[selected].distanceFromRoute)
     }
 
     private static func distance(from coordinate: CLLocationCoordinate2D,

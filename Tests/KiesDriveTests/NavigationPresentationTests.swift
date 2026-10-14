@@ -81,6 +81,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 0, speedMetresPerSecond: 30), 0)
     }
     func testDeviationPolicyIgnoresStopsNoiseAndConvergingSlipRoads() {
+        XCTAssertTrue(NavigationDeviationPolicy.isOutsideCorridor(
+            distanceFromRoute: 180, horizontalAccuracy: 10, speedMetresPerSecond: 0
+        ), "Offline guidance must freeze a distant instruction even while the car is stopped")
         XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: 250, previousDistance: 230, horizontalAccuracy: 12, speedMetresPerSecond: 0.5))
         XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
@@ -576,6 +579,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertGreaterThan(progress.distanceToManeuver, 400)
         XCTAssertLessThan(progress.distanceToManeuver, 600)
         XCTAssertEqual(progress.upcomingInstructions.count, 2)
+        XCTAssertLessThan(progress.distanceFromRoute, 20)
+    }
+
+    func testOfflineGuidanceReportsDistanceFromCachedCorridor() throws {
+        let steps = [
+            OfflineGuidanceStep(instruction: "Geradeaus", distance: 1_000, coordinates: [
+                .init(latitude: 50, longitude: 8), .init(latitude: 50, longitude: 8.014)
+            ])
+        ]
+
+        let progress = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: .init(latitude: 50.01, longitude: 8.007), currentIndex: 0,
+            steps: steps, transitionRadius: 12
+        ))
+
+        XCTAssertGreaterThan(progress.distanceFromRoute, 1_000)
     }
 
     func testOfflineGuidanceDoesNotJumpToNearbyFutureParallelStep() throws {

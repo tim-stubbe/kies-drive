@@ -142,6 +142,7 @@ enum DriveFavoriteStore {
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
+    case offlineRouteDeparture
 }
 
 /// Produces useful driving diagnostics without ever recording coordinates or
@@ -205,6 +206,7 @@ struct DriveDiagnosticSummary: Equatable {
     let rerouteFailures: Int
     let rejectedLocations: Int
     let missedFinalCues: Int
+    let offlineRouteDepartures: Int
 
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
         guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
@@ -212,9 +214,10 @@ struct DriveDiagnosticSummary: Equatable {
         let failures = session.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
+        let offlineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
         let reroutes = session.filter { $0.kind == .rerouteRequested }.count
         let quality: Quality
-        if failures > 0 || missed > 0 {
+        if failures > 0 || missed > 0 || offlineDepartures > 0 {
             quality = .critical
         } else if rejected >= 3 || reroutes >= 3 {
             quality = .attention
@@ -223,7 +226,7 @@ struct DriveDiagnosticSummary: Equatable {
         }
         return .init(quality: quality, eventCount: session.count,
                      rerouteFailures: failures, rejectedLocations: rejected,
-                     missedFinalCues: missed)
+                     missedFinalCues: missed, offlineRouteDepartures: offlineDepartures)
     }
 }
 
