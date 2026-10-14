@@ -292,9 +292,28 @@ enum NavigationStepSelectionPolicy {
     private static let maximumRecoveryStepAdvance = 16
 
     static func selectedIndex(current: Int, metrics: [NavigationStepMetric],
-                              transitionRadius: CLLocationDistance) -> Int {
+                              transitionRadius: CLLocationDistance,
+                              allowsFullRecovery: Bool = false) -> Int {
         guard metrics.indices.contains(current) else { return 0 }
         let radius = min(25, max(8, transitionRadius))
+
+        // Only the first fix of a restored offline route may search the whole
+        // remaining journey. Prefer the earliest plausible road segment over
+        // a microscopically closer later crossing, so loops and cloverleafs do
+        // not skip required sections. Normal live updates keep the tight
+        // forward window below.
+        if allowsFullRecovery, metrics[current].distanceFromRoute > 250 {
+            if let earliestPlausible = metrics.indices.dropFirst(current).first(where: {
+                metrics[$0].distanceFromRoute <= max(45, radius * 1.5)
+            }) {
+                return earliestPlausible
+            }
+            if let nearest = metrics.indices.dropFirst(current).min(by: {
+                metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
+            }), metrics[nearest].distanceFromRoute + 250 < metrics[current].distanceFromRoute {
+                return nearest
+            }
+        }
 
         // A large discontinuity is the explicit recovery path after a tunnel,
         // long pause or sparse background update. Recovery only moves forward.
@@ -404,7 +423,8 @@ struct OfflineGuidanceProgress: Equatable {
 enum OfflineGuidanceEngine {
     static func progress(at coordinate: CLLocationCoordinate2D, currentIndex: Int,
                          steps: [OfflineGuidanceStep],
-                         transitionRadius: CLLocationDistance) -> OfflineGuidanceProgress? {
+                         transitionRadius: CLLocationDistance,
+                         allowsFullRecovery: Bool = false) -> OfflineGuidanceProgress? {
         guard !steps.isEmpty else { return nil }
         let metrics = steps.map {
             NavigationStepMetric(distanceFromRoute: distance(from: coordinate, to: $0.coordinates),
@@ -412,7 +432,8 @@ enum OfflineGuidanceEngine {
         }
         let selected = NavigationStepSelectionPolicy.selectedIndex(
             current: min(max(0, currentIndex), steps.count - 1), metrics: metrics,
-            transitionRadius: transitionRadius
+            transitionRadius: transitionRadius,
+            allowsFullRecovery: allowsFullRecovery
         )
         let routeRemaining = max(0, metrics[selected].remainingOnStep +
             steps.dropFirst(selected + 1).reduce(0) { $0 + $1.distance })

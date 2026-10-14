@@ -373,6 +373,30 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 12), 3)
     }
 
+    func testInitialOfflineRecoveryCanResumeFarBeyondShortRecoveryWindow() {
+        var metrics = Array(repeating: NavigationStepMetric(
+            distanceFromRoute: 3_000, remainingOnStep: 0
+        ), count: 80)
+        metrics[54] = .init(distanceFromRoute: 18, remainingOnStep: 700)
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12, allowsFullRecovery: true
+        ), 54)
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12
+        ), 0, "Ordinary updates must not jump across most of the route")
+    }
+
+    func testInitialOfflineRecoveryPrefersEarlierPlausibleSegmentAtCrossing() {
+        var metrics = Array(repeating: NavigationStepMetric(
+            distanceFromRoute: 2_000, remainingOnStep: 0
+        ), count: 80)
+        metrics[42] = .init(distanceFromRoute: 30, remainingOnStep: 600)
+        metrics[70] = .init(distanceFromRoute: 2, remainingOnStep: 8_000)
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12, allowsFullRecovery: true
+        ), 42)
+    }
+
     func testOfflineGuidanceFindsNextManeuverAlongCachedGeometry() throws {
         let steps = [
             OfflineGuidanceStep(instruction: "", distance: 1_000, coordinates: [

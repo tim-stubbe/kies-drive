@@ -100,6 +100,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var lastReliableGuidanceSpeedAt: Date?
     private var lastLocationRejectionLoggedAt: Date?
     private var lastOfflineRecoveryAttempt: Date?
+    private var offlineNeedsInitialPositionMatch = false
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
@@ -751,6 +752,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         resetLiveNavigationProgress()
         errorMessage = nil
         isUsingOfflineGuidance = true
+        offlineNeedsInitialPositionMatch = true
         lastOfflineRecoveryAttempt = Date()
         isNavigating = true
         hasArrived = false
@@ -773,8 +775,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         guard let progress = OfflineGuidanceEngine.progress(
             at: location.coordinate, currentIndex: navigationStepCursor, steps: steps,
-            transitionRadius: max(8, location.horizontalAccuracy * 1.5)
+            transitionRadius: max(8, location.horizontalAccuracy * 1.5),
+            allowsFullRecovery: offlineNeedsInitialPositionMatch
         ) else { return }
+        offlineNeedsInitialPositionMatch = false
         navigationStepCursor = progress.currentStepIndex
         nextManeuverInstruction = progress.instruction
         nextManeuverDistance = progress.distanceToManeuver
@@ -842,6 +846,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastAcceptedNavigationLocation = nil
         lastReliableGuidanceSpeedMps = nil
         lastReliableGuidanceSpeedAt = nil
+        offlineNeedsInitialPositionMatch = false
     }
 
     @discardableResult
