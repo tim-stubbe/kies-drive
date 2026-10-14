@@ -1394,12 +1394,40 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             if succeeded {
                 consecutiveRerouteFailures = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
+                if settings.voiceGuidance {
+                    announceRecalculatedRoute(at: location)
+                }
             } else {
                 consecutiveRerouteFailures += 1
                 DriveDiagnosticStore.append(.rerouteFailed,
                                             detail: errorMessage ?? "Keine nutzbare neue Route")
             }
         }
+    }
+
+    /// A successful reroute must never end acoustically with only the earlier
+    /// "wird neu berechnet" status. Publish and speak the first usable
+    /// instruction immediately; when the next maneuver is still far away,
+    /// confirm completion without manufacturing an early turn cue.
+    private func announceRecalculatedRoute(at location: CLLocation) {
+        guard let progress = liveNavigationProgress(at: location) else {
+            _ = speak("Die neue Route ist bereit.", priority: .status)
+            return
+        }
+        updateNextManeuver(using: progress)
+        let speed = NavigationGuidanceSpeedPolicy.effective(
+            current: NavigationMotionPolicy.reliableSpeed(for: location),
+            previous: lastReliableGuidanceSpeedMps,
+            previousAt: lastReliableGuidanceSpeedAt,
+            now: location.timestamp
+        )
+        guard NavigationAnnouncementStage.stage(
+            distance: progress.distance, speedKmh: speed * 3.6
+        ) != nil else {
+            _ = speak("Die neue Route ist bereit.", priority: .status)
+            return
+        }
+        announce(progress, guidanceSpeedMps: speed)
     }
 
     private func resetDeviationTracking(keepingDistance distance: CLLocationDistance? = nil) {
