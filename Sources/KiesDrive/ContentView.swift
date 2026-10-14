@@ -1739,10 +1739,6 @@ struct DriveSettingsView: View {
                         Task { await planner.reloadStopPlanning(fuel: fuel, settings: settings) }
                     }
                     Picker("Kartendarstellung", selection: $settings.mapAppearance) { ForEach(DriveMapAppearance.allCases) { Text($0.label).tag($0) } }
-                    Button("Kroatien-Trip nach Split fest aktivieren") {
-                        planner.installCroatiaSplitTripLock()
-                        dismiss()
-                    }
                 }
                 Section("Langstrecke & Fahrzeug") {
                     Stepper("Zieltempo auf geeigneten freien Abschnitten: \(Int(settings.targetSpeedKmh)) km/h", value: $settings.targetSpeedKmh, in: 100...220, step: 10)

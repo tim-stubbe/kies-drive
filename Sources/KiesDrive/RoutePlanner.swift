@@ -169,22 +169,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var drivingRestState = DrivingRestStateStore.live.load()
     private static let cacheKey = "drive.offlineRoute"
     private static let offlineCacheStore = OfflineRouteCacheStore.live()
-    private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
     private let routeLockStore = RouteLockStore.shared
 
     override init() {
         super.init()
         synthesizer.delegate = self
         offlineRoute = Self.loadCache()
-        // Einmalige, versionierte Migration fuer die ausdrücklich festgelegte
-        // Heimfahrt. Sie greift auch dann, wenn iOS einen URL-Fernstart wegen
-        // gesperrtem Bildschirm ablehnt.
-        #if !targetEnvironment(simulator)
-        if !UserDefaults.standard.bool(forKey: Self.forcedHomeTripKey) {
-            routeLockStore.save(.hochheimViaWurzenpass())
-            UserDefaults.standard.set(true, forKey: Self.forcedHomeTripKey)
-        }
-        #endif
+        // Never install a personal preset on a fresh device. Public builds
+        // restore only a trip the signed-in driver deliberately created.
         activeRouteLock = routeLockStore.activeLock
         if let lock = activeRouteLock {
             destinationText = lock.destinationName

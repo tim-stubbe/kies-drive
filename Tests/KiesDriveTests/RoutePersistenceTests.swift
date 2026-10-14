@@ -4,6 +4,14 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testFreshPublicInstallationHasNoPersonalRouteLock() {
+        let suite = "FreshPublicRouteLock-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertNil(RouteLockStore(defaults: defaults).activeLock)
+    }
+
     func testPersistedProgressDisambiguatesLaterVisitAtRouteCrossing() throws {
         let corridor = [
             DriveCoordinate(latitude: 50.0, longitude: 8.0),
