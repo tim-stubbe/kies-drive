@@ -690,6 +690,14 @@ enum NavigationDestinationIdentityPolicy {
     }
 }
 
+/// Destination activation is transactional: a failed request may restore its
+/// own snapshot only while it is still the latest user selection.
+enum DestinationActivationRollbackPolicy {
+    static func shouldRollback(request: UUID, current: UUID) -> Bool {
+        request == current
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

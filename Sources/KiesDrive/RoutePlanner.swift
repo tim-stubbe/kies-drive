@@ -157,6 +157,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
     private var destinationSearchGeneration = UUID()
+    private var destinationActivationGeneration = UUID()
     private var routeSearchGeneration = UUID()
     private var activeDestinationSearch: MKLocalSearch?
     private var activeRouteSearches: [MKLocalSearch] = []
@@ -431,6 +432,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func activateDestination(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                              settings: DriveSettings,
                              requiredWaypoints: [LockedWaypoint] = []) async -> Bool {
+        let activationGeneration = UUID()
+        destinationActivationGeneration = activationGeneration
         destinationSearchGeneration = UUID()
         suggestions = []
         let previousDestination = destination
@@ -440,6 +443,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         destinationText = item.name ?? item.placemark.title ?? "Ziel"
         replaceRouteLockForRemoteDestination(waypoints: requiredWaypoints)
         guard await calculate(from: start, settings: settings) else {
+            // A newer destination may already be calculating. The older
+            // request is allowed to fail, but it must never restore its stale
+            // destination and route-lock snapshot over the latest selection.
+            guard DestinationActivationRollbackPolicy.shouldRollback(
+                request: activationGeneration, current: destinationActivationGeneration
+            ) else { return false }
             destination = previousDestination
             destinationText = previousDestinationText
             routeLockStore.replace(with: previousLock)
@@ -835,7 +844,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             DriveDiagnosticStore.append(.routeCalculated, detail: "\(legs.count) Etappen · \(Int(totalDistance)) m")
             // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
             // duerfen Navigation und UI nicht mehr blockieren.
-            if showLoading { isLoading = false }
+            // This request owns the current generation. Clear a spinner even
+            // when it was started by a now-superseded foreground request and
+            // this replacement calculation intentionally ran in background.
+            isLoading = false
             Task { [weak self] in
                 guard let self else { return }
                 await self.loadStations(fuel: settings.fuel)
@@ -854,8 +866,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return true
         } catch {
             guard calculationGeneration == routeCalculationGeneration else { return false }
+            isLoading = false
             if showLoading {
-                isLoading = false
                 errorMessage = "Route konnte nicht berechnet werden: \(error.localizedDescription)"
             } else {
                 // Cached guidance remains usable. A background reconnect must

@@ -851,6 +851,17 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationDestinationIdentityPolicy.matches(nil, destination))
     }
 
+    func testOnlyLatestDestinationActivationMayRestoreItsSnapshot() {
+        let older = UUID()
+        let latest = UUID()
+        XCTAssertFalse(DestinationActivationRollbackPolicy.shouldRollback(
+            request: older, current: latest
+        ))
+        XCTAssertTrue(DestinationActivationRollbackPolicy.shouldRollback(
+            request: latest, current: latest
+        ))
+    }
+
     func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
         let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         XCTAssertTrue(OfflineRouteCachePolicy.matches(
