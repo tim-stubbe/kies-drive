@@ -192,6 +192,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastLongTripPlanRefreshAt: Date?
     private let drivingRestStore = DrivingRestStateStore.live
     private var drivingRestState = DrivingRestStateStore.live.load()
+    private let drivingFuelStore = DrivingFuelStateStore.live
+    private var drivingFuelState = DrivingFuelStateStore.live.load()
     private static let cacheKey = "drive.offlineRoute"
     private static let offlineCacheStore = OfflineRouteCacheStore.live()
     private let routeLockStore = RouteLockStore.shared
@@ -323,6 +325,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeLockStore.clearFinished()
         drivingRestState = DrivingRestState()
         drivingRestStore.clear()
+        drivingFuelState = DrivingFuelState()
+        drivingFuelStore.clear()
     }
 
     private func persistActiveTrip() {
@@ -358,6 +362,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingRestState = DrivingRestState(tripID: lock.id)
             drivingRestStore.save(drivingRestState)
         }
+        if drivingFuelState.tripID != lock.id {
+            drivingFuelState = DrivingFuelState(
+                tripID: lock.id,
+                observedFuelFraction: min(1, max(0, DriveSettings.shared.departureFuelPercent / 100))
+            )
+            drivingFuelStore.save(drivingFuelState)
+        }
+    }
+
+    func confirmFullTank(settings: DriveSettings) {
+        guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else { return }
+        drivingFuelState = DrivingFuelPolicy.confirmed(
+            drivingFuelState, tripID: tripID, fraction: 1,
+            location: lastAcceptedNavigationLocation
+        )
+        drivingFuelStore.save(drivingFuelState)
+        buildLongTripPlan(settings: settings)
     }
 
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position
@@ -1061,6 +1082,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 speedMetresPerSecond: currentSpeed
             )
             drivingRestStore.save(drivingRestState)
+            drivingFuelState = DrivingFuelPolicy.updated(
+                drivingFuelState, tripID: tripID,
+                initialFuelFraction: settings.departureFuelPercent / 100,
+                location: location
+            )
+            drivingFuelStore.save(drivingFuelState)
         }
         if detectArrival(at: location, settings: settings) { return }
         if isUsingOfflineGuidance {
@@ -2078,13 +2105,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 breakCandidates: breakCandidates(along: [comparisonRoute])
             ))
         }
-        let currentFuelFraction = isRemainingRoutePlan
-            ? RemainingRoutePlanningPolicy.estimatedFuelFraction(
-                departureFraction: settings.departureFuelPercent / 100,
+        let currentFuelFraction: Double
+        if isRemainingRoutePlan, let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id {
+            currentFuelFraction = DrivingFuelPolicy.estimatedFraction(
+                drivingFuelState, tripID: tripID,
                 tankCapacityLitres: settings.tankCapacityL,
                 consumptionLPer100km: settings.consumptionLPer100km,
-                travelledDistanceMetres: max(0, totalDistance - mainDistance)
-            ) : min(1, max(0, settings.departureFuelPercent / 100))
+                fallback: settings.departureFuelPercent / 100
+            )
+        } else {
+            currentFuelFraction = min(1, max(0, settings.departureFuelPercent / 100))
+        }
         let profile = VehicleProfile(
             baseConsumptionLPer100km: settings.consumptionLPer100km,
             fuelPricePerLitre: settings.fuelPricePerLitre,

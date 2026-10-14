@@ -401,6 +401,58 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(store.load(), DrivingRestState())
     }
 
+    func testDrivingFuelPolicyTracksDistanceAfterConfirmedTankLevel() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 40_000)
+        let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                               horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: start)
+        let second = CLLocation(coordinate: .init(latitude: 50.009, longitude: 8), altitude: 0,
+                                horizontalAccuracy: 5, verticalAccuracy: 5,
+                                timestamp: start.addingTimeInterval(60))
+        var state = DrivingFuelPolicy.confirmed(.init(), tripID: tripID,
+                                                fraction: 1, location: first)
+        state = DrivingFuelPolicy.updated(state, tripID: tripID,
+                                          initialFuelFraction: 0.5, location: second)
+
+        XCTAssertGreaterThan(state.distanceSinceObservationMetres, 900)
+        XCTAssertLessThan(DrivingFuelPolicy.estimatedFraction(
+            state, tripID: tripID, tankCapacityLitres: 50,
+            consumptionLPer100km: 10, fallback: 0.5
+        ), 1)
+    }
+
+    func testDrivingFuelPolicyDoesNotInventDistanceAcrossUnknownGap() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 50_000)
+        let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                               horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: start)
+        let farLater = CLLocation(coordinate: .init(latitude: 51, longitude: 9), altitude: 0,
+                                  horizontalAccuracy: 5, verticalAccuracy: 5,
+                                  timestamp: start.addingTimeInterval(3_600))
+        var state = DrivingFuelPolicy.confirmed(.init(), tripID: tripID,
+                                                fraction: 0.8, location: first)
+        state = DrivingFuelPolicy.updated(state, tripID: tripID,
+                                          initialFuelFraction: 1, location: farLater)
+        XCTAssertEqual(state.distanceSinceObservationMetres, 0)
+    }
+
+    func testDrivingFuelStateStorePersistsAndClears() throws {
+        let suite = "KiesDriveTests.DrivingFuel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DrivingFuelStateStore(defaults: defaults)
+        let expected = DrivingFuelState(
+            tripID: UUID(), observedFuelFraction: 0.75,
+            distanceSinceObservationMetres: 12_000,
+            lastCoordinate: .init(latitude: 50, longitude: 8),
+            lastSampleAt: Date(timeIntervalSince1970: 60_000)
+        )
+        store.save(expected)
+        XCTAssertEqual(store.load(), expected)
+        store.clear()
+        XCTAssertEqual(store.load(), DrivingFuelState())
+    }
+
     func testRemainingRoutePlanningDropsPassedStopsAndRebasesAheadStops() {
         let candidates = [
             BreakCandidate(id: "passed", name: "Vorbei", coordinate: .init(),

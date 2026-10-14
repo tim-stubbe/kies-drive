@@ -384,6 +384,17 @@ struct DriveContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Reiseplanung", systemImage: "sparkles")
                 .font(.headline).foregroundStyle(Color.kiesForest)
+            if planner.isNavigating {
+                Button {
+                    planner.confirmFullTank(settings: settings)
+                } label: {
+                    Label("Vollgetankt bestätigen", systemImage: "fuelpump.circle.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(Color.kiesForest)
+                .accessibilityHint("Setzt die Tankplanung ab dem aktuellen Standort auf hundert Prozent")
+            }
             ForEach(plan.results.prefix(3)) { result in
                 VStack(alignment: .leading, spacing: 7) {
                     HStack {

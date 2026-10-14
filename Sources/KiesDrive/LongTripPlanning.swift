@@ -551,6 +551,87 @@ struct DrivingRestStateStore {
     func clear() { defaults.removeObject(forKey: key) }
 }
 
+struct DrivingFuelState: Codable, Equatable {
+    var tripID: UUID?
+    var observedFuelFraction: Double = 1
+    var distanceSinceObservationMetres: Double = 0
+    var lastCoordinate: DriveCoordinate?
+    var lastSampleAt: Date?
+}
+
+enum DrivingFuelPolicy {
+    static let maximumCountedSampleGap: TimeInterval = 2 * 60
+
+    static func updated(_ previous: DrivingFuelState, tripID: UUID,
+                        initialFuelFraction: Double, location: CLLocation) -> DrivingFuelState {
+        var state = previous.tripID == tripID
+            ? previous
+            : DrivingFuelState(tripID: tripID,
+                               observedFuelFraction: min(1, max(0, initialFuelFraction)))
+        if let prior = state.lastCoordinate, let priorDate = state.lastSampleAt {
+            let interval = location.timestamp.timeIntervalSince(priorDate)
+            let distance = CLLocation(latitude: prior.latitude, longitude: prior.longitude)
+                .distance(from: location)
+            let plausibleDistance = max(350, interval * 80)
+            if interval > 0, interval <= maximumCountedSampleGap,
+               distance.isFinite, distance <= plausibleDistance {
+                state.distanceSinceObservationMetres += distance
+            }
+        }
+        state.lastCoordinate = .init(latitude: location.coordinate.latitude,
+                                     longitude: location.coordinate.longitude)
+        state.lastSampleAt = location.timestamp
+        return state
+    }
+
+    static func confirmed(_ previous: DrivingFuelState, tripID: UUID,
+                          fraction: Double, location: CLLocation?) -> DrivingFuelState {
+        DrivingFuelState(
+            tripID: tripID, observedFuelFraction: min(1, max(0, fraction)),
+            distanceSinceObservationMetres: 0,
+            lastCoordinate: location.map {
+                .init(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
+            },
+            lastSampleAt: location?.timestamp
+        )
+    }
+
+    static func estimatedFraction(_ state: DrivingFuelState, tripID: UUID,
+                                  tankCapacityLitres: Double,
+                                  consumptionLPer100km: Double,
+                                  fallback: Double) -> Double {
+        guard state.tripID == tripID, tankCapacityLitres > 0 else {
+            return min(1, max(0, fallback))
+        }
+        let observedLitres = min(1, max(0, state.observedFuelFraction)) * tankCapacityLitres
+        let usedLitres = max(0, state.distanceSinceObservationMetres) / 100_000 *
+            max(0, consumptionLPer100km)
+        return min(1, max(0, (observedLitres - usedLitres) / tankCapacityLitres))
+    }
+}
+
+struct DrivingFuelStateStore {
+    let defaults: UserDefaults
+    var key = "drive.longTrip.drivingFuelState"
+
+    static let live = DrivingFuelStateStore(defaults: .standard)
+
+    func load() -> DrivingFuelState {
+        guard let data = defaults.data(forKey: key),
+              let state = try? JSONDecoder().decode(DrivingFuelState.self, from: data) else {
+            return DrivingFuelState()
+        }
+        return state
+    }
+
+    func save(_ state: DrivingFuelState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    func clear() { defaults.removeObject(forKey: key) }
+}
+
 enum RemainingRoutePlanningPolicy {
     static func rebasedCandidates(_ candidates: [BreakCandidate],
                                   distanceProgress: Double,
