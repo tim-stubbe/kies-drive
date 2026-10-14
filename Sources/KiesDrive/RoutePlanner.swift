@@ -164,6 +164,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var automaticRestoreInProgress = false
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
+    private let drivingRestStore = DrivingRestStateStore.live
+    private var drivingRestState = DrivingRestStateStore.live.load()
     private static let cacheKey = "drive.offlineRoute"
     private static let offlineCacheStore = OfflineRouteCacheStore.live()
     private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
@@ -285,6 +287,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         routeLockStore.finish()
         activeRouteLock = nil
         routeLockStore.clearFinished()
+        drivingRestState = DrivingRestState()
+        drivingRestStore.clear()
     }
 
     private func persistActiveTrip() {
@@ -316,6 +320,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         )
         routeLockStore.save(lock)
         activeRouteLock = lock
+        if drivingRestState.tripID != lock.id {
+            drivingRestState = DrivingRestState(tripID: lock.id)
+            drivingRestStore.save(drivingRestState)
+        }
     }
 
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position
@@ -935,6 +943,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if let currentSpeed {
             lastReliableGuidanceSpeedMps = currentSpeed
             lastReliableGuidanceSpeedAt = location.timestamp
+        }
+        if let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id {
+            drivingRestState = DrivingRestPolicy.updated(
+                drivingRestState, tripID: tripID, at: location.timestamp,
+                speedMetresPerSecond: currentSpeed
+            )
+            drivingRestStore.save(drivingRestState)
         }
         if detectArrival(at: location, settings: settings) { return }
         if isUsingOfflineGuidance {
@@ -1717,7 +1732,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         )
         let scenarios = [SpeedScenario.target(settings.targetSpeedKmh)] + (settings.targetSpeedKmh == 200 ? [] : [.target(200)])
         longTripPlan = RouteComparison(fuelModel: .init(), breakPlanner: .init())
-            .compare(routes: inputs, scenarios: scenarios, vehicle: profile)
+            .compare(routes: inputs, scenarios: scenarios, vehicle: profile,
+                     alreadyDrivenSinceBreak: drivingRestState.continuousDriving)
     }
 
     private func loadTollCost(from start: CLLocationCoordinate2D) async {

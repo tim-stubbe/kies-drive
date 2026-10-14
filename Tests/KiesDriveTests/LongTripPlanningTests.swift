@@ -272,6 +272,83 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks[1].afterDriving, 4 * 3600, accuracy: 1)
     }
 
+    func testBreakPlannerAccountsForDrivingBeforeRestoredRoute() {
+        let breaks = BreakPlanner().plan(
+            drivingTime: 5 * 3600, candidates: [],
+            alreadyDrivenSinceBreak: 90 * 60
+        )
+
+        XCTAssertEqual(breaks.map(\.afterDriving), [30 * 60, 150 * 60, 270 * 60])
+    }
+
+    func testBreakPlannerRequestsImmediateBreakAtContinuousDrivingLimit() {
+        let breaks = BreakPlanner().plan(
+            drivingTime: 60 * 60, candidates: [],
+            alreadyDrivenSinceBreak: 2 * 60 * 60
+        )
+
+        XCTAssertEqual(breaks.count, 1)
+        XCTAssertEqual(breaks[0].afterDriving, 0, accuracy: 1)
+        XCTAssertEqual(breaks[0].routeProgress, 0, accuracy: 0.001)
+    }
+
+    func testDrivingRestPolicyCountsMovementAndResetsAfterRealPause() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 10_000)
+        var state = DrivingRestPolicy.updated(
+            .init(), tripID: tripID, at: start, speedMetresPerSecond: 20
+        )
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID, at: start.addingTimeInterval(60),
+            speedMetresPerSecond: 20
+        )
+        XCTAssertEqual(state.continuousDriving, 60, accuracy: 0.001)
+
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID, at: start.addingTimeInterval(120),
+            speedMetresPerSecond: 0
+        )
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID, at: start.addingTimeInterval(1_321),
+            speedMetresPerSecond: 0
+        )
+        XCTAssertEqual(state.continuousDriving, 0)
+        XCTAssertNotNil(state.stationarySince)
+    }
+
+    func testDrivingRestPolicyDoesNotInventMovementAcrossLongUnknownGap() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 20_000)
+        let existing = DrivingRestState(
+            tripID: tripID, continuousDriving: 900,
+            lastSampleAt: start, stationarySince: nil
+        )
+
+        let state = DrivingRestPolicy.updated(
+            existing, tripID: tripID, at: start.addingTimeInterval(3_600),
+            speedMetresPerSecond: 25
+        )
+
+        XCTAssertEqual(state.continuousDriving, 900)
+    }
+
+    func testDrivingRestStateStorePersistsWithoutLocationData() throws {
+        let suite = "KiesDriveTests.DrivingRest.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DrivingRestStateStore(defaults: defaults)
+        let expected = DrivingRestState(
+            tripID: UUID(), continuousDriving: 2_400,
+            lastSampleAt: Date(timeIntervalSince1970: 30_000),
+            stationarySince: nil
+        )
+
+        store.save(expected)
+        XCTAssertEqual(store.load(), expected)
+        store.clear()
+        XCTAssertEqual(store.load(), DrivingRestState())
+    }
+
     func testBreakPlannerDoesNotCallARemoteStopOptimal() {
         let remote = BreakCandidate(id: "remote", name: "Much later", coordinate: .init(),
                                     progress: 0.9, detourMetres: 50, isOpen: true)

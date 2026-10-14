@@ -470,6 +470,77 @@ struct FuelStopPlanner {
     }
 }
 
+struct DrivingRestState: Codable, Equatable {
+    var tripID: UUID?
+    var continuousDriving: TimeInterval = 0
+    var lastSampleAt: Date?
+    var stationarySince: Date?
+}
+
+enum DrivingRestPolicy {
+    static let movingThresholdMetresPerSecond = 2.5
+    static let maximumCountedSampleGap: TimeInterval = 2 * 60
+    static let restResetDuration: TimeInterval = 20 * 60
+
+    static func updated(_ previous: DrivingRestState, tripID: UUID,
+                        at date: Date, speedMetresPerSecond: Double?) -> DrivingRestState {
+        var state = previous.tripID == tripID ? previous : DrivingRestState(tripID: tripID)
+        guard let speedMetresPerSecond, speedMetresPerSecond.isFinite,
+              speedMetresPerSecond >= 0 else { return state }
+
+        let priorSample = state.lastSampleAt
+        let interval = priorSample.map { date.timeIntervalSince($0) } ?? 0
+        guard interval >= 0 else { return state }
+        let wasStationary = state.stationarySince != nil
+        state.lastSampleAt = date
+
+        if speedMetresPerSecond >= movingThresholdMetresPerSecond {
+            if let stationarySince = state.stationarySince,
+               date.timeIntervalSince(stationarySince) >= restResetDuration {
+                state.continuousDriving = 0
+            }
+            state.stationarySince = nil
+            if !wasStationary, interval <= maximumCountedSampleGap {
+                state.continuousDriving += interval
+            }
+        } else {
+            if state.stationarySince == nil {
+                // A large gap followed by a stationary fix is useful evidence
+                // of a real stop. A short gap may still contain the final
+                // metres of driving, so the pause starts at the current fix.
+                state.stationarySince = interval > maximumCountedSampleGap ? priorSample : date
+            }
+            if let stationarySince = state.stationarySince,
+               date.timeIntervalSince(stationarySince) >= restResetDuration {
+                state.continuousDriving = 0
+            }
+        }
+        return state
+    }
+}
+
+struct DrivingRestStateStore {
+    let defaults: UserDefaults
+    var key = "drive.longTrip.drivingRestState"
+
+    static let live = DrivingRestStateStore(defaults: .standard)
+
+    func load() -> DrivingRestState {
+        guard let data = defaults.data(forKey: key),
+              let state = try? JSONDecoder().decode(DrivingRestState.self, from: data) else {
+            return DrivingRestState()
+        }
+        return state
+    }
+
+    func save(_ state: DrivingRestState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    func clear() { defaults.removeObject(forKey: key) }
+}
+
 struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
@@ -477,17 +548,22 @@ struct BreakPlanner {
     var latestStopTolerance: TimeInterval = 10 * 60
 
     func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
-              plannedFuelStops: [PlannedFuelStop] = []) -> [PlannedBreak] {
-        guard drivingTime > maximumContinuousDriving else { return [] }
+              plannedFuelStops: [PlannedFuelStop] = [],
+              alreadyDrivenSinceBreak: TimeInterval = 0) -> [PlannedBreak] {
+        let elapsed = min(maximumContinuousDriving, max(0, alreadyDrivenSinceBreak))
+        guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
         var remaining = candidates.filter { $0.isOpen != false }
         var remainingFuelStops = plannedFuelStops
-        var lastBreakDrivingTime = 0.0
+        // Negative means the current continuous-driving interval began before
+        // this remaining route. PlannedBreak.afterDriving stays relative to
+        // now, which is what the UI communicates to the driver.
+        var lastBreakDrivingTime = -elapsed
         var result: [PlannedBreak] = []
         while drivingTime - lastBreakDrivingTime > maximumContinuousDriving {
             let index = result.count + 1
             let idealDrivingTime = lastBreakDrivingTime + maximumContinuousDriving
-            let idealProgress = min(0.95, idealDrivingTime / drivingTime)
-            let earliestDrivingTime = max(lastBreakDrivingTime,
+            let idealProgress = min(0.95, max(0, idealDrivingTime / drivingTime))
+            let earliestDrivingTime = max(0,
                                           idealDrivingTime - earliestStopTolerance)
             let latestDrivingTime = min(drivingTime, idealDrivingTime + latestStopTolerance)
             let coordinatedFuelStop = remainingFuelStops
@@ -651,10 +727,12 @@ struct RouteComparison {
     let breakPlanner: BreakPlanner
     var fuelStopPlanner = FuelStopPlanner()
 
-    func compare(routes: [RoutePlanningInput], scenarios: [SpeedScenario], vehicle: VehicleProfile, now: Date = Date()) -> LongTripPlan {
+    func compare(routes: [RoutePlanningInput], scenarios: [SpeedScenario], vehicle: VehicleProfile,
+                 alreadyDrivenSinceBreak: TimeInterval = 0, now: Date = Date()) -> LongTripPlan {
         let results = routes.flatMap { route in
             scenarios.map { scenario in
-                result(route: route, scenario: scenario, vehicle: vehicle)
+                result(route: route, scenario: scenario, vehicle: vehicle,
+                       alreadyDrivenSinceBreak: alreadyDrivenSinceBreak)
             }
         }
         return LongTripPlan(
@@ -664,7 +742,8 @@ struct RouteComparison {
         )
     }
 
-    private func result(route: RoutePlanningInput, scenario: SpeedScenario, vehicle: VehicleProfile) -> RouteScenarioResult {
+    private func result(route: RoutePlanningInput, scenario: SpeedScenario, vehicle: VehicleProfile,
+                        alreadyDrivenSinceBreak: TimeInterval) -> RouteScenarioResult {
         let fraction = min(1, max(0, route.unlimitedMotorwayFraction))
         let target = min(max(80, scenario.targetSpeedKmh), 220)
         let timing = SpeedScenarioPolicy.timing(
@@ -689,7 +768,8 @@ struct RouteComparison {
         // minutes apart. The normal pause window still applies, so a distant
         // station is never pulled forward merely to combine the two jobs.
         let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates,
-                                       plannedFuelStops: fuelStops)
+                                       plannedFuelStops: fuelStops,
+                                       alreadyDrivenSinceBreak: alreadyDrivenSinceBreak)
         let selectedCandidates = (breaks.compactMap(\.candidate) + fuelStops.compactMap(\.candidate))
             .reduce(into: [String: BreakCandidate]()) { candidates, candidate in
                 candidates[candidate.id] = candidate
