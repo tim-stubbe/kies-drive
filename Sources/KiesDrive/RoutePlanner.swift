@@ -423,34 +423,30 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard generation == routeSearchGeneration,
               routeGeneration == routeCalculationGeneration,
               routeSearchQuery == cleanQuery else { return }
-        let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        let currentRouteIndex: Int = {
+        let currentRouteProgress: Double = {
             guard let location = LocationService.shared.location,
-                  let nearest = routePoints.enumerated().min(by: {
-                      $0.element.distance(from: location) < $1.element.distance(from: location)
-                  }), nearest.element.distance(from: location) <= 5_000 else { return 0 }
-            return nearest.offset
+                  let projection = RouteGeometryProgress.nearestProgress(
+                    of: location.coordinate, on: routeCoordinates
+                  ), projection.distance <= 5_000 else { return 0 }
+            return projection.progress
         }()
-        routeSearchResults = matches.values.compactMap { item -> (MKMapItem, Int, Double)? in
-            let point = CLLocation(latitude: item.placemark.coordinate.latitude, longitude: item.placemark.coordinate.longitude)
-            guard let nearest = routePoints.enumerated().min(by: {
-                $0.element.distance(from: point) < $1.element.distance(from: point)
-            }) else { return nil }
-            let detour = nearest.element.distance(from: point)
-            guard detour <= 5_000,
-                  RouteSearchPolicy.isAhead(candidateIndex: nearest.offset,
-                                            currentIndex: currentRouteIndex,
-                                            routePointCount: routePoints.count) else { return nil }
-            return (item, nearest.offset, detour)
+        routeSearchResults = matches.values.compactMap { item -> (MKMapItem, Double, Double)? in
+            guard let projection = RouteGeometryProgress.nearestProgress(
+                of: item.placemark.coordinate, on: routeCoordinates
+            ) else { return nil }
+            guard projection.distance <= 5_000,
+                  RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
+                                            currentProgress: currentRouteProgress) else { return nil }
+            return (item, projection.progress, projection.distance)
         }
         .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 < $1.1 }
-        .prefix(12).map { item, index, detour in
+        .prefix(12).map { item, progress, detour in
             let coordinate = item.placemark.coordinate
             return RouteSearchResult(
                 id: "\(item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
                 mapItem: item,
                 detourMetres: detour,
-                routeProgress: routePoints.count > 1 ? Double(index) / Double(routePoints.count - 1) : 0
+                routeProgress: progress
             )
         }
     }

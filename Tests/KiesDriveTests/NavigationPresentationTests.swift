@@ -483,4 +483,10 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(RouteSearchPolicy.isAhead(candidateIndex: 75, currentIndex: 60,
                                                 routePointCount: 100))
     }
+
+    func testRouteSearchAheadCheckUsesDistanceProgress() {
+        XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.49, currentProgress: 0.50))
+        XCTAssertFalse(RouteSearchPolicy.isAhead(candidateProgress: 0.40, currentProgress: 0.50))
+        XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.75, currentProgress: 0.50))
+    }
 }

@@ -3,6 +3,18 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testRouteProjectionMeasuresBetweenSparseGeometryPoints() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0),
+            CLLocationCoordinate2D(latitude: 50.0, longitude: 8.2)
+        ]
+        let projection = try XCTUnwrap(RouteGeometryProgress.nearestProgress(
+            of: .init(latitude: 50.01, longitude: 8.1), on: route
+        ))
+        XCTAssertEqual(projection.progress, 0.5, accuracy: 0.02)
+        XCTAssertLessThan(projection.distance, 1_200)
+    }
+
     func testHigherTargetSpeedOnlyChangesUnlimitedShareAndUsesMoreFuel() {
         let route = RoutePlanningInput(
             id: "holiday", title: "Route", distanceMetres: 600_000,
@@ -149,7 +161,7 @@ final class LongTripPlanningTests: XCTestCase {
         let projection = try XCTUnwrap(RouteGeometryProgress.nearestProgress(
             of: .init(latitude: 50.001, longitude: 8.11), on: route
         ))
-        XCTAssertEqual(projection.progress, 0.5, accuracy: 0.01)
+        XCTAssertEqual(projection.progress, 0.55, accuracy: 0.01)
         XCTAssertLessThan(projection.distance, 9_000)
     }
 

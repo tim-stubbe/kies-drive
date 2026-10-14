@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 struct VehicleProfile: Codable, Equatable {
     var name: String = "Mein Fahrzeug"
@@ -170,14 +171,22 @@ enum RouteGeometryProgress {
                                 on route: [CLLocationCoordinate2D]) -> (progress: Double, distance: Double)? {
         guard route.count > 1 else { return nil }
         let fractions = cumulativeFractions(route)
-        let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        guard let match = route.enumerated().min(by: {
-            target.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
-            target.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
-        }) else { return nil }
-        let distance = target.distance(from: CLLocation(latitude: match.element.latitude,
-                                                         longitude: match.element.longitude))
-        return (fractions[match.offset], distance)
+        let target = MKMapPoint(coordinate)
+        let points = route.map(MKMapPoint.init)
+        var best: (progress: Double, distance: Double)?
+        for index in points.indices.dropLast() {
+            let start = points[index], end = points[index + 1]
+            let dx = end.x - start.x, dy = end.y - start.y
+            let lengthSquared = dx * dx + dy * dy
+            let fraction = lengthSquared == 0 ? 0 : max(0, min(1,
+                ((target.x - start.x) * dx + (target.y - start.y) * dy) / lengthSquared
+            ))
+            let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+            let distance = target.distance(to: projected)
+            let progress = fractions[index] + (fractions[index + 1] - fractions[index]) * fraction
+            if best == nil || distance < best!.distance { best = (progress, distance) }
+        }
+        return best
     }
 }
 

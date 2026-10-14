@@ -402,6 +402,10 @@ enum RouteSearchPolicy {
         let tolerance = max(2, routePointCount / 50)
         return candidateIndex >= max(0, currentIndex - tolerance)
     }
+
+    static func isAhead(candidateProgress: Double, currentProgress: Double) -> Bool {
+        candidateProgress >= max(0, currentProgress - 0.02)
+    }
 }
 
 struct OfflineGuidanceStep {
