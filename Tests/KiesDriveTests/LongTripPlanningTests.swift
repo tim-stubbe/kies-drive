@@ -176,6 +176,27 @@ final class LongTripPlanningTests: XCTestCase {
                        "A missing second limit must not make the long segment unrestricted")
     }
 
+    func testUnlimitedShareExcludesAlreadyDrivenFastSections() {
+        let points = [
+            CLLocationCoordinate2D(latitude: 50.00, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50.01, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50.02, longitude: 8),
+        ]
+        let limits = [
+            SpeedLimitResult(maxspeed: nil, unlimited: true),
+            SpeedLimitResult(maxspeed: 100, unlimited: false),
+        ]
+        XCTAssertEqual(SpeedScenarioPolicy.unlimitedDistanceFraction(
+            points: points, limits: limits, fromProgress: 0.5
+        ), 0, accuracy: 0.001)
+        XCTAssertEqual(SpeedScenarioPolicy.unlimitedDistanceFraction(
+            points: points, limits: limits, fromProgress: 0.25
+        ), 1.0 / 3.0, accuracy: 0.02)
+        XCTAssertEqual(SpeedScenarioPolicy.unlimitedDistanceFraction(
+            points: points, limits: limits, fromProgress: 1
+        ), 0, accuracy: 0.001)
+    }
+
     func testSpeedScenarioAppliesDistanceShareInsteadOfTimeShare() {
         let route = RoutePlanningInput(
             id: "distance-share", title: "Route", distanceMetres: 600_000,

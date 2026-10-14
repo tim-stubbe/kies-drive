@@ -1906,7 +1906,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let timeProgress = isRemainingRoutePlan
             ? min(1, max(0, 1 - mainTime / max(totalTravelTime, 1))) : 0
         let unlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
-            points: speedLimitPoints, limits: speedLimits
+            points: speedLimitPoints, limits: speedLimits,
+            fromProgress: distanceProgress
         )
         let allCandidates = breakCandidates(along: legs, useMeasuredDetours: true)
         let candidates = isRemainingRoutePlan

@@ -134,18 +134,28 @@ enum SpeedScenarioPolicy {
     /// data stays conservative instead of inflating the known unrestricted
     /// samples to 100 percent of the journey.
     static func unlimitedDistanceFraction(points: [CLLocationCoordinate2D],
-                                          limits: [SpeedLimitResult]) -> Double {
+                                          limits: [SpeedLimitResult],
+                                          fromProgress rawProgress: Double = 0) -> Double {
         guard points.count > 1 else { return 0 }
+        let segmentDistances = zip(points, points.dropFirst()).map {
+            CLLocation(latitude: $0.0.latitude, longitude: $0.0.longitude)
+                .distance(from: CLLocation(latitude: $0.1.latitude, longitude: $0.1.longitude))
+        }
+        let completeDistance = segmentDistances.filter { $0.isFinite && $0 > 0 }.reduce(0, +)
+        guard completeDistance > 0 else { return 0 }
+        let startDistance = completeDistance * min(1, max(0, rawProgress))
         var totalDistance = 0.0
         var unlimitedDistance = 0.0
-        for index in 0..<(points.count - 1) {
-            let distance = CLLocation(latitude: points[index].latitude, longitude: points[index].longitude)
-                .distance(from: CLLocation(latitude: points[index + 1].latitude,
-                                           longitude: points[index + 1].longitude))
+        var travelledDistance = 0.0
+        for (index, distance) in segmentDistances.enumerated() {
             guard distance.isFinite, distance > 0 else { continue }
-            totalDistance += distance
+            let segmentEnd = travelledDistance + distance
+            let includedDistance = max(0, segmentEnd - max(travelledDistance, startDistance))
+            travelledDistance = segmentEnd
+            guard includedDistance > 0 else { continue }
+            totalDistance += includedDistance
             if limits.indices.contains(index), limits[index].unlimited {
-                unlimitedDistance += distance
+                unlimitedDistance += includedDistance
             }
         }
         return totalDistance > 0 ? min(1, max(0, unlimitedDistance / totalDistance)) : 0
