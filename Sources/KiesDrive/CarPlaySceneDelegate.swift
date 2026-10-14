@@ -198,6 +198,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func showDestinationsAndStops() {
         let planner = RoutePlanner.shared
         var items: [CPListItem] = [makeDestinationSearchItem()]
+        var tripActionItems: [CPListItem] = []
         var routeSearchItems: [CPListItem] = []
         let home = DriveSettings.shared.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !home.isEmpty {
@@ -290,6 +291,60 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             return item
         })
+        if planner.isNavigating {
+            let fullTank = CPListItem(text: "Vollgetankt bestätigen",
+                                      detailText: "Tankplanung ab jetzt neu berechnen",
+                                      image: UIImage(systemName: "fuelpump.circle.fill"))
+            fullTank.handler = { [weak self] _, completion in
+                planner.confirmFullTank(settings: .shared)
+                completion()
+                self?.showDestinationsAndStopsReplacingCurrentList()
+            }
+            tripActionItems.append(fullTank)
+
+            let lockedWaypoints = planner.activeRouteLock?.waypoints ?? []
+            let actions = CarPlayPlannedStopPolicy.actions(
+                plan: planner.longTripPlan,
+                existingWaypointIDs: Set(lockedWaypoints.map(\.id)),
+                existingWaypointNames: Set(lockedWaypoints.map(\.name))
+            )
+            tripActionItems.append(contentsOf: actions.map { action in
+                let title: String
+                let symbol: String
+                switch action.purpose {
+                case .breakOnly:
+                    title = "Geplante Pause: \(action.candidate.name)"
+                    symbol = "cup.and.saucer.fill"
+                case .fuelOnly:
+                    title = "Geplanter Tankstopp: \(action.candidate.name)"
+                    symbol = "fuelpump.fill"
+                case .breakAndFuel:
+                    title = "Pause und Tanken: \(action.candidate.name)"
+                    symbol = "car.side.fill"
+                }
+                let item = CPListItem(text: title, detailText: plannedStopDetail(action),
+                                      image: UIImage(systemName: symbol))
+                item.handler = { [weak self] _, completion in
+                    Task {
+                        guard let start = LocationService.shared.location?.coordinate else {
+                            completion()
+                            self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                            return
+                        }
+                        let plannedBreak = PlannedBreak(
+                            id: action.candidate.id, candidate: action.candidate,
+                            afterDriving: action.afterDriving ?? 0, duration: 0,
+                            routeProgress: action.candidate.progress,
+                            explanation: "Über CarPlay zur Route hinzugefügt"
+                        )
+                        await planner.addPlannedBreak(plannedBreak, from: start, settings: .shared)
+                        completion()
+                        self?.interfaceController?.popToRootTemplate(animated: true, completion: nil)
+                    }
+                }
+                return item
+            })
+        }
         if !visibleRoutePolylines.isEmpty {
             for (title, query, symbol) in [
                 ("McDonald’s entlang der Route", "McDonald's", "m.circle.fill"),
@@ -311,14 +366,28 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
         }
         // CarPlay limits list length while driving. Always reserve the final
-        // slots for route actions so a long favorites/history list can never
-        // hide McDonald's, food or rest-area search.
-        items = Array(items.prefix(max(0, 12 - routeSearchItems.count))) + routeSearchItems
+        // slots for the live trip and route actions so favorites/history can
+        // never hide a planned break, fuel confirmation or along-route search.
+        let reservedCount = tripActionItems.count + routeSearchItems.count
+        items = Array(items.prefix(max(0, 12 - reservedCount))) + tripActionItems + routeSearchItems
         if items.isEmpty {
             items = [CPListItem(text: "Noch keine Ziele", detailText: "Lege Zuhause oder ein Ziel auf dem iPhone fest.")]
         }
         let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(list, animated: true, completion: nil)
+    }
+
+    private func plannedStopDetail(_ action: CarPlayPlannedStopAction) -> String {
+        if let seconds = action.afterDriving, seconds > 0 {
+            let minutes = Int((seconds / 60).rounded())
+            return minutes >= 60
+                ? "In etwa \(minutes / 60) Std. \(minutes % 60) Min."
+                : "In etwa \(minutes) Min."
+        }
+        if let metres = action.afterDistanceMetres, metres > 0 {
+            return String(format: "In etwa %.0f km", metres / 1_000)
+        }
+        return "Mit kleinem Umweg zur Route hinzufügen"
     }
 
     private func makeDestinationSearchItem() -> CPListItem {

@@ -497,6 +497,57 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(variants.count, Set(variants).count)
     }
 
+    func testCarPlayPlannedStopsCombineBreakAndFuelAtSamePlace() {
+        let candidate = BreakCandidate(id: "stop-a", name: "Autohof A",
+                                       coordinate: .init(latitude: 49, longitude: 8),
+                                       progress: 0.3, detourMetres: 900, isOpen: true,
+                                       supportsFuel: true)
+        let result = RouteScenarioResult(
+            id: "route", routeTitle: "Route", scenario: .init(id: "normal", name: "Normal",
+            targetSpeedKmh: 130), distanceMetres: 500_000, drivingTime: 18_000,
+            totalTime: 19_000, fuel: .init(litres: 30, cost: 55,
+            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test"),
+            breaks: [.init(id: "break", candidate: candidate, afterDriving: 7_200,
+                           duration: 900, routeProgress: 0.3, explanation: "Pause")],
+            fuelStops: [.init(id: "fuel", candidate: candidate, afterDistanceMetres: 150_000,
+                              routeProgress: 0.3, explanation: "Tanken")], unlimitedFraction: 0.2)
+        let plan = LongTripPlan(createdAt: Date(), results: [result], note: "")
+
+        let actions = CarPlayPlannedStopPolicy.actions(
+            plan: plan, existingWaypointIDs: [], existingWaypointNames: []
+        )
+
+        XCTAssertEqual(actions.count, 1)
+        XCTAssertEqual(actions.first?.purpose, CarPlayPlannedStopAction.Purpose.breakAndFuel)
+        XCTAssertEqual(actions.first?.candidate.id, "stop-a")
+    }
+
+    func testCarPlayPlannedStopsExcludeExistingAndKeepEarliestTwo() {
+        func candidate(_ id: String, _ progress: Double) -> BreakCandidate {
+            .init(id: id, name: "Stop \(id)", coordinate: .init(latitude: 49, longitude: 8),
+                  progress: progress, detourMetres: 500, isOpen: true)
+        }
+        let first = candidate("first", 0.15)
+        let second = candidate("second", 0.3)
+        let third = candidate("third", 0.5)
+        let result = RouteScenarioResult(
+            id: "route", routeTitle: "Route", scenario: .init(id: "normal", name: "Normal",
+            targetSpeedKmh: 130), distanceMetres: 500_000, drivingTime: 18_000,
+            totalTime: 19_000, fuel: .init(litres: 30, cost: 55,
+            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test"),
+            breaks: [first, second, third].map {
+                .init(id: $0.id, candidate: $0, afterDriving: $0.progress * 18_000,
+                      duration: 900, routeProgress: $0.progress, explanation: "Pause")
+            }, fuelStops: [], unlimitedFraction: 0.2)
+        let plan = LongTripPlan(createdAt: Date(), results: [result], note: "")
+
+        let actions = CarPlayPlannedStopPolicy.actions(
+            plan: plan, existingWaypointIDs: ["first"], existingWaypointNames: [], maximum: 2
+        )
+
+        XCTAssertEqual(actions.map { $0.candidate.id }, ["second", "third"])
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)

@@ -2,6 +2,65 @@ import Foundation
 import CoreLocation
 import MapKit
 
+struct CarPlayPlannedStopAction: Equatable {
+    enum Purpose: Equatable {
+        case breakOnly
+        case fuelOnly
+        case breakAndFuel
+    }
+
+    let candidate: BreakCandidate
+    let purpose: Purpose
+    let afterDriving: TimeInterval?
+    let afterDistanceMetres: Double?
+}
+
+enum CarPlayPlannedStopPolicy {
+    /// CarPlay must remain short and glanceable. Prefer the earliest remaining
+    /// stop from the currently selected scenario, combine fuel and rest at the
+    /// same place, and never offer a stop that is already locked into the route.
+    static func actions(plan: LongTripPlan?, existingWaypointIDs: Set<String>,
+                        existingWaypointNames: Set<String>, maximum: Int = 2)
+        -> [CarPlayPlannedStopAction] {
+        guard maximum > 0, let result = plan?.results.first else { return [] }
+        let normalizedNames = Set(existingWaypointNames.map(normalize))
+        let fuelByID = Dictionary(uniqueKeysWithValues: result.fuelStops.compactMap { stop in
+            stop.candidate.map { ($0.id, stop) }
+        })
+        var seen = Set<String>()
+        var actions = result.breaks.compactMap { plannedBreak -> CarPlayPlannedStopAction? in
+            guard let candidate = plannedBreak.candidate,
+                  !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
+                  seen.insert(candidate.id).inserted else { return nil }
+            let fuelStop = fuelByID[candidate.id]
+            return .init(candidate: candidate,
+                         purpose: fuelStop == nil ? .breakOnly : .breakAndFuel,
+                         afterDriving: plannedBreak.afterDriving,
+                         afterDistanceMetres: fuelStop?.afterDistanceMetres)
+        }
+        actions += result.fuelStops.compactMap { fuelStop -> CarPlayPlannedStopAction? in
+            guard let candidate = fuelStop.candidate,
+                  !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
+                  seen.insert(candidate.id).inserted else { return nil }
+            return .init(candidate: candidate, purpose: .fuelOnly, afterDriving: nil,
+                         afterDistanceMetres: fuelStop.afterDistanceMetres)
+        }
+        return Array(actions.sorted {
+            ($0.candidate.timeProgress ?? $0.candidate.progress) <
+                ($1.candidate.timeProgress ?? $1.candidate.progress)
+        }.prefix(maximum))
+    }
+
+    private static func isExisting(_ candidate: BreakCandidate, ids: Set<String>,
+                                   names: Set<String>) -> Bool {
+        ids.contains(candidate.id) || names.contains(normalize(candidate.name))
+    }
+
+    private static func normalize(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
 struct NavigationManeuverPresentation: Equatable {
     enum Direction: Equatable {
         case straight, slightRight, right, sharpRight, slightLeft, left, sharpLeft, uTurn, roundabout
