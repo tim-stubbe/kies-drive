@@ -295,7 +295,13 @@ enum NavigationStepSelectionPolicy {
                               transitionRadius: CLLocationDistance,
                               allowsFullRecovery: Bool = false) -> Int {
         guard metrics.indices.contains(current) else { return 0 }
-        let radius = min(25, max(8, transitionRadius))
+        // Do not let a coarse GPS accuracy enlarge the junction far enough to
+        // advance before the driver has actually reached the turn. Advancing
+        // at 20–25 metres can discard the current maneuver and its final
+        // spoken cue. Eight to fifteen metres is still tolerant of ordinary
+        // road-level GPS drift; the explicit recovery path below handles real
+        // gaps after tunnels or background suspension.
+        let radius = min(15, max(8, transitionRadius))
 
         // Only the first fix of a restored offline route may search the whole
         // remaining journey. Prefer the earliest plausible road segment over

@@ -353,6 +353,24 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 10), 1)
     }
 
+    func testStepSelectionDoesNotDropFinalCueBeforeJunctionWithCoarseGPS() {
+        let beforeJunction = [
+            NavigationStepMetric(distanceFromRoute: 7, remainingOnStep: 22),
+            NavigationStepMetric(distanceFromRoute: 9, remainingOnStep: 500),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: beforeJunction, transitionRadius: 30
+        ), 0, "The current maneuver must remain active until the junction")
+
+        let atJunction = [
+            NavigationStepMetric(distanceFromRoute: 5, remainingOnStep: 7),
+            NavigationStepMetric(distanceFromRoute: 6, remainingOnStep: 500),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: atJunction, transitionRadius: 30
+        ), 1)
+    }
+
     func testStepSelectionRecoversForwardAfterLargeLocationGap() {
         let metrics = [
             NavigationStepMetric(distanceFromRoute: 700, remainingOnStep: 0),
