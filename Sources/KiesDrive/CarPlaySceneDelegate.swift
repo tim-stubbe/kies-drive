@@ -609,7 +609,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         synchroniseNavigationSession()
     }
     func mapTemplateDidCancelNavigation(_ mapTemplate: CPMapTemplate) {
-        RoutePlanner.shared.stopNavigation()
+        // CarPlay's system cancel control is an explicit end action, just
+        // like the red "Beenden" control on the phone. Merely pausing here
+        // leaves the persistent route lock active and would make the trip
+        // restart automatically on a later GPS fix.
+        RoutePlanner.shared.completeActiveTrip()
         navigationSession?.cancelTrip()
         navigationSession = nil
         activeTrip = nil
