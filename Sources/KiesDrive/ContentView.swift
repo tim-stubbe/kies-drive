@@ -1235,10 +1235,10 @@ struct DriveContentView: View {
 
     @ViewBuilder
     private var map: some View {
-        if let package = offlineMaps.activePackage {
+        if let package = applicableOfflinePackage {
             OfflineTileMapView(
                 package: package,
-                routes: planner.legs.map(\.polyline).isEmpty ? planner.offlinePolylines : planner.legs.map(\.polyline),
+                routes: visibleRoutePolylines,
                 currentLocation: location.location,
                 destination: planner.destination,
                 followsLocation: isFollowingLocation,
@@ -1252,6 +1252,28 @@ struct DriveContentView: View {
             case .hybrid: mapBase.mapStyle(.hybrid(elevation: .realistic, showsTraffic: true))
             }
         }
+    }
+
+    private var visibleRoutePolylines: [MKPolyline] {
+        let live = planner.legs.map(\.polyline)
+        return live.isEmpty ? planner.offlinePolylines : live
+    }
+
+    private var applicableOfflinePackage: InstalledOfflineMapPackage? {
+        guard let package = offlineMaps.activePackage else { return nil }
+        let routeCoordinates: [CLLocationCoordinate2D] = isShowingRouteOverview
+            ? visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
+                guard polyline.pointCount > 0 else { return [] }
+                let points = polyline.points()
+                return (0..<polyline.pointCount).map { points[$0].coordinate }
+            }
+            : []
+        return OfflineMapCoveragePolicy.canUse(
+            bounds: package.manifest.bounds,
+            currentCoordinate: location.location?.coordinate,
+            routeCoordinates: routeCoordinates,
+            showsRouteOverview: isShowingRouteOverview
+        ) ? package : nil
     }
 
     private var mapBase: some View {

@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import Kies_Drive
 
 @MainActor
@@ -57,6 +58,28 @@ final class OfflineMapPackageTests: XCTestCase {
                                                 withIntermediateDirectories: true)
         try validPNG().write(to: source.appendingPathComponent("tiles/7/66/43.png"))
         XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
+    }
+
+    func testCoverageFallsBackOutsidePackageAndForIncompleteOverview() {
+        let bounds = OfflineMapBounds(north: 48, south: 45, east: 17, west: 8)
+        XCTAssertTrue(OfflineMapCoveragePolicy.canUse(
+            bounds: bounds,
+            currentCoordinate: .init(latitude: 47, longitude: 12),
+            routeCoordinates: [], showsRouteOverview: false
+        ))
+        XCTAssertFalse(OfflineMapCoveragePolicy.canUse(
+            bounds: bounds,
+            currentCoordinate: .init(latitude: 50, longitude: 8.3),
+            routeCoordinates: [], showsRouteOverview: false
+        ))
+        XCTAssertFalse(OfflineMapCoveragePolicy.canUse(
+            bounds: bounds,
+            currentCoordinate: .init(latitude: 47, longitude: 12),
+            routeCoordinates: [
+                .init(latitude: 47, longitude: 12),
+                .init(latitude: 50, longitude: 8.3),
+            ], showsRouteOverview: true
+        ))
     }
 
     private func validPNG() -> Data {

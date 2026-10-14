@@ -20,6 +20,22 @@ struct OfflineMapBounds: Codable, Equatable {
     }
 }
 
+enum OfflineMapCoveragePolicy {
+    /// Following the car only needs coverage at the current fix. A complete
+    /// route overview, however, must not switch to an offline package if any
+    /// visible route geometry lies outside its declared bounds; missing XYZ
+    /// tiles would otherwise replace the useful online map with blank areas.
+    static func canUse(bounds: OfflineMapBounds,
+                       currentCoordinate: CLLocationCoordinate2D?,
+                       routeCoordinates: [CLLocationCoordinate2D],
+                       showsRouteOverview: Bool) -> Bool {
+        if let currentCoordinate, !bounds.contains(currentCoordinate) { return false }
+        if showsRouteOverview, !routeCoordinates.isEmpty,
+           !routeCoordinates.allSatisfy(bounds.contains) { return false }
+        return true
+    }
+}
+
 struct OfflineMapManifest: Codable, Identifiable, Equatable {
     static let supportedFormat = "raster-xyz-v1"
 
