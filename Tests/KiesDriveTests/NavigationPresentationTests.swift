@@ -431,6 +431,15 @@ final class NavigationPresentationTests: XCTestCase {
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare, .now]))
+        XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
+            stages: [.early, .prepare], reason: .routeTransition
+        ))
+        XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
+            stages: [.early, .prepare], reason: .arrival
+        ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
+            stages: [.early, .prepare], reason: .userStopped
+        ), "An explicit stop must not be diagnosed as a missed turn")
     }
 
     func testManeuverTransitionRecoversFinalCueOnlyOnceWhenGPSCrossesJunction() {

@@ -265,7 +265,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func stopNavigation() {
         let wasNavigating = isNavigating
-        if wasNavigating { closeOutstandingManeuverDiagnostic() }
+        if wasNavigating { closeOutstandingManeuverDiagnostic(reason: .userStopped) }
         invalidateNavigationAsyncWork()
         isNavigating = false
         isUsingOfflineGuidance = false
@@ -1294,7 +1294,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard arrivalStrikes >= NavigationArrivalPolicy.requiredConsecutiveFixes else { return false }
 
         arrivalStrikes = 0
-        closeOutstandingManeuverDiagnostic()
+        closeOutstandingManeuverDiagnostic(reason: .arrival)
         invalidateNavigationAsyncWork()
         isNavigating = false
         isRecalculating = false
@@ -1551,7 +1551,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }
         }
-        closeOutstandingManeuverDiagnostic()
+        closeOutstandingManeuverDiagnostic(reason: .routeTransition)
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction
         return recovered
@@ -1578,9 +1578,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
     }
 
-    private func closeOutstandingManeuverDiagnostic() {
+    private func closeOutstandingManeuverDiagnostic(
+        reason: ManeuverDiagnosticPolicy.ClosureReason = .routeTransition
+    ) {
         if let previous = diagnosticManeuverKey,
-           ManeuverDiagnosticPolicy.missedFinalCue(stages: announcedManeuverStages[previous] ?? []) {
+           ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
+            stages: announcedManeuverStages[previous] ?? [], reason: reason
+           ) {
             DriveDiagnosticStore.append(.maneuverFinalCueMissed,
                                         detail: DriveDiagnosticDetail.navigationSample(
                                             diagnosticManeuverInstruction ?? "Unbekanntes Manöver",

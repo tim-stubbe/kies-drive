@@ -286,8 +286,20 @@ enum NavigationInitialManeuverPolicy {
 }
 
 enum ManeuverDiagnosticPolicy {
+    enum ClosureReason {
+        case routeTransition
+        case arrival
+        case userStopped
+    }
+
     static func missedFinalCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
         !stages.contains(.now)
+    }
+
+    static func shouldRecordMissedFinalCue(stages: Set<NavigationAnnouncementStage>,
+                                           reason: ClosureReason) -> Bool {
+        guard reason != .userStopped else { return false }
+        return missedFinalCue(stages: stages)
     }
 
     /// A sparse location update can move directly from the road before a
