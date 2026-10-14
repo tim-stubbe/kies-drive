@@ -131,6 +131,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private let synthesizer = AVSpeechSynthesizer()
     private var activeUtterance: AVSpeechUtterance?
+    private var activeSpeechPriority: NavigationSpeechPriority?
     private var navigationStepCursor = 0
     private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
     private var diagnosticManeuverKey: String?
@@ -241,7 +242,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastAnnouncement = nextInstruction ?? "Route gestartet"
         let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
             ?? "Route gestartet."
-        if shouldSpeak { speak(opening) }
+        if shouldSpeak { speak(opening, priority: .status) }
         DriveDiagnosticStore.append(.navigationStarted, detail: destination?.name ?? destinationText)
     }
 
@@ -978,7 +979,6 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
               ) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard !completed.contains(stage) else { return }
-        announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         let spokenDistance = stage == .now ? min(progress.distanceToManeuver, 35) : progress.distanceToManeuver
         let following = progress.upcomingInstructions.dropFirst().first
         let speech = stage == .now
@@ -987,7 +987,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 then: following, followingDistance: progress.followingManeuverDistance
             )
             : NavigationSpeechFormatter.spokenText(progress.instruction, distance: spokenDistance)
-        speak(speech)
+        guard speak(speech, priority: .forAnnouncementStage(stage)) else { return }
+        announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         lastAnnouncement = progress.instruction
         DriveDiagnosticStore.append(.maneuverAnnounced,
                                     detail: "\(stage) · \(Int(progress.distanceToManeuver)) m · \(progress.instruction)")
@@ -1062,7 +1063,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastAnnouncement = "Ziel erreicht"
         hasArrived = true
         resetDeviationTracking()
-        if settings.voiceGuidance { speak("Du hast dein Ziel erreicht.") }
+        if settings.voiceGuidance { speak("Du hast dein Ziel erreicht.", priority: .critical) }
         routeLockStore.finish()
         activeRouteLock = nil
         routeLockStore.clearFinished()
@@ -1190,7 +1191,6 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
         // If a sparse GPS update lands directly in the immediate zone, mark
         // earlier stages complete as well so they cannot be spoken afterwards.
-        announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         let spokenDistance: CLLocationDistance = stage == .now ? min(progress.distance, 35) : progress.distance
         let following = progress.upcomingInstructions.dropFirst().first
         let speech = stage == .now
@@ -1199,7 +1199,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 then: following, followingDistance: progress.followingManeuverDistance
             )
             : NavigationSpeechFormatter.spokenText(progress.maneuver.step.instructions, distance: spokenDistance)
-        speak(speech)
+        guard speak(speech, priority: .forAnnouncementStage(stage)) else { return }
+        announcedManeuverStages[key] = Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
         lastAnnouncement = progress.maneuver.step.instructions
         DriveDiagnosticStore.append(.maneuverAnnounced,
                                     detail: "\(stage) · \(Int(progress.distance)) m · \(progress.maneuver.step.instructions)")
@@ -1219,8 +1220,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         diagnosticManeuverInstruction = instruction
     }
 
-    private func speak(_ text: String) {
-        guard !text.isEmpty else { return }
+    @discardableResult
+    private func speak(_ text: String, priority: NavigationSpeechPriority) -> Bool {
+        guard !text.isEmpty else { return false }
+        if synthesizer.isSpeaking, let activeSpeechPriority,
+           !NavigationSpeechInterruptionPolicy.shouldInterrupt(
+               active: activeSpeechPriority, incoming: priority
+           ) {
+            return false
+        }
         #if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
@@ -1236,7 +1244,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         utterance.postUtteranceDelay = 0.12
         utterance.prefersAssistiveTechnologySettings = false
         activeUtterance = utterance
+        activeSpeechPriority = priority
         synthesizer.speak(utterance)
+        return true
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
@@ -1252,6 +1262,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func finishAudioSession(for utterance: AVSpeechUtterance) {
         guard activeUtterance === utterance else { return }
         activeUtterance = nil
+        activeSpeechPriority = nil
         #if os(iOS)
         // Return music/podcasts to their normal volume as soon as this exact
         // instruction ends. A cancelled older utterance must not deactivate
@@ -1307,7 +1318,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         Task {
             isRecalculating = true
             defer { isRecalculating = false }
-            if settings.voiceGuidance { speak("Die Route wird neu berechnet.") }
+            if settings.voiceGuidance { speak("Die Route wird neu berechnet.", priority: .status) }
             // Keep the current route, station data and guidance visible while
             // MapKit searches in the background. The Boolean result is the
             // source of truth: a superseded/empty request may intentionally

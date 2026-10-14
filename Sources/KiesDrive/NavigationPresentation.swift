@@ -181,6 +181,23 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     }
 }
 
+enum NavigationSpeechPriority: Int, Equatable {
+    case status
+    case maneuver
+    case critical
+
+    static func forAnnouncementStage(_ stage: NavigationAnnouncementStage) -> Self {
+        stage == .now ? .critical : .maneuver
+    }
+}
+
+enum NavigationSpeechInterruptionPolicy {
+    static func shouldInterrupt(active: NavigationSpeechPriority,
+                                incoming: NavigationSpeechPriority) -> Bool {
+        incoming.rawValue >= active.rawValue
+    }
+}
+
 struct NavigationInitialManeuver: Equatable {
     let instruction: String
     let distance: CLLocationDistance

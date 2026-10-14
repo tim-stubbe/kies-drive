@@ -225,6 +225,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 120, speedKmh: 200), .now)
     }
 
+    func testSpeechPriorityProtectsImmediateManeuverFromStatusMessage() {
+        XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.early), .maneuver)
+        XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.now), .critical)
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldInterrupt(
+            active: .critical, incoming: .status
+        ))
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
+            active: .status, incoming: .maneuver
+        ))
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
+            active: .maneuver, incoming: .critical
+        ))
+    }
+
     func testNewRouteSeedsItsOwnFirstManeuverImmediately() throws {
         let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
             (instruction: "", distance: 420),
