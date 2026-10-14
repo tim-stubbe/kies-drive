@@ -270,13 +270,17 @@ struct DriveContentView: View {
                 }
             }
             .padding(12).background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+            if planner.isSearchingAlongRoute {
+                ProgressView("Echten Fahrweg prüfen …")
+                    .font(.caption).tint(Color.kiesForest)
+            }
             ForEach(planner.routeSearchResults.prefix(4)) { result in
                 let item = result.mapItem
                 HStack(spacing: 11) {
                     Image(systemName: "mappin.circle.fill").foregroundStyle(Color.kiesBrass)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name ?? "Zwischenstopp").font(.subheadline.weight(.semibold))
-                        Text("\(item.placemark.title ?? "") · \(formatDistance(result.detourMetres)) von der Route")
+                        Text("\(item.placemark.title ?? "") · \(result.detourIsEstimated ? "ca. " : "")\(formatDistance(result.detourMetres)) Umweg")
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
@@ -1066,12 +1070,13 @@ struct DriveContentView: View {
                             .onSubmit { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
                         Button("Suchen") { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
                     }
+                    if planner.isSearchingAlongRoute { ProgressView("Echten Fahrweg prüfen …") }
                     ForEach(planner.routeSearchResults) { result in
                         let item = result.mapItem
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(item.name ?? "Zwischenstopp")
-                                Text("\(item.placemark.title ?? "") · \(formatDistance(result.detourMetres)) von der Route")
+                                Text("\(item.placemark.title ?? "") · \(result.detourIsEstimated ? "ca. " : "")\(formatDistance(result.detourMetres)) Umweg")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()

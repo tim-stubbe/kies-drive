@@ -197,12 +197,13 @@ enum RouteGeometryProgress {
     }
 
     static func nearestProgress(of coordinate: CLLocationCoordinate2D,
-                                on route: [CLLocationCoordinate2D]) -> (progress: Double, distance: Double)? {
+                                on route: [CLLocationCoordinate2D])
+        -> (progress: Double, distance: Double, coordinate: CLLocationCoordinate2D)? {
         guard route.count > 1 else { return nil }
         let fractions = cumulativeFractions(route)
         let target = MKMapPoint(coordinate)
         let points = route.map(MKMapPoint.init)
-        var best: (progress: Double, distance: Double)?
+        var best: (progress: Double, distance: Double, coordinate: CLLocationCoordinate2D)?
         for index in points.indices.dropLast() {
             let start = points[index], end = points[index + 1]
             let dx = end.x - start.x, dy = end.y - start.y
@@ -213,7 +214,9 @@ enum RouteGeometryProgress {
             let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
             let distance = target.distance(to: projected)
             let progress = fractions[index] + (fractions[index + 1] - fractions[index]) * fraction
-            if best == nil || distance < best!.distance { best = (progress, distance) }
+            if best == nil || distance < best!.distance {
+                best = (progress, distance, projected.coordinate)
+            }
         }
         return best
     }

@@ -540,4 +540,12 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateProgress: 0.40, currentProgress: 0.50))
         XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.75, currentProgress: 0.50))
     }
+
+    func testRouteSearchRejectsExcessiveOrInvalidDrivingDetours() {
+        XCTAssertTrue(RouteSearchPolicy.acceptsDetour(4_500))
+        XCTAssertTrue(RouteSearchPolicy.acceptsDetour(20_000))
+        XCTAssertFalse(RouteSearchPolicy.acceptsDetour(20_001))
+        XCTAssertFalse(RouteSearchPolicy.acceptsDetour(.infinity))
+        XCTAssertFalse(RouteSearchPolicy.acceptsDetour(-1))
+    }
 }

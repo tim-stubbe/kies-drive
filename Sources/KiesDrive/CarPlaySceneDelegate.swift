@@ -402,8 +402,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
                 .compactMap { $0 }.joined(separator: ", ")
             let item = CPListItem(text: mapItem.name ?? "Zwischenstopp",
-                                  detailText: String(format: "%@ · %.1f km von der Route",
+                                  detailText: String(format: "%@ · %@%.1f km Umweg",
                                                      address.isEmpty ? "Entlang der Route" : address,
+                                                     result.detourIsEstimated ? "ca. " : "",
                                                      result.detourMetres / 1_000))
             item.handler = { _, completion in
                 Task {

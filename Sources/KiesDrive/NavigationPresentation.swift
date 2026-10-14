@@ -449,6 +449,13 @@ enum RouteSearchPolicy {
     static func isAhead(candidateProgress: Double, currentProgress: Double) -> Bool {
         candidateProgress >= max(0, currentProgress - 0.02)
     }
+
+    /// A stop that needs more than 20 km of additional driving is not an
+    /// "along the route" result, even if it looks close across a river,
+    /// motorway barrier or mountain in straight-line geometry.
+    static func acceptsDetour(_ metres: CLLocationDistance) -> Bool {
+        metres.isFinite && metres >= 0 && metres <= 20_000
+    }
 }
 
 struct OfflineGuidanceStep {

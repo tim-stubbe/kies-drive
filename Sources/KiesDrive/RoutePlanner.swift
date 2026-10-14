@@ -46,6 +46,7 @@ struct RouteSearchResult: Identifiable {
     let id: String
     let mapItem: MKMapItem
     let detourMetres: CLLocationDistance
+    let detourIsEstimated: Bool
     let routeProgress: Double
 }
 
@@ -72,6 +73,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var activeRouteLock: ActiveRouteLock?
     @Published var routeSearchQuery = ""
     @Published var routeSearchResults: [RouteSearchResult] = []
+    @Published var isSearchingAlongRoute = false
     @Published var nextManeuverInstruction: String?
     @Published var nextManeuverDistance: CLLocationDistance?
     @Published var upcomingManeuverInstructions: [String] = []
@@ -404,8 +406,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard !legs.isEmpty, !cleanQuery.isEmpty else {
             routeSearchQuery = cleanQuery
             routeSearchResults = []
+            isSearchingAlongRoute = false
             return
         }
+        isSearchingAlongRoute = true
         let routeGeneration = routeCalculationGeneration
         routeSearchQuery = cleanQuery
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
@@ -437,25 +441,82 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                   ), projection.distance <= 5_000 else { return 0 }
             return projection.progress
         }()
-        routeSearchResults = matches.values.compactMap { item -> (MKMapItem, Double, Double)? in
+        let candidates = matches.values.compactMap {
+            item -> (item: MKMapItem, progress: Double, airDistance: Double,
+                     routeCoordinate: CLLocationCoordinate2D)? in
             guard let projection = RouteGeometryProgress.nearestProgress(
                 of: item.placemark.coordinate, on: routeCoordinates
             ) else { return nil }
             guard projection.distance <= 5_000,
                   RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
                                             currentProgress: currentRouteProgress) else { return nil }
-            return (item, projection.progress, projection.distance)
+            return (item, projection.progress, projection.distance, projection.coordinate)
         }
-        .sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 < $1.1 }
-        .prefix(12).map { item, progress, detour in
-            let coordinate = item.placemark.coordinate
-            return RouteSearchResult(
-                id: "\(item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
-                mapItem: item,
-                detourMetres: detour,
-                routeProgress: progress
-            )
+        .sorted {
+            $0.progress == $1.progress ? $0.airDistance < $1.airDistance : $0.progress < $1.progress
         }
+        // Route only a small shortlist. This is a user-triggered search, but
+        // dozens of MKDirections requests would still make the screen lag and
+        // can trigger provider throttling.
+        let shortlist = Array(candidates.prefix(6))
+        var routed: [RouteSearchResult] = []
+        await withTaskGroup(of: RouteSearchResult?.self) { group in
+            for candidate in shortlist {
+                group.addTask { [weak self] in
+                    let driven = await self?.drivingDetour(
+                        between: candidate.routeCoordinate, and: candidate.item
+                    )
+                    let detour = driven ?? candidate.airDistance * 2
+                    guard RouteSearchPolicy.acceptsDetour(detour) else { return nil }
+                    let coordinate = candidate.item.placemark.coordinate
+                    return RouteSearchResult(
+                        id: "\(candidate.item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
+                        mapItem: candidate.item,
+                        detourMetres: detour,
+                        detourIsEstimated: driven == nil,
+                        routeProgress: candidate.progress
+                    )
+                }
+            }
+            for await result in group {
+                if let result { routed.append(result) }
+            }
+        }
+        guard generation == routeSearchGeneration,
+              routeGeneration == routeCalculationGeneration,
+              routeSearchQuery == cleanQuery else { return }
+        routeSearchResults = routed.sorted {
+            $0.routeProgress == $1.routeProgress
+                ? $0.detourMetres < $1.detourMetres
+                : $0.routeProgress < $1.routeProgress
+        }
+        isSearchingAlongRoute = false
+    }
+
+    private func drivingDetour(between routeCoordinate: CLLocationCoordinate2D,
+                               and item: MKMapItem) async -> CLLocationDistance? {
+        let routeItem = MKMapItem(placemark: MKPlacemark(coordinate: routeCoordinate))
+        do {
+            async let outbound = Self.drivingDistance(from: routeItem, to: item)
+            async let inbound = Self.drivingDistance(from: item, to: routeItem)
+            return try await outbound + inbound
+        } catch {
+            return nil
+        }
+    }
+
+    private nonisolated static func drivingDistance(from source: MKMapItem,
+                                                     to destination: MKMapItem) async throws
+        -> CLLocationDistance {
+        let request = MKDirections.Request()
+        request.source = source
+        request.destination = destination
+        request.transportType = .automobile
+        request.requestsAlternateRoutes = false
+        guard let route = try await MKDirections(request: request).calculate().routes.first else {
+            throw DriveAPIError.invalidData
+        }
+        return route.distance
     }
 
     @discardableResult
@@ -482,6 +543,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
                              coordinate: coordinate, knownProgress: knownProgress)
         routeSearchResults = []
+        isSearchingAlongRoute = false
         let succeeded = await calculate(from: start, settings: settings)
         guard succeeded else {
             routeLockStore.replace(with: previousLock)
@@ -543,6 +605,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         destinationSearchGeneration = UUID()
         routeSearchGeneration = UUID()
         routeSearchResults = []
+        isSearchingAlongRoute = false
         if showLoading { isLoading = true; stations = [] }
         errorMessage = nil
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
