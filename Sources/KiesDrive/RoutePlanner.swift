@@ -1021,11 +1021,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Kümmert sich um drei Dinge: nächste Fahranweisung ansagen, Tempolimit-
     /// Überschreitung erkennen und bei Abweichung von der Route automatisch
     /// neu berechnen.
-    func updateProgress(at location: CLLocation, settings: DriveSettings) {
+    func updateProgress(at location: CLLocation, settings: DriveSettings,
+                        evaluationDate: Date = Date(),
+                        maximumLocationAge: TimeInterval = NavigationLocationPolicy.maximumLiveAge) {
         guard isNavigating, !legs.isEmpty || isUsingOfflineGuidance else { return }
-        let evaluationDate = Date()
         if let rejection = NavigationLocationPolicy.rejectionReason(
-            for: location, after: lastAcceptedNavigationLocation, now: evaluationDate
+            for: location, after: lastAcceptedNavigationLocation, now: evaluationDate,
+            maximumAge: maximumLocationAge
         ) {
             if lastLocationRejectionLoggedAt.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
                 lastLocationRejectionLoggedAt = Date()

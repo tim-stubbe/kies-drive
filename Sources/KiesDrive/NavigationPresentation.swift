@@ -359,18 +359,24 @@ enum ManeuverDiagnosticPolicy {
 /// briefly report cached or wildly displaced positions after tunnels, pauses
 /// and app resumes; those must not advance maneuvers or trigger rerouting.
 enum NavigationLocationPolicy {
-    static func accepts(_ candidate: CLLocation, after previous: CLLocation?, now: Date = Date()) -> Bool {
-        rejectionReason(for: candidate, after: previous, now: now) == nil
+    static let maximumLiveAge: TimeInterval = 20
+
+    static func accepts(_ candidate: CLLocation, after previous: CLLocation?, now: Date = Date(),
+                        maximumAge: TimeInterval = maximumLiveAge) -> Bool {
+        rejectionReason(for: candidate, after: previous, now: now, maximumAge: maximumAge) == nil
     }
 
     static func rejectionReason(for candidate: CLLocation, after previous: CLLocation?,
-                                now: Date = Date()) -> String? {
+                                now: Date = Date(),
+                                maximumAge: TimeInterval = maximumLiveAge) -> String? {
         guard candidate.horizontalAccuracy >= 0 else { return "GPS-Genauigkeit fehlt" }
         guard candidate.horizontalAccuracy <= 100 else {
             return "GPS zu ungenau (±\(Int(candidate.horizontalAccuracy.rounded())) m)"
         }
         guard candidate.timestamp.timeIntervalSince(now) <= 5 else { return "GPS-Zeit liegt in der Zukunft" }
-        guard now.timeIntervalSince(candidate.timestamp) <= 20 else { return "GPS-Messung ist veraltet" }
+        guard now.timeIntervalSince(candidate.timestamp) <= maximumAge else {
+            return "GPS-Messung ist veraltet"
+        }
         guard let previous else { return nil }
         let elapsed = candidate.timestamp.timeIntervalSince(previous.timestamp)
         guard elapsed > 0 else { return "GPS-Zeit ist nicht fortlaufend" }
@@ -391,6 +397,10 @@ enum NavigationLocationPolicy {
 /// order; using only the last value can jump across a junction and lose both
 /// the final spoken cue and the next maneuver presentation.
 enum NavigationLocationBatchPolicy {
+    /// Long enough to bridge a normal tunnel or short suspension, while
+    /// deliberately refusing an indefinitely cached Core Location history.
+    static let maximumBufferedSampleAge: TimeInterval = 2 * 60
+
     static func orderedDistinct(_ locations: [CLLocation]) -> [CLLocation] {
         locations.enumerated()
             .sorted { lhs, rhs in

@@ -75,9 +75,16 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #endif
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        let deliveredAt = Date()
         let guidanceSamples = NavigationLocationBatchPolicy.orderedDistinct(locations)
         guard let latest = guidanceSamples.last else { return }
         location = latest
+        // Buffered samples are trusted only when Core Location finishes the
+        // batch with a normal, current fix. This lets guidance replay the last
+        // approach to a junction without accepting an entirely stale batch.
+        let batchEndsWithFreshFix = NavigationLocationPolicy.accepts(
+            latest, after: nil, now: deliveredAt
+        )
 
         // Navigation progress must be driven by Core Location itself, not by
         // a SwiftUI `onReceive` callback. SwiftUI view updates are not a
@@ -91,16 +98,21 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         let planner = RoutePlanner.shared
         // `isNavigating` also covers guidance restored from the persisted
         // offline cache, where no fresh MapKit `legs` exist yet.
-        if planner.isNavigating {
+        if planner.isNavigating, batchEndsWithFreshFix {
             for sample in guidanceSamples where planner.isNavigating {
-                planner.updateProgress(at: sample, settings: .shared)
+                planner.updateProgress(
+                    at: sample,
+                    settings: .shared,
+                    evaluationDate: deliveredAt,
+                    maximumLocationAge: NavigationLocationBatchPolicy.maximumBufferedSampleAge
+                )
             }
         }
 
         Task {
             // A cached, stale or kilometre-uncertain first fix must not spend
             // the restore attempt or calculate a route from the wrong place.
-            if NavigationLocationPolicy.accepts(latest, after: nil) {
+            if batchEndsWithFreshFix {
                 await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
             }
             await DriveRemoteBridge.shared.sync(location: latest)

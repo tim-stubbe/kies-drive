@@ -673,6 +673,26 @@ final class NavigationPresentationTests: XCTestCase {
         ), "GPS-Messung ist veraltet")
     }
 
+    func testNavigationLocationPolicySafelyAcceptsBoundedBufferedFixes() {
+        let now = Date()
+        let buffered = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                                  horizontalAccuracy: 5, verticalAccuracy: 5,
+                                  timestamp: now.addingTimeInterval(-60))
+        let tooOld = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+                                horizontalAccuracy: 5, verticalAccuracy: 5,
+                                timestamp: now.addingTimeInterval(-121))
+
+        XCTAssertFalse(NavigationLocationPolicy.accepts(buffered, after: nil, now: now))
+        XCTAssertTrue(NavigationLocationPolicy.accepts(
+            buffered, after: nil, now: now,
+            maximumAge: NavigationLocationBatchPolicy.maximumBufferedSampleAge
+        ))
+        XCTAssertFalse(NavigationLocationPolicy.accepts(
+            tooOld, after: nil, now: now,
+            maximumAge: NavigationLocationBatchPolicy.maximumBufferedSampleAge
+        ))
+    }
+
     func testNavigationLocationPolicyAcceptsNormalMovement() {
         let now = Date()
         let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
