@@ -108,6 +108,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
+    private var stopPlanningGeneration = UUID()
     private var speedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
@@ -175,14 +176,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         remainingDistanceMetres = totalDistance
         remainingTravelTime = totalTravelTime
         stations = []
+        amenityBreakCandidates = []
+        measuredBreakDetours = [:]
         cacheForOffline()
         buildLongTripPlan(settings: settings)
         Task { [weak self] in
             guard let self else { return }
-            await self.loadStations(fuel: settings.fuel)
+            await self.reloadStopPlanning(fuel: settings.fuel, settings: settings,
+                                          reloadAmenities: true)
             await self.loadSpeedLimits()
-            self.buildLongTripPlan(settings: settings)
-            self.cacheForOffline()
         }
     }
 
@@ -686,6 +688,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             legs = computedLegs
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
+            stopPlanningGeneration = UUID()
             measuredBreakDetours = [:]
             resetLiveNavigationProgress()
             seedInitialNavigationPresentation()
@@ -1381,6 +1384,30 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// or target-speed settings change; no network request is required.
     func refreshLongTripPlan(settings: DriveSettings) {
         buildLongTripPlan(settings: settings)
+    }
+
+    /// Reloads the complete stop-planning chain after a fuel or route change.
+    /// Publishing only the station pins would leave breaks, detours and fuel
+    /// costs based on the previous selection.
+    func reloadStopPlanning(fuel: FuelKind, settings: DriveSettings,
+                            reloadAmenities: Bool = false) async {
+        let routeGeneration = routeCalculationGeneration
+        let planningGeneration = UUID()
+        stopPlanningGeneration = planningGeneration
+        await loadStations(fuel: fuel)
+        guard routeGeneration == routeCalculationGeneration,
+              planningGeneration == stopPlanningGeneration else { return }
+        if reloadAmenities || amenityBreakCandidates.isEmpty {
+            await loadBreakAmenities()
+            guard routeGeneration == routeCalculationGeneration,
+                  planningGeneration == stopPlanningGeneration else { return }
+        }
+        measuredBreakDetours = [:]
+        await measureBreakCandidateDetours()
+        guard routeGeneration == routeCalculationGeneration,
+              planningGeneration == stopPlanningGeneration else { return }
+        buildLongTripPlan(settings: settings)
+        cacheForOffline()
     }
 
     private func breakCandidates(along routes: [MKRoute], useMeasuredDetours: Bool = true) -> [BreakCandidate] {

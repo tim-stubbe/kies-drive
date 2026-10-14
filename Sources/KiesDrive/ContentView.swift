@@ -1174,7 +1174,9 @@ struct DriveContentView: View {
                 Picker("Kraftstoff", selection: $settings.fuel) {
                     ForEach(FuelKind.allCases) { Text($0.label).tag($0) }
                 }
-                .onChange(of: settings.fuel) { _, fuel in Task { await planner.loadStations(fuel: fuel) } }
+                .onChange(of: settings.fuel) { _, fuel in
+                    Task { await planner.reloadStopPlanning(fuel: fuel, settings: settings) }
+                }
                 if settings.fuel == .superplus {
                     Text("* Keine eigene SuperPlus-Preisquelle verfügbar - angezeigt wird der Super-(E5)-Preis als Näherung.")
                         .font(.caption).foregroundStyle(.secondary)
