@@ -7,7 +7,8 @@ import UIKit
 /// Native CarPlay navigation surface. Navigation remains local in Kies Drive;
 /// CarPlay is only another presentation and control surface for the shared trip.
 @MainActor
-final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate {
+final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate,
+                                  CPSearchTemplateDelegate {
     private enum CameraMode { case follow, overview }
     private var interfaceController: CPInterfaceController?
     private var carWindow: CPWindow?
@@ -17,6 +18,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var activeTrip: CPTrip?
     private var cameraMode: CameraMode = .follow
     private var lastReliableCourse: CLLocationDirection?
+    private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
+    private var carPlaySearchGeneration = UUID()
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -79,6 +82,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         navigationSession = nil
         activeTrip = nil
         cancellables.removeAll()
+        carPlaySearchResults = [:]
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
@@ -151,7 +155,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func showDestinationsAndStops() {
         let planner = RoutePlanner.shared
-        var items: [CPListItem] = []
+        var items: [CPListItem] = [makeDestinationSearchItem()]
         var routeSearchItems: [CPListItem] = []
         let home = DriveSettings.shared.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !home.isEmpty {
@@ -273,6 +277,66 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         }
         let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(list, animated: true, completion: nil)
+    }
+
+    private func makeDestinationSearchItem() -> CPListItem {
+        let item = CPListItem(text: "Ziel suchen", detailText: "Orte, Adressen und Firmen",
+                              image: UIImage(systemName: "magnifyingglass"))
+        item.handler = { [weak self] _, completion in
+            let search = CPSearchTemplate()
+            search.delegate = self
+            self?.interfaceController?.pushTemplate(search, animated: true) { _, _ in completion() }
+        }
+        return item
+    }
+
+    func searchTemplate(_ searchTemplate: CPSearchTemplate, updatedSearchText searchText: String,
+                        completionHandler: @escaping ([CPListItem]) -> Void) {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.count >= 2 else {
+            carPlaySearchGeneration = UUID()
+            carPlaySearchResults = [:]
+            completionHandler([])
+            return
+        }
+        let generation = UUID()
+        carPlaySearchGeneration = generation
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        if let coordinate = LocationService.shared.location?.coordinate {
+            request.region = .init(center: coordinate, latitudinalMeters: 300_000,
+                                   longitudinalMeters: 300_000)
+        }
+        Task { [weak self] in
+            let response = try? await MKLocalSearch(request: request).start()
+            guard let self, generation == self.carPlaySearchGeneration else { return }
+            var mapped: [ObjectIdentifier: MKMapItem] = [:]
+            let items = (response?.mapItems ?? []).prefix(8).map { mapItem in
+                let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
+                    .compactMap { $0 }.joined(separator: ", ")
+                let item = CPListItem(text: mapItem.name ?? "Ziel",
+                                      detailText: address.isEmpty ? mapItem.placemark.title : address,
+                                      image: UIImage(systemName: "mappin.and.ellipse"))
+                mapped[ObjectIdentifier(item)] = mapItem
+                return item
+            }
+            self.carPlaySearchResults = mapped
+            completionHandler(items)
+        }
+    }
+
+    func searchTemplate(_ searchTemplate: CPSearchTemplate, selectedResult item: CPListItem,
+                        completionHandler: @escaping () -> Void) {
+        guard let mapItem = carPlaySearchResults[ObjectIdentifier(item)],
+              let start = LocationService.shared.location?.coordinate else {
+            completionHandler()
+            showFailure("Das Ziel oder der aktuelle Standort ist nicht mehr verfügbar.")
+            return
+        }
+        Task { [weak self] in
+            await self?.navigate(to: mapItem, from: start)
+            completionHandler()
+        }
     }
 
     private func showDestinationsAndStopsReplacingCurrentList() {
