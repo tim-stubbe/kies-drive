@@ -378,6 +378,34 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(detail.contains("8.654321"))
     }
 
+    func testDiagnosticSummaryUsesOnlyLatestNavigationSession() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Alte Fahrt"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Alter Fehler"),
+            DriveDiagnosticEvent(kind: .navigationStopped, detail: "Alte Fahrt"),
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Neue Fahrt"),
+            DriveDiagnosticEvent(kind: .maneuverAnnounced, detail: "Rechts"),
+            DriveDiagnosticEvent(kind: .locationRejected, detail: "GPS ±90 m"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.eventCount, 3)
+        XCTAssertEqual(summary.rerouteFailures, 0)
+        XCTAssertEqual(summary.rejectedLocations, 1)
+    }
+
+    func testDiagnosticSummaryFlagsMissedFinalCue() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .maneuverFinalCueMissed, detail: "Ausfahrt"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.missedFinalCues, 1)
+    }
+
     func testNavigationLocationPolicyRejectsImpossibleJumpAndStaleFix() {
         let now = Date()
         let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,

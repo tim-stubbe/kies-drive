@@ -1810,12 +1810,22 @@ struct DriveSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Navigationsqualität") {
+                    let latestSummary = DriveDiagnosticSummary.latestSession(in: diagnosticEvents)
                     let reroutes = diagnosticEvents.filter { $0.kind == .rerouteRequested }.count
                     let failures = diagnosticEvents.filter { $0.kind == .rerouteFailed }.count
                     let rejectedLocations = diagnosticEvents.filter { $0.kind == .locationRejected }.count
                     let arrivals = diagnosticEvents.filter { $0.kind == .arrivalReached }.count
                     let announcements = diagnosticEvents.filter { $0.kind == .maneuverAnnounced }.count
                     let missedFinalCues = diagnosticEvents.filter { $0.kind == .maneuverFinalCueMissed }.count
+                    if let latestSummary {
+                        LabeledContent("Letzte Fahrt", value: latestSummary.quality.rawValue)
+                        if latestSummary.quality != .good {
+                            Text("Letzte Fahrt: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n).")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        LabeledContent("Letzte Fahrt", value: "Noch keine Daten")
+                    }
                     LabeledContent("Aufgezeichnete Fahrereignisse", value: "\(diagnosticEvents.count)")
                     LabeledContent("Neuberechnungen", value: "\(reroutes)")
                     LabeledContent("Fehlgeschlagen", value: "\(failures)")

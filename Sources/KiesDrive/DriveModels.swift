@@ -193,6 +193,40 @@ enum DriveDiagnosticStore {
     static func clear(defaults: UserDefaults = .standard) { defaults.removeObject(forKey: key) }
 }
 
+struct DriveDiagnosticSummary: Equatable {
+    enum Quality: String {
+        case good = "Unauffällig"
+        case attention = "Prüfen"
+        case critical = "Fehler erkannt"
+    }
+
+    let quality: Quality
+    let eventCount: Int
+    let rerouteFailures: Int
+    let rejectedLocations: Int
+    let missedFinalCues: Int
+
+    static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
+        guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
+        let session = events[start...]
+        let failures = session.filter { $0.kind == .rerouteFailed }.count
+        let rejected = session.filter { $0.kind == .locationRejected }.count
+        let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
+        let reroutes = session.filter { $0.kind == .rerouteRequested }.count
+        let quality: Quality
+        if failures > 0 || missed > 0 {
+            quality = .critical
+        } else if rejected >= 3 || reroutes >= 3 {
+            quality = .attention
+        } else {
+            quality = .good
+        }
+        return .init(quality: quality, eventCount: session.count,
+                     rerouteFailures: failures, rejectedLocations: rejected,
+                     missedFinalCues: missed)
+    }
+}
+
 enum DriveDiagnosticReport {
     static func text(events: [DriveDiagnosticEvent], appVersion: String) -> String {
         var lines = [
