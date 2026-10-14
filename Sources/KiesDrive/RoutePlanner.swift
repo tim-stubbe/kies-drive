@@ -327,11 +327,26 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
         item.name = lock.destinationName
         destination = item
-        await calculate(from: current, settings: settings)
-        if !legs.isEmpty {
+        let onlineCalculationSucceeded = await calculate(from: current, settings: settings)
+        let hasMatchingOfflineRoute = offlineRoute.map {
+            OfflineRouteCachePolicy.matches(
+                cacheName: $0.destinationName,
+                cacheCoordinate: $0.destinationCoordinate?.clLocationCoordinate,
+                destinationName: destination?.name ?? destinationText,
+                destinationCoordinate: destination?.placemark.coordinate
+            ) && $0.legs.flatMap(\.steps).contains { ($0.coordinates?.count ?? 0) > 1 }
+        } ?? false
+        switch RouteRestoreModePolicy.mode(
+            onlineCalculationSucceeded: onlineCalculationSucceeded,
+            hasLiveRoute: !legs.isEmpty,
+            hasMatchingOfflineRoute: hasMatchingOfflineRoute
+        ) {
+        case .online, .staleLive:
             startNavigation(voiceGuidance: settings.voiceGuidance)
-        } else {
-            startOfflineGuidanceIfAvailable()
+        case .offline:
+            _ = startOfflineGuidanceIfAvailable(replacingLiveRoute: true)
+        case .unavailable:
+            break
         }
     }
 
@@ -890,8 +905,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     @discardableResult
-    private func startOfflineGuidanceIfAvailable() -> Bool {
-        guard legs.isEmpty, let cache = offlineRoute,
+    private func startOfflineGuidanceIfAvailable(replacingLiveRoute: Bool = false) -> Bool {
+        guard (legs.isEmpty || replacingLiveRoute), let cache = offlineRoute,
               OfflineRouteCachePolicy.matches(
                 cacheName: cache.destinationName,
                 cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
@@ -900,6 +915,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
               ),
               cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {
             return false
+        }
+        if replacingLiveRoute {
+            legs = []
+            alternatives = []
+            comparisonRoute = nil
         }
         resetLiveNavigationProgress()
         errorMessage = nil

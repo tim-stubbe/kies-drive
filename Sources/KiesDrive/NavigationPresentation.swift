@@ -452,6 +452,18 @@ enum RouteLockRestorePolicy {
     }
 }
 
+enum RouteRestoreModePolicy {
+    enum Mode: Equatable { case online, offline, staleLive, unavailable }
+
+    static func mode(onlineCalculationSucceeded: Bool, hasLiveRoute: Bool,
+                     hasMatchingOfflineRoute: Bool) -> Mode {
+        if onlineCalculationSucceeded && hasLiveRoute { return .online }
+        if hasMatchingOfflineRoute { return .offline }
+        if hasLiveRoute { return .staleLive }
+        return .unavailable
+    }
+}
+
 enum NavigationDestinationIdentityPolicy {
     static func matches(_ lhs: CLLocationCoordinate2D?, _ rhs: CLLocationCoordinate2D,
                         toleranceMetres: CLLocationDistance = 25) -> Bool {

@@ -537,6 +537,25 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testTripRestorePrefersFreshOnlineThenOfflineBeforeStaleLiveRoute() {
+        XCTAssertEqual(RouteRestoreModePolicy.mode(
+            onlineCalculationSucceeded: true, hasLiveRoute: true,
+            hasMatchingOfflineRoute: true
+        ), .online)
+        XCTAssertEqual(RouteRestoreModePolicy.mode(
+            onlineCalculationSucceeded: false, hasLiveRoute: true,
+            hasMatchingOfflineRoute: true
+        ), .offline)
+        XCTAssertEqual(RouteRestoreModePolicy.mode(
+            onlineCalculationSucceeded: false, hasLiveRoute: true,
+            hasMatchingOfflineRoute: false
+        ), .staleLive)
+        XCTAssertEqual(RouteRestoreModePolicy.mode(
+            onlineCalculationSucceeded: false, hasLiveRoute: false,
+            hasMatchingOfflineRoute: false
+        ), .unavailable)
+    }
+
     func testNavigationDestinationIdentityUsesRoadLevelTolerance() {
         let destination = CLLocationCoordinate2D(latitude: 50.0147, longitude: 8.3522)
         XCTAssertTrue(NavigationDestinationIdentityPolicy.matches(
