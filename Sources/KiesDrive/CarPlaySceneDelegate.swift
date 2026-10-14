@@ -95,7 +95,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let planner = RoutePlanner.shared
         Publishers.CombineLatest4(planner.$legs, planner.$destination, planner.$isNavigating, planner.$lastAnnouncement)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _, _, _, _ in
+            .sink { [weak self] _, _, isNavigating, _ in
+                // CarPlay can own the only visible scene. Do not rely on the
+                // phone SwiftUI view to switch Core Location into navigation
+                // accuracy/background mode when a trip starts in the car.
+                LocationService.shared.setNavigationActive(isNavigating)
                 self?.redrawRoute()
                 self?.synchroniseNavigationSession()
             }
