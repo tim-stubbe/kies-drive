@@ -384,6 +384,15 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 120, speedKmh: 200), .now)
     }
 
+    func testImmediateCueUsesRealisticSpeedDependentWindow() {
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 40, speedKmh: 50), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 55, speedKmh: 50), .final)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 95, speedKmh: 120), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 130, speedKmh: 120), .final)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 165, speedKmh: 200), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 220, speedKmh: 200), .final)
+    }
+
     func testSpeechPriorityProtectsImmediateManeuverFromStatusMessage() {
         XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.early), .maneuver)
         XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.now), .critical)
@@ -433,11 +442,11 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testFinalCueHasEnoughHighSpeedReactionTime() {
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 190, speedKmh: 120), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 190, speedKmh: 120), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 210, speedKmh: 120), .prepare)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 80, speedKmh: 50), .now)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 80, speedKmh: 50), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 90, speedKmh: 50), .prepare)
     }
 

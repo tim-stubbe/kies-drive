@@ -196,18 +196,19 @@ enum NavigationSpeechFormatter {
 enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     case early
     case prepare
+    case final
     case now
 
     static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
         guard distance.isFinite, distance >= 0 else { return nil }
         let speedMetresPerSecond = max(0, speedKmh) / 3.6
-        // Time-based horizons keep exits safe at motorway speeds. Six seconds
-        // for the final cue survives a delayed Core Location sample and still
-        // leaves reaction time for an exit lane change. The floor keeps urban
-        // turns audible before the junction; the cap avoids a premature
-        // "Jetzt" at extreme or briefly noisy speed readings.
-        let nowDistance = min(350, max(60, speedMetresPerSecond * 6))
+        // Keep the actual "Jetzt" cue close to the junction. A separate final
+        // distance cue below retains the full six-second safety horizon at
+        // motorway speed without saying "Jetzt" hundreds of metres early.
+        let nowDistance = min(180, max(25, speedMetresPerSecond * 3))
         if distance <= nowDistance { return .now }
+        let finalDistance = min(350, max(60, speedMetresPerSecond * 6))
+        if distance <= finalDistance { return .final }
         let prepareDistance = min(1_100, max(220, speedMetresPerSecond * 15))
         if distance <= prepareDistance { return .prepare }
         let earlyDistance = min(3_000, max(500, speedMetresPerSecond * 45))
