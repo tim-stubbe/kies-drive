@@ -34,6 +34,31 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(result[0].detourIsEstimated)
     }
 
+    func testFuelStationSelectionIsStableAcrossOpeningPriceAndRouteDistance() {
+        func station(_ id: String, open: Bool?, price: Double) -> FuelStation {
+            FuelStation(id: id, name: id, brand: id, street: "", place: "",
+                        lat: 50, lon: 8, price: price, open: open, distanceKm: 1)
+        }
+        let open = station("open", open: true, price: 1.90)
+        let unknown = station("unknown", open: nil, price: 1.70)
+        let closed = station("closed", open: false, price: 1.60)
+        XCTAssertTrue(FuelStationSelectionPolicy.isPreferred(
+            open, corridorDistance: 900, over: unknown, corridorDistance: 100
+        ))
+        XCTAssertTrue(FuelStationSelectionPolicy.isPreferred(
+            unknown, corridorDistance: 900, over: closed, corridorDistance: 100
+        ))
+
+        let near = station("near", open: true, price: 1.80)
+        let far = station("far", open: true, price: 1.80)
+        XCTAssertTrue(FuelStationSelectionPolicy.isPreferred(
+            near, corridorDistance: 100, over: far, corridorDistance: 900
+        ))
+        XCTAssertFalse(FuelStationSelectionPolicy.isPreferred(
+            far, corridorDistance: 900, over: near, corridorDistance: 100
+        ))
+    }
+
     func testTollLookupCacheOnlyReusesSameNearbyTrip() {
         let loadedAt = Date(timeIntervalSince1970: 10_000)
         let snapshot = TollLookupSnapshot(

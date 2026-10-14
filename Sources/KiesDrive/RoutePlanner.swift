@@ -1875,23 +1875,26 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
-        let nearRoute = unique.values.compactMap { station -> (FuelStation, Int, Double)? in
+        let nearRoute = unique.values.compactMap { station -> (station: FuelStation, progress: Double,
+                                                                corridorDistance: Double)? in
             let point = CLLocation(latitude: station.lat, longitude: station.lon)
             guard let match = routePoints.enumerated().min(by: { $0.element.distance(from: point) < $1.element.distance(from: point) }),
                   match.element.distance(from: point) < 4_000 else { return nil }
-            return (station, match.offset, routeProgress[match.offset])
+            return (station, routeProgress[match.offset], match.element.distance(from: point))
         }
         // Keep at most one strong candidate per route section. This gives the
         // break planner geographic coverage without flooding MapKit with pins.
         let bucketCount = min(12, max(1, routeCoordinates.count))
         let grouped = Dictionary(grouping: nearRoute) { item in
-            min(bucketCount - 1, Int(item.2 * Double(bucketCount)))
+            min(bucketCount - 1, Int(item.progress * Double(bucketCount)))
         }
         stations = grouped.keys.sorted().compactMap { bucket in
             grouped[bucket]?.min {
-                if $0.0.open != $1.0.open { return $0.0.open != false }
-                return $0.0.price == $1.0.price ? $0.0.distanceKm < $1.0.distanceKm : $0.0.price < $1.0.price
-            }?.0
+                FuelStationSelectionPolicy.isPreferred(
+                    $0.station, corridorDistance: $0.corridorDistance,
+                    over: $1.station, corridorDistance: $1.corridorDistance
+                )
+            }?.station
         }
     }
 

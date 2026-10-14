@@ -265,6 +265,28 @@ enum BreakCandidateFactory {
     }
 }
 
+enum FuelStationSelectionPolicy {
+    static func isPreferred(_ lhs: FuelStation, corridorDistance lhsDistance: Double,
+                            over rhs: FuelStation, corridorDistance rhsDistance: Double) -> Bool {
+        let lhsOpening = openingRank(lhs.open)
+        let rhsOpening = openingRank(rhs.open)
+        if lhsOpening != rhsOpening { return lhsOpening > rhsOpening }
+        let lhsPrice = lhs.price > 0 && lhs.price.isFinite ? lhs.price : .greatestFiniteMagnitude
+        let rhsPrice = rhs.price > 0 && rhs.price.isFinite ? rhs.price : .greatestFiniteMagnitude
+        if lhsPrice != rhsPrice { return lhsPrice < rhsPrice }
+        if lhsDistance != rhsDistance { return lhsDistance < rhsDistance }
+        return lhs.id < rhs.id
+    }
+
+    private static func openingRank(_ value: Bool?) -> Int {
+        switch value {
+        case true: 2
+        case nil: 1
+        case false: 0
+        }
+    }
+}
+
 enum RouteTravelTimeProgress {
     /// Maps a point's whole-route distance fraction to its expected-time
     /// fraction using the individual MapKit leg ETAs. It intentionally works
