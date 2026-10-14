@@ -53,6 +53,20 @@ def test_toll_evidence_requires_official_or_independent_corroboration():
     )[0] == 27.4
 
 
+def test_toll_evidence_does_not_count_subdomains_as_independent_sources():
+    route_text = "Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
+    sources = [
+        {"title": route_text, "snippet": "", "url": "https://route.example.com/trip"},
+        {"title": route_text, "snippet": "", "url": "https://blog.example.com/trip"},
+    ]
+
+    assert main.independent_source_domain("route.example.com") == "example.com"
+    assert main.independent_source_domain("prices.example.co.uk") == "example.co.uk"
+    assert main.verified_toll_evidence(
+        sources, "Hochheim am Main", ["Wurzenpass"]
+    ) is None
+
+
 def test_no_toll_evidence_requires_official_or_two_independent_sources():
     text = "Hochheim über Wurzenpass: gesamte Route mautfrei"
     one = {"title": text, "snippet": "", "url": "https://blog.example/trip"}
@@ -61,6 +75,11 @@ def test_no_toll_evidence_requires_official_or_two_independent_sources():
     assert main.verified_no_toll_evidence(
         [one, two], "Hochheim am Main", ["Wurzenpass"]
     ) is not None
+
+    same_publisher = {"title": text, "snippet": "", "url": "https://news.blog.example/trip"}
+    assert main.verified_no_toll_evidence(
+        [one, same_publisher], "Hochheim am Main", ["Wurzenpass"]
+    ) is None
 
 
 def test_verification_email_can_be_resent_without_account_disclosure(tmp_path, monkeypatch):

@@ -486,10 +486,22 @@ OFFICIAL_TOLL_HOSTS = ("asfinag.at", "dars.si", "hac.hr", "autostrade.it",
                        "vinci-autoroutes.com")
 
 
+def independent_source_domain(host: str) -> str:
+    """Collapse subdomains so one publisher cannot corroborate itself."""
+    labels = host.lower().strip(".").split(".")
+    if len(labels) <= 2:
+        return ".".join(labels)
+    common_second_level_suffixes = {
+        "co.uk", "org.uk", "com.au", "com.br", "co.jp", "co.nz", "co.za",
+    }
+    suffix = ".".join(labels[-2:])
+    return ".".join(labels[-3:]) if suffix in common_second_level_suffixes else suffix
+
+
 def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
                            via: list[str]) -> tuple[float, str, str] | None:
     """Accept one official source or two independent corroborating domains."""
-    evidence: list[tuple[float, str, str, bool]] = []
+    evidence: list[tuple[float, str, str, str, bool]] = []
     for source in sources:
         source_text = f"{source['title']} {source['snippet']}"
         amount = explicit_toll_amount(source_text)
@@ -500,26 +512,21 @@ def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
-        evidence.append((amount, host, source["title"], official))
-    if official := next((item for item in evidence if item[3]), None):
-        return official[0], official[2], next(
-            source["url"] for source in sources if source["title"] == official[2]
-        )
-    for amount, _, _, _ in evidence:
+        evidence.append((amount, independent_source_domain(host), source["title"], source["url"], official))
+    if official := next((item for item in evidence if item[4]), None):
+        return official[0], official[2], official[3]
+    for amount, _, _, _, _ in evidence:
         corroborating = [item for item in evidence if abs(item[0] - amount) <= 0.01]
         if len({item[1] for item in corroborating}) >= 2:
             titles = " + ".join(dict.fromkeys(item[2] for item in corroborating))[:300]
-            first_title = corroborating[0][2]
-            return amount, titles, next(
-                source["url"] for source in sources if source["title"] == first_title
-            )
+            return amount, titles, corroborating[0][3]
     return None
 
 
 def verified_no_toll_evidence(sources: list[dict[str, str]], destination: str,
                               via: list[str]) -> tuple[str, str] | None:
     """Require official evidence or two domains before claiming zero toll."""
-    evidence: list[tuple[str, str, bool]] = []
+    evidence: list[tuple[str, str, str, bool]] = []
     for source in sources:
         source_text = f"{source['title']} {source['snippet']}"
         parsed = urlparse(source["url"])
@@ -529,17 +536,12 @@ def verified_no_toll_evidence(sources: list[dict[str, str]], destination: str,
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
-        evidence.append((host, source["title"], official))
-    if official := next((item for item in evidence if item[2]), None):
-        return official[1], next(
-            source["url"] for source in sources if source["title"] == official[1]
-        )
+        evidence.append((independent_source_domain(host), source["title"], source["url"], official))
+    if official := next((item for item in evidence if item[3]), None):
+        return official[1], official[2]
     if len({item[0] for item in evidence}) >= 2:
         titles = " + ".join(dict.fromkeys(item[1] for item in evidence))[:300]
-        first_title = evidence[0][1]
-        return titles, next(
-            source["url"] for source in sources if source["title"] == first_title
-        )
+        return titles, evidence[0][2]
     return None
 
 
