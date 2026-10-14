@@ -1167,6 +1167,30 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertNil(RouteSearchPolicy.estimatedDetour(airDistance: -1))
     }
 
+    func testRouteSearchDetourAnchorsFollowDrivingDirection() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.1)
+        ]
+        let anchors = try XCTUnwrap(RouteSearchPolicy.detourAnchors(
+            routeCoordinates: route, progress: 0.5
+        ))
+        XCTAssertLessThan(anchors.entry.longitude, anchors.exit.longitude)
+        XCTAssertEqual(anchors.baselineMetres, 2_000, accuracy: 5)
+    }
+
+    func testRouteSearchSubtractsDistanceDrivenAnywayFromDetour() throws {
+        XCTAssertEqual(try XCTUnwrap(RouteSearchPolicy.additionalDistance(
+            viaDistance: 2_750, baselineDistance: 2_000
+        )), 750, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(RouteSearchPolicy.additionalDistance(
+            viaDistance: 1_900, baselineDistance: 2_000
+        )), 0, accuracy: 0.1)
+        XCTAssertNil(RouteSearchPolicy.additionalDistance(
+            viaDistance: .infinity, baselineDistance: 2_000
+        ))
+    }
+
     func testRouteSearchCompletionPublishesOnlyForCurrentGeometryAndQuery() {
         let request = UUID()
         let route = UUID()

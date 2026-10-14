@@ -874,6 +874,12 @@ enum OfflineRouteAvailabilityPolicy {
 }
 
 enum RouteSearchPolicy {
+    struct DetourAnchors {
+        let entry: CLLocationCoordinate2D
+        let exit: CLLocationCoordinate2D
+        let baselineMetres: CLLocationDistance
+    }
+
     /// Keeps a tiny tolerance for GPS jitter around the current route point,
     /// but never sends the driver materially backwards for an added stop.
     static func isAhead(candidateIndex: Int, currentIndex: Int, routePointCount: Int) -> Bool {
@@ -928,6 +934,62 @@ enum RouteSearchPolicy {
         guard airDistance.isFinite, airDistance >= 0, airDistance <= 3_000 else { return nil }
         let estimate = airDistance * 2
         return acceptsDetour(estimate) ? estimate : nil
+    }
+
+    /// Measures a stop in the actual driving direction. Routing from one
+    /// corridor point to the POI and back to that same point can invent a
+    /// motorway U-turn. Entry and exit anchors straddle the stop instead;
+    /// their normal route distance is subtracted from the via-POI distance.
+    static func detourAnchors(routeCoordinates: [CLLocationCoordinate2D],
+                              progress: Double,
+                              halfSpanMetres: CLLocationDistance = 1_000)
+        -> DetourAnchors? {
+        guard routeCoordinates.count > 1 else { return nil }
+        let fractions = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
+        let total = zip(routeCoordinates, routeCoordinates.dropFirst()).reduce(0.0) {
+            $0 + CLLocation(latitude: $1.0.latitude, longitude: $1.0.longitude)
+                .distance(from: CLLocation(latitude: $1.1.latitude, longitude: $1.1.longitude))
+        }
+        guard total.isFinite, total > 0 else { return nil }
+        let centre = min(1, max(0, progress))
+        let delta = max(0, halfSpanMetres) / total
+        let entryProgress = max(0, centre - delta)
+        let exitProgress = min(1, centre + delta)
+        guard exitProgress > entryProgress,
+              let entry = coordinate(at: entryProgress, coordinates: routeCoordinates,
+                                     fractions: fractions),
+              let exit = coordinate(at: exitProgress, coordinates: routeCoordinates,
+                                    fractions: fractions) else { return nil }
+        return .init(entry: entry, exit: exit,
+                     baselineMetres: (exitProgress - entryProgress) * total)
+    }
+
+    static func additionalDistance(viaDistance: CLLocationDistance,
+                                   baselineDistance: CLLocationDistance)
+        -> CLLocationDistance? {
+        guard viaDistance.isFinite, viaDistance >= 0,
+              baselineDistance.isFinite, baselineDistance >= 0 else { return nil }
+        return max(0, viaDistance - baselineDistance)
+    }
+
+    private static func coordinate(at progress: Double,
+                                   coordinates: [CLLocationCoordinate2D],
+                                   fractions: [Double]) -> CLLocationCoordinate2D? {
+        guard coordinates.count == fractions.count, !coordinates.isEmpty else { return nil }
+        let target = min(1, max(0, progress))
+        guard let upper = fractions.firstIndex(where: { $0 >= target }) else {
+            return coordinates.last
+        }
+        guard upper > 0 else { return coordinates[0] }
+        let lower = upper - 1
+        let span = fractions[upper] - fractions[lower]
+        let interpolation = span > 0 ? (target - fractions[lower]) / span : 0
+        return .init(
+            latitude: coordinates[lower].latitude +
+                (coordinates[upper].latitude - coordinates[lower].latitude) * interpolation,
+            longitude: coordinates[lower].longitude +
+                (coordinates[upper].longitude - coordinates[lower].longitude) * interpolation
+        )
     }
 }
 

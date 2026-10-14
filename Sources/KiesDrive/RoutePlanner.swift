@@ -605,15 +605,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteSearches = []
         let candidates = matches.values.compactMap {
             item -> (item: MKMapItem, progress: Double, airDistance: Double,
-                     routeCoordinate: CLLocationCoordinate2D)? in
+                     anchors: RouteSearchPolicy.DetourAnchors)? in
             guard let projection = RouteGeometryProgress.nearestProgress(
                 of: item.placemark.coordinate, on: routeCoordinates,
                 progressRange: max(0, currentRouteProgress - 0.02)...1
             ) else { return nil }
             guard projection.distance <= 5_000,
                   RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
-                                            currentProgress: currentRouteProgress) else { return nil }
-            return (item, projection.progress, projection.distance, projection.coordinate)
+                                            currentProgress: currentRouteProgress),
+                  let anchors = RouteSearchPolicy.detourAnchors(
+                    routeCoordinates: routeCoordinates, progress: projection.progress
+                  ) else { return nil }
+            return (item, projection.progress, projection.distance, anchors)
         }
         .sorted {
             $0.progress == $1.progress ? $0.airDistance < $1.airDistance : $0.progress < $1.progress
@@ -627,7 +630,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             for candidate in shortlist {
                 group.addTask { [weak self] in
                     let driven = await self?.drivingDetour(
-                        between: candidate.routeCoordinate, and: candidate.item
+                        through: candidate.item, anchors: candidate.anchors
                     )
                     guard let detour = driven ?? RouteSearchPolicy.estimatedDetour(
                         airDistance: candidate.airDistance
@@ -686,13 +689,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         return max(0, expected - 0.08)...min(1, expected + 0.12)
     }
 
-    private func drivingDetour(between routeCoordinate: CLLocationCoordinate2D,
-                               and item: MKMapItem) async -> CLLocationDistance? {
-        let routeItem = MKMapItem(placemark: MKPlacemark(coordinate: routeCoordinate))
+    private func drivingDetour(through item: MKMapItem,
+                               anchors: RouteSearchPolicy.DetourAnchors) async
+        -> CLLocationDistance? {
+        let entry = MKMapItem(placemark: MKPlacemark(coordinate: anchors.entry))
+        let exit = MKMapItem(placemark: MKPlacemark(coordinate: anchors.exit))
         do {
-            async let outbound = Self.drivingDistance(from: routeItem, to: item)
-            async let inbound = Self.drivingDistance(from: item, to: routeItem)
-            return try await outbound + inbound
+            async let outbound = Self.drivingDistance(from: entry, to: item)
+            async let inbound = Self.drivingDistance(from: item, to: exit)
+            let viaDistance = try await outbound + inbound
+            return RouteSearchPolicy.additionalDistance(
+                viaDistance: viaDistance, baselineDistance: anchors.baselineMetres
+            )
         } catch {
             return nil
         }
@@ -2178,8 +2186,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     /// Measures only the already shortlisted stops. Six candidates mean at
-    /// most twelve directions requests (out and back), independent of the
-    /// number of stations returned by providers.
+    /// most twelve directions requests (route entry to stop, then stop to a
+    /// forward route exit), independent of the provider result count.
     private func measureBreakCandidateDetours() async {
         let routeGeneration = routeCalculationGeneration
         let generation = breakCandidateLoadGeneration
@@ -2190,10 +2198,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             for candidate in candidates {
                 guard let projection = RouteGeometryProgress.nearestProgress(
                     of: candidate.coordinate, on: routeCoordinates
+                ), let anchors = RouteSearchPolicy.detourAnchors(
+                    routeCoordinates: routeCoordinates, progress: projection.progress
                 ) else { continue }
                 group.addTask { [weak self] in
                     let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
-                    let distance = await self?.drivingDetour(between: projection.coordinate, and: item)
+                    let distance = await self?.drivingDetour(through: item, anchors: anchors)
                     return (candidate.id, distance)
                 }
             }
