@@ -164,7 +164,8 @@ enum DriveAPI {
         let body = try JSONEncoder().encode(AccountRegistrationCompletion(ticket: ticket))
         let data = try await authData(for: authRequest(path: "/auth/verification/complete", body: body))
         let response = try JSONDecoder().decode(AccountLoginResponse.self, from: data)
-        AccountSessionStore.shared.signIn(session: response.session, email: response.email)
+        AccountSessionStore.shared.signIn(session: response.session, email: response.email,
+                                          offerTwoFactorSetup: true)
         return response
     }
 

@@ -113,14 +113,22 @@ struct DriveContentView: View {
 
     @ViewBuilder
     var body: some View {
-        if isSimulatorAccountPreview || (account.session == nil && !bypassesAccountForSimulatorPreview) {
-            AccountWelcomeView()
-        } else {
-            #if os(iOS)
-            mobileBody
-            #else
-            desktopBody
-            #endif
+        Group {
+            if isSimulatorAccountPreview || (account.session == nil && !bypassesAccountForSimulatorPreview) {
+                AccountWelcomeView()
+            } else {
+                #if os(iOS)
+                mobileBody
+                #else
+                desktopBody
+                #endif
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { account.session != nil && account.shouldOfferTwoFactorSetup },
+            set: { if !$0 { account.dismissTwoFactorSetupOffer() } }
+        )) {
+            FirstLoginSecurityView()
         }
     }
 
@@ -2004,6 +2012,47 @@ private enum TwoFactorQRCode {
     }
 }
 
+private struct FirstLoginSecurityView: View {
+    @ObservedObject private var account = AccountSessionStore.shared
+    @State private var showSetup = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 22) {
+                Spacer()
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 58))
+                    .foregroundStyle(Color.kiesBrass)
+                VStack(spacing: 8) {
+                    Text("Dein Konto ist bereit")
+                        .font(.title2.bold())
+                    Text("Deine E-Mail-Adresse ist bestätigt. Schütze dein Konto zusätzlich mit einem Code aus deiner Authenticator-App.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                Button("Zwei-Faktor-Schutz einrichten") { showSetup = true }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.kiesForest)
+                    .controlSize(.large)
+                Button("Später in den Einstellungen") {
+                    account.dismissTwoFactorSetupOffer()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.kiesForest)
+                Spacer()
+            }
+            .padding(30)
+            .background(Color.kiesCanvas.ignoresSafeArea())
+            .interactiveDismissDisabled()
+            .sheet(isPresented: $showSetup, onDismiss: {
+                account.dismissTwoFactorSetupOffer()
+            }) {
+                TwoFactorSetupView()
+            }
+        }
+    }
+}
+
 private struct AccountWelcomeView: View {
     private enum Mode: String, CaseIterable, Identifiable {
         case login = "Anmelden"
@@ -2015,6 +2064,7 @@ private struct AccountWelcomeView: View {
     @State private var mode: Mode = .register
     @State private var email = ""
     @State private var password = ""
+    @State private var passwordConfirmation = ""
     @State private var totpCode = ""
     @State private var needsTwoFactor = false
     @State private var isWorking = false
@@ -2050,6 +2100,7 @@ private struct AccountWelcomeView: View {
                             .onChange(of: mode) { _, _ in
                                 needsTwoFactor = false
                                 totpCode = ""
+                                passwordConfirmation = ""
                                 message = nil
                             }
 
@@ -2063,6 +2114,10 @@ private struct AccountWelcomeView: View {
                             #endif
                             SecureField("Passwort (mindestens 12 Zeichen)", text: $password)
                                 .textContentType(mode == .login ? .password : .newPassword)
+                            if mode == .register {
+                                SecureField("Passwort wiederholen", text: $passwordConfirmation)
+                                    .textContentType(.newPassword)
+                            }
                             if mode == .login && needsTwoFactor {
                                 #if os(iOS)
                                 TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
@@ -2083,7 +2138,7 @@ private struct AccountWelcomeView: View {
                                 }.frame(maxWidth: .infinity).frame(height: 24)
                             }
                             .buttonStyle(.borderedProminent).tint(Color.kiesForest)
-                            .disabled(isWorking || email.isEmpty || password.isEmpty)
+                            .disabled(!canSubmit)
 
                             if mode == .login {
                                 ViewThatFits(in: .horizontal) {
@@ -2131,6 +2186,12 @@ private struct AccountWelcomeView: View {
         }
     }
 
+    private var canSubmit: Bool {
+        guard !isWorking, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !password.isEmpty else { return false }
+        return mode == .login || (password.count >= 12 && password == passwordConfirmation)
+    }
+
     @ViewBuilder private var statusMessage: some View {
         if let message {
             Label(message, systemImage: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
@@ -2171,8 +2232,15 @@ private struct AccountWelcomeView: View {
         Task {
             do {
                 if mode == .register {
+                    guard password.count >= 12 else {
+                        throw DriveAPIError.server("Das Passwort muss mindestens 12 Zeichen lang sein.")
+                    }
+                    guard password == passwordConfirmation else {
+                        throw DriveAPIError.server("Die beiden Passwörter stimmen nicht überein.")
+                    }
                     registrationTicket = try await DriveAPI.register(email: email, password: password)
                     password = ""
+                    passwordConfirmation = ""
                     isError = false
                     if registrationTicket != nil {
                         message = nil

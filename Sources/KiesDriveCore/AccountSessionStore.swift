@@ -10,29 +10,41 @@ public final class AccountSessionStore: ObservableObject {
     @Published public private(set) var email: String?
     @Published public private(set) var pendingRegistrationTicket: String?
     @Published public private(set) var pendingRegistrationEmail: String?
+    @Published public private(set) var shouldOfferTwoFactorSetup: Bool
 
     private let service = "app.kies.drive.account-session"
     private let sessionAccount = "session"
     private let emailAccount = "email"
     private let pendingRegistrationTicketAccount = "pending-registration-ticket"
     private let pendingRegistrationEmailAccount = "pending-registration-email"
+    private let twoFactorOfferKey = "drive.account.offerTwoFactorSetup"
 
     private init() {
         session = Self.load(account: sessionAccount, service: service)
         email = Self.load(account: emailAccount, service: service)
         pendingRegistrationTicket = Self.load(account: pendingRegistrationTicketAccount, service: service)
         pendingRegistrationEmail = Self.load(account: pendingRegistrationEmailAccount, service: service)
+        shouldOfferTwoFactorSetup = UserDefaults.standard.bool(forKey: twoFactorOfferKey)
         // Remove the retired manually provisioned device credential.
         Self.delete(account: "active-device-token", service: "app.kies.drive.device-token")
         UserDefaults.standard.removeObject(forKey: "drive.account.guestMode")
     }
 
-    public func signIn(session: String, email: String) {
+    public func signIn(session: String, email: String, offerTwoFactorSetup: Bool = false) {
         Self.save(session, account: sessionAccount, service: service)
         Self.save(email, account: emailAccount, service: service)
         self.session = session
         self.email = email
+        if offerTwoFactorSetup {
+            shouldOfferTwoFactorSetup = true
+            UserDefaults.standard.set(true, forKey: twoFactorOfferKey)
+        }
         clearPendingRegistration()
+    }
+
+    public func dismissTwoFactorSetupOffer() {
+        shouldOfferTwoFactorSetup = false
+        UserDefaults.standard.removeObject(forKey: twoFactorOfferKey)
     }
 
     public func beginRegistration(ticket: String, email: String) {
@@ -54,6 +66,7 @@ public final class AccountSessionStore: ObservableObject {
         Self.delete(account: emailAccount, service: service)
         session = nil
         email = nil
+        dismissTwoFactorSetupOffer()
     }
 
     private static func save(_ value: String, account: String, service: String) {
