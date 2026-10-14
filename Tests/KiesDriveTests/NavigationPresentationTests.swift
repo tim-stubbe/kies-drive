@@ -847,4 +847,16 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(RouteSearchPolicy.acceptsDetour(.infinity))
         XCTAssertFalse(RouteSearchPolicy.acceptsDetour(-1))
     }
+
+    func testRouteSearchOnlyEstimatesSmallUnverifiedDetours() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(RouteSearchPolicy.estimatedDetour(airDistance: 900)),
+            1_800,
+            accuracy: 0.1
+        )
+        XCTAssertEqual(RouteSearchPolicy.estimatedDetour(airDistance: 3_000), 6_000)
+        XCTAssertNil(RouteSearchPolicy.estimatedDetour(airDistance: 3_001))
+        XCTAssertNil(RouteSearchPolicy.estimatedDetour(airDistance: .infinity))
+        XCTAssertNil(RouteSearchPolicy.estimatedDetour(airDistance: -1))
+    }
 }

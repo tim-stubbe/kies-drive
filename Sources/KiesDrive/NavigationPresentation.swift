@@ -722,6 +722,16 @@ enum RouteSearchPolicy {
     static func acceptsDetour(_ metres: CLLocationDistance) -> Bool {
         metres.isFinite && metres >= 0 && metres <= 20_000
     }
+
+    /// Without a successful driving route, straight-line proximity is only a
+    /// useful fallback very close to the corridor. Across a river, motorway
+    /// barrier or mountain, doubling several kilometres of air distance can
+    /// severely understate the real detour and must not be presented as fact.
+    static func estimatedDetour(airDistance: CLLocationDistance) -> CLLocationDistance? {
+        guard airDistance.isFinite, airDistance >= 0, airDistance <= 3_000 else { return nil }
+        let estimate = airDistance * 2
+        return acceptsDetour(estimate) ? estimate : nil
+    }
 }
 
 struct OfflineGuidanceStep {

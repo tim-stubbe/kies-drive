@@ -567,7 +567,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                     let driven = await self?.drivingDetour(
                         between: candidate.routeCoordinate, and: candidate.item
                     )
-                    let detour = driven ?? candidate.airDistance * 2
+                    guard let detour = driven ?? RouteSearchPolicy.estimatedDetour(
+                        airDistance: candidate.airDistance
+                    ) else { return nil }
                     guard RouteSearchPolicy.acceptsDetour(detour) else { return nil }
                     let coordinate = candidate.item.placemark.coordinate
                     return RouteSearchResult(
