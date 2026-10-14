@@ -89,7 +89,7 @@ struct RouteSearchResult: Identifiable {
 }
 
 @MainActor
-final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSynthesizerDelegate {
     /// Shared by the phone UI and CarPlay so both surfaces operate on the
     /// same route, stops and long-trip plan.
     static let shared = RoutePlanner()
@@ -164,6 +164,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var automaticRestoreInProgress = false
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
+    private var lastLongTripPlanRefreshAt: Date?
     private let drivingRestStore = DrivingRestStateStore.live
     private var drivingRestState = DrivingRestStateStore.live.load()
     private static let cacheKey = "drive.offlineRoute"
@@ -944,6 +945,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             lastReliableGuidanceSpeedMps = currentSpeed
             lastReliableGuidanceSpeedAt = location.timestamp
         }
+        let previousContinuousDriving = drivingRestState.continuousDriving
         if let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id {
             drivingRestState = DrivingRestPolicy.updated(
                 drivingRestState, tripID: tripID, at: location.timestamp,
@@ -964,6 +966,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             checkSpeedLimit(at: location.coordinate,
                             speedMps: NavigationMotionPolicy.reliableSpeed(for: location))
             checkForDeviation(from: location, settings: settings)
+        }
+        let pauseJustCompleted = previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0
+        if pauseJustCompleted || (lastLongTripPlanRefreshAt.map({
+            evaluationDate.timeIntervalSince($0) >= 5 * 60
+        }) ?? true) {
+            lastLongTripPlanRefreshAt = evaluationDate
+            buildLongTripPlan(settings: settings)
         }
     }
 
@@ -1157,6 +1166,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         consecutiveRerouteFailures = 0
         offlineNeedsInitialPositionMatch = false
         offlineDeviationWarningActive = false
+        lastLongTripPlanRefreshAt = nil
     }
 
     /// Publishes a maneuver belonging to the newly installed route before the
@@ -1695,12 +1705,21 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func buildLongTripPlan(settings: DriveSettings) {
         guard !legs.isEmpty else { longTripPlan = nil; return }
-        let mainDistance = totalDistance
-        let mainTime = totalTravelTime
+        let isRemainingRoutePlan = isNavigating && remainingDistanceMetres > 0 && totalDistance > 0
+        let mainDistance = isRemainingRoutePlan ? remainingDistanceMetres : totalDistance
+        let mainTime = isRemainingRoutePlan ? remainingTravelTime : totalTravelTime
+        let distanceProgress = isRemainingRoutePlan
+            ? min(1, max(0, 1 - mainDistance / totalDistance)) : 0
+        let timeProgress = isRemainingRoutePlan
+            ? min(1, max(0, 1 - mainTime / max(totalTravelTime, 1))) : 0
         let unlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
             points: speedLimitPoints, limits: speedLimits
         )
-        let candidates = breakCandidates(along: legs, useMeasuredDetours: true)
+        let allCandidates = breakCandidates(along: legs, useMeasuredDetours: true)
+        let candidates = isRemainingRoutePlan
+            ? RemainingRoutePlanningPolicy.rebasedCandidates(
+                allCandidates, distanceProgress: distanceProgress, timeProgress: timeProgress
+            ) : allCandidates
         var inputs = [RoutePlanningInput(
             id: settings.avoidTolls ? "toll-avoiding" : "standard",
             title: settings.avoidTolls ? "Maut vermeiden" : "Schnellste Route",
@@ -1711,7 +1730,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             toll: settings.avoidTolls ? researchedAvoidingToll : researchedStandardToll,
             breakCandidates: candidates
         )]
-        if let comparisonRoute,
+        if !isRemainingRoutePlan, let comparisonRoute,
            abs(comparisonRoute.distance - mainDistance) > 100 || abs(comparisonRoute.expectedTravelTime - mainTime) > 60 {
             inputs.append(.init(
                 id: settings.avoidTolls ? "standard" : "toll-avoiding",
@@ -1724,11 +1743,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 breakCandidates: breakCandidates(along: [comparisonRoute])
             ))
         }
+        let currentFuelFraction = isRemainingRoutePlan
+            ? RemainingRoutePlanningPolicy.estimatedFuelFraction(
+                departureFraction: settings.departureFuelPercent / 100,
+                tankCapacityLitres: settings.tankCapacityL,
+                consumptionLPer100km: settings.consumptionLPer100km,
+                travelledDistanceMetres: max(0, totalDistance - mainDistance)
+            ) : min(1, max(0, settings.departureFuelPercent / 100))
         let profile = VehicleProfile(
             baseConsumptionLPer100km: settings.consumptionLPer100km,
             fuelPricePerLitre: settings.fuelPricePerLitre,
             tankCapacityLitres: settings.tankCapacityL,
-            initialFuelFraction: min(1, max(0, settings.departureFuelPercent / 100))
+            initialFuelFraction: currentFuelFraction
         )
         let scenarios = [SpeedScenario.target(settings.targetSpeedKmh)] + (settings.targetSpeedKmh == 200 ? [] : [.target(200)])
         longTripPlan = RouteComparison(fuelModel: .init(), breakPlanner: .init())

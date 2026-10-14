@@ -349,6 +349,42 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(store.load(), DrivingRestState())
     }
 
+    func testRemainingRoutePlanningDropsPassedStopsAndRebasesAheadStops() {
+        let candidates = [
+            BreakCandidate(id: "passed", name: "Vorbei", coordinate: .init(),
+                           progress: 0.3, timeProgress: 0.2,
+                           detourMetres: 100, isOpen: true),
+            BreakCandidate(id: "ahead", name: "Voraus", coordinate: .init(),
+                           progress: 0.7, timeProgress: 0.8,
+                           detourMetres: 200, isOpen: true),
+            BreakCandidate(id: "distance-only", name: "Ohne Zeitwert", coordinate: .init(),
+                           progress: 0.6, detourMetres: 300, isOpen: true),
+        ]
+
+        let remaining = RemainingRoutePlanningPolicy.rebasedCandidates(
+            candidates, distanceProgress: 0.4, timeProgress: 0.3
+        )
+
+        XCTAssertEqual(remaining.map(\.id), ["ahead", "distance-only"])
+        XCTAssertEqual(remaining[0].progress, 0.5, accuracy: 0.001)
+        XCTAssertEqual(remaining[0].timeProgress ?? 0, 5.0 / 7.0, accuracy: 0.001)
+        XCTAssertEqual(remaining[1].progress, 1.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(remaining[1].timeProgress ?? 0, 1.0 / 3.0, accuracy: 0.001)
+    }
+
+    func testRemainingRouteFuelEstimateAccountsForDistanceAlreadyDriven() {
+        let fraction = RemainingRoutePlanningPolicy.estimatedFuelFraction(
+            departureFraction: 0.8, tankCapacityLitres: 50,
+            consumptionLPer100km: 10, travelledDistanceMetres: 200_000
+        )
+
+        XCTAssertEqual(fraction, 0.4, accuracy: 0.001)
+        XCTAssertEqual(RemainingRoutePlanningPolicy.estimatedFuelFraction(
+            departureFraction: 0.2, tankCapacityLitres: 50,
+            consumptionLPer100km: 10, travelledDistanceMetres: 200_000
+        ), 0)
+    }
+
     func testBreakPlannerDoesNotCallARemoteStopOptimal() {
         let remote = BreakCandidate(id: "remote", name: "Much later", coordinate: .init(),
                                     progress: 0.9, detourMetres: 50, isOpen: true)

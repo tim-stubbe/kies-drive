@@ -541,6 +541,44 @@ struct DrivingRestStateStore {
     func clear() { defaults.removeObject(forKey: key) }
 }
 
+enum RemainingRoutePlanningPolicy {
+    static func rebasedCandidates(_ candidates: [BreakCandidate],
+                                  distanceProgress: Double,
+                                  timeProgress: Double) -> [BreakCandidate] {
+        let distanceStart = min(1, max(0, distanceProgress))
+        let timeStart = min(1, max(0, timeProgress))
+        let distanceRemainder = max(0.000_001, 1 - distanceStart)
+        let timeRemainder = max(0.000_001, 1 - timeStart)
+        return candidates.compactMap { candidate in
+            let candidateTime = candidate.timeProgress ?? candidate.progress
+            let candidateTimeStart = candidate.timeProgress == nil ? distanceStart : timeStart
+            let candidateTimeRemainder = candidate.timeProgress == nil ? distanceRemainder : timeRemainder
+            guard candidate.progress > distanceStart + 0.000_1,
+                  candidateTime > candidateTimeStart + 0.000_1 else { return nil }
+            return BreakCandidate(
+                id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
+                progress: min(1, max(0, (candidate.progress - distanceStart) / distanceRemainder)),
+                timeProgress: min(1, max(0,
+                    (candidateTime - candidateTimeStart) / candidateTimeRemainder
+                )),
+                detourMetres: candidate.detourMetres,
+                detourIsEstimated: candidate.detourIsEstimated,
+                isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel
+            )
+        }
+    }
+
+    static func estimatedFuelFraction(departureFraction: Double,
+                                      tankCapacityLitres: Double,
+                                      consumptionLPer100km: Double,
+                                      travelledDistanceMetres: Double) -> Double {
+        guard tankCapacityLitres > 0 else { return 0 }
+        let departureLitres = min(1, max(0, departureFraction)) * tankCapacityLitres
+        let usedLitres = max(0, travelledDistanceMetres) / 100_000 * max(0, consumptionLPer100km)
+        return min(1, max(0, (departureLitres - usedLitres) / tankCapacityLitres))
+    }
+}
+
 struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
