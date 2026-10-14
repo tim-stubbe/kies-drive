@@ -222,6 +222,19 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRerouteWatchdogEndsOnlyAfterBoundedWait() {
+        let startedAt = Date(timeIntervalSince1970: 10_000)
+        XCTAssertFalse(NavigationRerouteWatchdogPolicy.hasTimedOut(
+            startedAt: startedAt,
+            now: startedAt.addingTimeInterval(NavigationRerouteWatchdogPolicy.timeout - 0.1)
+        ))
+        XCTAssertTrue(NavigationRerouteWatchdogPolicy.hasTimedOut(
+            startedAt: startedAt,
+            now: startedAt.addingTimeInterval(NavigationRerouteWatchdogPolicy.timeout)
+        ))
+        XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeoutNanoseconds, 45_000_000_000)
+    }
+
     func testRemoteSyncPolicyIsFastOnlyDuringNavigationAndRejectsBadFixes() {
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: true), 5)
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: false), 15)

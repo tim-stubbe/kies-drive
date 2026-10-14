@@ -695,6 +695,18 @@ enum NavigationRerouteRetryPolicy {
     }
 }
 
+/// MapKit normally answers quickly, but an interrupted network request can
+/// remain suspended for much longer. The navigation UI must never stay in a
+/// permanent "recalculating" state because of one lost response.
+enum NavigationRerouteWatchdogPolicy {
+    static let timeout: TimeInterval = 45
+    static let timeoutNanoseconds: UInt64 = UInt64(timeout * 1_000_000_000)
+
+    static func hasTimedOut(startedAt: Date, now: Date = Date()) -> Bool {
+        now.timeIntervalSince(startedAt) >= timeout
+    }
+}
+
 enum OfflineRouteRecoveryPolicy {
     static let retryInterval: TimeInterval = 90
 

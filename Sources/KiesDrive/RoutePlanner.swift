@@ -1746,6 +1746,35 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                     detail: DriveDiagnosticDetail.navigationSample(
                                         "Abweichung \(Int(nearest)) m", location: location
                                     ))
+        // A suspended MapKit request must not leave the driving screen covered
+        // by "Route wird neu berechnet" forever. The generation checks make
+        // this watchdog ownership-specific: a new trip or newer reroute is
+        // never stopped by an older timer.
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: NavigationRerouteWatchdogPolicy.timeoutNanoseconds)
+            guard let self,
+                  NavigationAsyncWorkPolicy.isCurrent(
+                    navigationActive: self.isNavigating,
+                    session: sessionGeneration,
+                    currentSession: self.navigationSessionGeneration,
+                    work: workGeneration,
+                    currentWork: self.rerouteGeneration
+                  ), self.isRecalculating else { return }
+            self.rerouteGeneration = UUID()
+            self.isRecalculating = false
+            self.consecutiveRerouteFailures += 1
+            self.lastRerouteAt = Date()
+            DriveDiagnosticStore.append(
+                .rerouteFailed,
+                detail: "Zeitüberschreitung nach \(Int(NavigationRerouteWatchdogPolicy.timeout)) Sekunden"
+            )
+            if settings.voiceGuidance {
+                _ = self.speak(
+                    "Die Neuberechnung dauert zu lange. Die bisherige Route bleibt aktiv.",
+                    priority: .status
+                )
+            }
+        }
         Task {
             guard NavigationAsyncWorkPolicy.isCurrent(
                 navigationActive: isNavigating,
