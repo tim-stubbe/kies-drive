@@ -636,6 +636,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                       settings: DriveSettings) async -> Bool {
         let previousLock = routeLockStore.activeLock
+        let previousSearchResults = routeSearchResults
+        let previousSearchQuery = routeSearchQuery
         // A user may add a stop while merely previewing a calculated route,
         // before tapping Start. Materialise the lock here so the action never
         // appears to succeed while silently doing nothing.
@@ -661,6 +663,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard succeeded else {
             routeLockStore.replace(with: previousLock)
             activeRouteLock = previousLock
+            routeSearchQuery = previousSearchQuery
+            routeSearchResults = previousSearchResults
+            isSearchingAlongRoute = false
             return false
         }
         startNavigation(voiceGuidance: settings.voiceGuidance)
