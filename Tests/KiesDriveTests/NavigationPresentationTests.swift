@@ -522,6 +522,17 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testNavigationDestinationIdentityUsesRoadLevelTolerance() {
+        let destination = CLLocationCoordinate2D(latitude: 50.0147, longitude: 8.3522)
+        XCTAssertTrue(NavigationDestinationIdentityPolicy.matches(
+            .init(latitude: 50.01475, longitude: 8.3522), destination
+        ))
+        XCTAssertFalse(NavigationDestinationIdentityPolicy.matches(
+            .init(latitude: 50.02, longitude: 8.3522), destination
+        ))
+        XCTAssertFalse(NavigationDestinationIdentityPolicy.matches(nil, destination))
+    }
+
     func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
         let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         XCTAssertTrue(OfflineRouteCachePolicy.matches(

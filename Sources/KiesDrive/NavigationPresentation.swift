@@ -433,6 +433,16 @@ enum RouteLockRestorePolicy {
     }
 }
 
+enum NavigationDestinationIdentityPolicy {
+    static func matches(_ lhs: CLLocationCoordinate2D?, _ rhs: CLLocationCoordinate2D,
+                        toleranceMetres: CLLocationDistance = 25) -> Bool {
+        guard let lhs else { return false }
+        return CLLocation(latitude: lhs.latitude, longitude: lhs.longitude).distance(
+            from: CLLocation(latitude: rhs.latitude, longitude: rhs.longitude)
+        ) <= toleranceMetres
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

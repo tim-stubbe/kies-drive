@@ -16,6 +16,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var mapTemplate: CPMapTemplate?
     private var navigationSession: CPNavigationSession?
     private var activeTrip: CPTrip?
+    private var activeTripDestination: CLLocationCoordinate2D?
     private var cameraMode: CameraMode = .follow
     private var lastReliableCourse: CLLocationDirection?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
@@ -82,6 +83,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         mapTemplate = nil
         navigationSession = nil
         activeTrip = nil
+        activeTripDestination = nil
         cancellables.removeAll()
         activeCarPlaySearch?.cancel()
         activeCarPlaySearch = nil
@@ -481,7 +483,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             navigationSession?.finishTrip()
             navigationSession = nil
             activeTrip = nil
+            activeTripDestination = nil
             return
+        }
+        let requestedDestination = destination.placemark.coordinate
+        if navigationSession != nil,
+           !NavigationDestinationIdentityPolicy.matches(activeTripDestination, requestedDestination) {
+            navigationSession?.finishTrip()
+            navigationSession = nil
+            activeTrip = nil
+            activeTripDestination = nil
         }
         if navigationSession == nil, let mapTemplate {
             let origin = MKMapItem(placemark: MKPlacemark(coordinate: LocationService.shared.location?.coordinate ?? fallback))
@@ -492,6 +503,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                                        selectionSummaryVariants: [formatTime(time)])
             let trip = CPTrip(origin: origin, destination: destination, routeChoices: [choice])
             activeTrip = trip
+            activeTripDestination = requestedDestination
             navigationSession = mapTemplate.startNavigationSession(for: trip)
         }
         publishManeuver()
@@ -562,6 +574,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         RoutePlanner.shared.stopNavigation()
         navigationSession?.cancelTrip()
         navigationSession = nil
+        activeTrip = nil
+        activeTripDestination = nil
     }
 
     private func formatDistance(_ metres: Double) -> String {
