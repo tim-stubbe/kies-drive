@@ -118,6 +118,32 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.waypoints.map(\.id), ["first", "poi", "last"])
     }
 
+    func testEquivalentRouteStopDetectionHandlesSearchDriftWithoutBlockingNearbyPlaces() {
+        let now = Date(timeIntervalSince1970: 1)
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Home",
+            destination: .init(latitude: 50, longitude: 8.5),
+            waypoints: [.init(
+                id: "poi-1", name: "Café Central",
+                coordinate: .init(latitude: 50, longitude: 8),
+                required: true, optionsAfter: nil
+            )],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil, visitedWaypointIDs: [],
+            status: .active, createdAt: now, updatedAt: now
+        )
+
+        XCTAssertTrue(lock.containsEquivalentStop(
+            name: "CAFE CENTRAL", coordinate: .init(latitude: 50.0003, longitude: 8)
+        ))
+        XCTAssertFalse(lock.containsEquivalentStop(
+            name: "Tankstelle nebenan", coordinate: .init(latitude: 50.0003, longitude: 8)
+        ))
+        XCTAssertTrue(lock.containsEquivalentStop(
+            name: "Anderer Kartenname", coordinate: .init(latitude: 50.00005, longitude: 8)
+        ))
+    }
+
     func testWaypointVisitRequiresNextPointAndRoadLevelProximity() {
         let waypoints = [
             LockedWaypoint(id: "first", name: "First",

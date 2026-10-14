@@ -149,6 +149,26 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
 }
 
 extension ActiveRouteLock {
+    /// Prevents the same real-world stop from being added repeatedly through
+    /// slightly different MapKit search results. An exact coordinate match is
+    /// always a duplicate; for ordinary search-result drift the names must
+    /// also match so a fuel station beside a mandatory road anchor remains a
+    /// valid, distinct stop.
+    func containsEquivalentStop(name: String, coordinate: CLLocationCoordinate2D) -> Bool {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let candidate = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        return waypoints.contains { waypoint in
+            let existing = CLLocation(latitude: waypoint.coordinate.latitude,
+                                      longitude: waypoint.coordinate.longitude)
+            let distance = candidate.distance(from: existing)
+            if distance <= 15 { return true }
+            let existingName = waypoint.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            return distance <= 100 && !normalizedName.isEmpty && existingName == normalizedName
+        }
+    }
+
     /// Inserts a stop in driven-route order while preserving the routing rules
     /// of the segment it splits. Fuel, food and arbitrary POIs therefore cannot
     /// silently bypass a locked Slovenia or mountain-pass constraint.

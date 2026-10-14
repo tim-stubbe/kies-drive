@@ -656,6 +656,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         let coordinate = item.placemark.coordinate
+        let stopName = item.name ?? "Zwischenstopp"
+        if routeLockStore.activeLock?.containsEquivalentStop(
+            name: stopName, coordinate: coordinate
+        ) == true {
+            errorMessage = "Dieser Zwischenstopp ist bereits in der Route."
+            return false
+        }
         // A route-search result already has an unambiguous progress value.
         // Reuse it so a POI beside a later parallel carriageway or a route
         // crossing cannot be inserted into an earlier locked segment.
@@ -664,7 +671,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return CLLocation(latitude: resultCoordinate.latitude, longitude: resultCoordinate.longitude)
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= 30
         })?.routeProgress
-        insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
+        insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: stopName,
                              coordinate: coordinate, knownProgress: knownProgress)
         routeSearchResults = []
         isSearchingAlongRoute = false
@@ -677,7 +684,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             isSearchingAlongRoute = false
             return false
         }
-        startNavigation(voiceGuidance: settings.voiceGuidance)
+        // `calculate` deliberately preserves `isNavigating`. A stop added to
+        // a preview therefore stays a preview, while an active drive continues
+        // seamlessly without a second "Route gestartet" announcement or an
+        // unnecessary second navigation reset.
         return true
     }
 
