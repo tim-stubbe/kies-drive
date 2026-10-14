@@ -1765,10 +1765,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func checkForDeviation(from location: CLLocation, settings: DriveSettings) {
         guard !isLoading, !isRecalculating else { return }
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
-        guard NavigationRerouteRetryPolicy.mayRetry(
+        let rerouteAllowed = NavigationRerouteRetryPolicy.mayRetry(
             lastAttempt: lastRerouteAt,
             consecutiveFailures: consecutiveRerouteFailures
-        ) else { return }
+        )
         let steps = routeSteps()
         let corridor = NavigationDeviationCorridorPolicy.indices(
             current: navigationStepCursor, stepCount: steps.count
@@ -1780,7 +1780,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
             horizontalAccuracy: location.horizontalAccuracy,
-            speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
+            speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0,
+            rerouteAllowed: rerouteAllowed
         )
         previousOffRouteDistance = nearest
         guard shouldAccumulate else {

@@ -696,8 +696,10 @@ enum NavigationDeviationPolicy {
     }
 
     static func shouldAccumulate(distanceFromRoute: Double, previousDistance: Double?,
-                                 horizontalAccuracy: Double, speedMetresPerSecond: Double) -> Bool {
-        guard speedMetresPerSecond >= 2.5,
+                                 horizontalAccuracy: Double, speedMetresPerSecond: Double,
+                                 rerouteAllowed: Bool = true) -> Bool {
+        guard rerouteAllowed,
+              speedMetresPerSecond >= 2.5,
               isOutsideCorridor(distanceFromRoute: distanceFromRoute,
                                 horizontalAccuracy: horizontalAccuracy,
                                 speedMetresPerSecond: speedMetresPerSecond) else { return false }

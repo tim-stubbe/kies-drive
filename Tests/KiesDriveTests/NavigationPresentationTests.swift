@@ -220,6 +220,16 @@ final class NavigationPresentationTests: XCTestCase {
             lastAttempt: attemptedAt, consecutiveFailures: 2,
             now: attemptedAt.addingTimeInterval(300)
         ))
+        XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 300, previousDistance: 280,
+            horizontalAccuracy: 8, speedMetresPerSecond: 25,
+            rerouteAllowed: false
+        ), "A cooldown must clear rather than preserve an old deviation streak")
+        XCTAssertTrue(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 300, previousDistance: 280,
+            horizontalAccuracy: 8, speedMetresPerSecond: 25,
+            rerouteAllowed: true
+        ))
     }
 
     func testRerouteWatchdogEndsOnlyAfterBoundedWait() {
