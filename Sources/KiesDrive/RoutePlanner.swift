@@ -1311,12 +1311,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
               ) else { return }
         resetDeviationTracking()
         lastRerouteAt = Date()
+        // Claim the reroute synchronously. Location updates can arrive faster
+        // than the unstructured task below gets scheduled; setting this only
+        // inside the task left a small window in which several identical
+        // reroutes (and spoken status messages) could be queued at once.
+        isRecalculating = true
         DriveDiagnosticStore.append(.rerouteRequested,
                                     detail: DriveDiagnosticDetail.navigationSample(
                                         "Abweichung \(Int(nearest)) m", location: location
                                     ))
         Task {
-            isRecalculating = true
             defer { isRecalculating = false }
             if settings.voiceGuidance { speak("Die Route wird neu berechnet.", priority: .status) }
             // Keep the current route, station data and guidance visible while
