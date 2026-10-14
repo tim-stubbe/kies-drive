@@ -1751,6 +1751,13 @@ struct DriveSettingsView: View {
                                 planner.refreshLongTripPlan(settings: settings)
                             }
                     }
+                    Stepper(
+                        "Tank bei Abfahrt: \(Int(settings.departureFuelPercent)) %",
+                        value: $settings.departureFuelPercent, in: 0...100, step: 5
+                    )
+                    .onChange(of: settings.departureFuelPercent) { _, _ in
+                        planner.refreshLongTripPlan(settings: settings)
+                    }
                     LabeledContent("Kraftstoffpreis") {
                         TextField("€/l", value: $settings.fuelPricePerLitre, format: .number.precision(.fractionLength(2)))
                             .multilineTextAlignment(.trailing).frame(width: 90)

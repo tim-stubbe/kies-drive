@@ -25,6 +25,7 @@ final class DriveSettings: ObservableObject {
     /// Einheit: L/100km und Liter.
     @Published var consumptionLPer100km: Double { didSet { UserDefaults.standard.set(consumptionLPer100km, forKey: "drive.consumptionLPer100km") } }
     @Published var tankCapacityL: Double { didSet { UserDefaults.standard.set(tankCapacityL, forKey: "drive.tankCapacityL") } }
+    @Published var departureFuelPercent: Double { didSet { UserDefaults.standard.set(departureFuelPercent, forKey: "drive.departureFuelPercent") } }
     @Published var fuelPricePerLitre: Double { didSet { UserDefaults.standard.set(fuelPricePerLitre, forKey: "drive.fuelPricePerLitre") } }
     @Published var targetSpeedKmh: Double { didSet { UserDefaults.standard.set(targetSpeedKmh, forKey: "drive.targetSpeedKmh") } }
 
@@ -53,6 +54,7 @@ final class DriveSettings: ObservableObject {
 
         consumptionLPer100km = UserDefaults.standard.object(forKey: "drive.consumptionLPer100km") as? Double ?? 6.5
         tankCapacityL = UserDefaults.standard.object(forKey: "drive.tankCapacityL") as? Double ?? 50.0
+        departureFuelPercent = UserDefaults.standard.object(forKey: "drive.departureFuelPercent") as? Double ?? 100
         fuelPricePerLitre = UserDefaults.standard.object(forKey: "drive.fuelPricePerLitre") as? Double ?? 1.75
         targetSpeedKmh = UserDefaults.standard.object(forKey: "drive.targetSpeedKmh") as? Double ?? 150
     }

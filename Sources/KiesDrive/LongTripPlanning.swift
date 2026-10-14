@@ -9,6 +9,9 @@ struct VehicleProfile: Codable, Equatable {
     var fuelPricePerLitre: Double = 1.75
     var tankCapacityLitres: Double = 50
     var usableTankFraction: Double = 0.85
+    /// Estimated fuel level at departure. One means full; the reserved share
+    /// from `usableTankFraction` remains unavailable for route planning.
+    var initialFuelFraction: Double = 1
 }
 
 struct SpeedScenario: Codable, Identifiable, Equatable {
@@ -387,19 +390,25 @@ struct FuelStopPlanner {
               vehicle: VehicleProfile, candidates: [BreakCandidate]) -> [PlannedFuelStop] {
         guard distanceMetres > 0, consumptionLPer100km > 0,
               vehicle.tankCapacityLitres > 0 else { return [] }
-        let usableLitres = vehicle.tankCapacityLitres * min(0.95, max(0.5, vehicle.usableTankFraction))
-        let safeRange = usableLitres / consumptionLPer100km * 100_000
-        guard safeRange > 0, distanceMetres > safeRange else { return [] }
+        let usableFraction = min(0.95, max(0.5, vehicle.usableTankFraction))
+        let reserveFraction = 1 - usableFraction
+        let departureFraction = min(1, max(0, vehicle.initialFuelFraction))
+        let departureUsableLitres = vehicle.tankCapacityLitres * max(0, departureFraction - reserveFraction)
+        let fullUsableLitres = vehicle.tankCapacityLitres * usableFraction
+        let departureSafeRange = departureUsableLitres / consumptionLPer100km * 100_000
+        let fullSafeRange = fullUsableLitres / consumptionLPer100km * 100_000
+        guard fullSafeRange > 0, distanceMetres > departureSafeRange else { return [] }
         var remaining = candidates.filter { $0.isOpen != false && $0.supportsFuel }
         var lastStopDistance = 0.0
+        var currentSafeRange = departureSafeRange
         var result: [PlannedFuelStop] = []
         // Each leg is checked from the actual previous stop, not from a fixed
         // whole-trip grid. This prevents a slightly late first station from
         // making the following leg silently exceed the safe tank range.
-        while distanceMetres - lastStopDistance > safeRange {
+        while distanceMetres - lastStopDistance > currentSafeRange {
             let index = result.count + 1
-            let idealDistance = min(distanceMetres * 0.95, lastStopDistance + safeRange * 0.88)
-            let latestSafeDistance = min(distanceMetres, lastStopDistance + safeRange * 0.95)
+            let idealDistance = min(distanceMetres * 0.95, lastStopDistance + currentSafeRange * 0.88)
+            let latestSafeDistance = min(distanceMetres, lastStopDistance + currentSafeRange * 0.95)
             let idealProgress = idealDistance / distanceMetres
             let ahead = remaining.filter {
                 let candidateDistance = $0.progress * distanceMetres
@@ -425,6 +434,7 @@ struct FuelStopPlanner {
             ))
             guard stopDistance > lastStopDistance else { break }
             lastStopDistance = stopDistance
+            currentSafeRange = fullSafeRange
         }
         return result
     }

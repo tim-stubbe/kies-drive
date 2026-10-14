@@ -1577,7 +1577,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let profile = VehicleProfile(
             baseConsumptionLPer100km: settings.consumptionLPer100km,
             fuelPricePerLitre: settings.fuelPricePerLitre,
-            tankCapacityLitres: settings.tankCapacityL
+            tankCapacityLitres: settings.tankCapacityL,
+            initialFuelFraction: min(1, max(0, settings.departureFuelPercent / 100))
         )
         let scenarios = [SpeedScenario.target(settings.targetSpeedKmh)] + (settings.targetSpeedKmh == 200 ? [] : [.target(200)])
         longTripPlan = RouteComparison(fuelModel: .init(), breakPlanner: .init())

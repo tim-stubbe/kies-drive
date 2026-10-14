@@ -445,6 +445,26 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
     }
 
+    func testFuelPlannerUsesActualDepartureFuelForFirstStop() {
+        let earlyStation = BreakCandidate(
+            id: "early", name: "Frühe Tankstelle", coordinate: .init(),
+            progress: 0.18, detourMetres: 100, isOpen: true, supportsFuel: true
+        )
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, usableTankFraction: 0.8,
+            initialFuelFraction: 0.5
+        )
+
+        let stops = FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: [earlyStation]
+        )
+
+        XCTAssertEqual(stops.first?.candidate?.id, "early")
+        XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 150_000)
+    }
+
     func testFuelPlannerMeasuresEveryLegFromActualPreviousStop() {
         let candidates = [
             BreakCandidate(id: "first", name: "Erster Halt", coordinate: .init(),
