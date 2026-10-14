@@ -410,6 +410,25 @@ enum NavigationDeviationPolicy {
     }
 }
 
+/// Failed MapKit requests must not turn a genuine deviation into a spoken
+/// recalculation loop. Successful reroutes retain the short normal cooldown;
+/// repeated failures back off while the old route remains visible.
+enum NavigationRerouteRetryPolicy {
+    static func cooldown(consecutiveFailures: Int) -> TimeInterval {
+        switch max(0, consecutiveFailures) {
+        case 0: 45
+        case 1: 2 * 60
+        default: 5 * 60
+        }
+    }
+
+    static func mayRetry(lastAttempt: Date?, consecutiveFailures: Int,
+                         now: Date = Date()) -> Bool {
+        guard let lastAttempt else { return true }
+        return now.timeIntervalSince(lastAttempt) >= cooldown(consecutiveFailures: consecutiveFailures)
+    }
+}
+
 enum OfflineRouteRecoveryPolicy {
     static let retryInterval: TimeInterval = 90
 

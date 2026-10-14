@@ -81,6 +81,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 30), 8)
     }
 
+    func testFailedReroutesBackOffInsteadOfLooping() {
+        let attemptedAt = Date(timeIntervalSince1970: 10_000)
+        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 0), 45)
+        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 1), 120)
+        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 4), 300)
+        XCTAssertFalse(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt, consecutiveFailures: 2,
+            now: attemptedAt.addingTimeInterval(299)
+        ))
+        XCTAssertTrue(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt, consecutiveFailures: 2,
+            now: attemptedAt.addingTimeInterval(300)
+        ))
+    }
+
     func testRemoteSyncPolicyIsFastOnlyDuringNavigationAndRejectsBadFixes() {
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: true), 5)
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: false), 15)

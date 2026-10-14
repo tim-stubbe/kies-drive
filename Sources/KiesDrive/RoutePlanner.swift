@@ -100,6 +100,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var offRouteSince: Date?
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
+    private var consecutiveRerouteFailures = 0
     private var lastAcceptedNavigationLocation: CLLocation?
     private var lastReliableGuidanceSpeedMps: Double?
     private var lastReliableGuidanceSpeedAt: Date?
@@ -937,6 +938,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastAcceptedNavigationLocation = nil
         lastReliableGuidanceSpeedMps = nil
         lastReliableGuidanceSpeedAt = nil
+        consecutiveRerouteFailures = 0
         offlineNeedsInitialPositionMatch = false
     }
 
@@ -1193,7 +1195,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func checkForDeviation(from location: CLLocation, settings: DriveSettings) {
         guard !isLoading, !isRecalculating else { return }
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
-        if let lastRerouteAt, Date().timeIntervalSince(lastRerouteAt) < 45 { return }
+        guard NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: lastRerouteAt,
+            consecutiveFailures: consecutiveRerouteFailures
+        ) else { return }
         let nearest = legs.map { Self.distance(from: location.coordinate, to: $0.polyline) }.min()
             ?? .greatestFiniteMagnitude
         let shouldAccumulate = NavigationDeviationPolicy.shouldAccumulate(
@@ -1230,8 +1235,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             let succeeded = await calculate(from: location.coordinate, settings: settings,
                                             showLoading: false)
             if succeeded {
+                consecutiveRerouteFailures = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
             } else {
+                consecutiveRerouteFailures += 1
                 DriveDiagnosticStore.append(.rerouteFailed,
                                             detail: errorMessage ?? "Keine nutzbare neue Route")
             }
