@@ -356,6 +356,9 @@ struct DriveContentView: View {
                                 Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.kiesBrass)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(stop.candidate?.name ?? "Optimale Pause").font(.caption.weight(.semibold))
+                                    Text("Nach \(formatTime(stop.afterDriving)) · bei ca. \(formatDistance(result.distanceMetres * stop.routeProgress)) · \(formatTime(stop.duration)) Pause")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(Color.kiesForest)
                                     Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                                 }
                             }
@@ -385,6 +388,9 @@ struct DriveContentView: View {
                             Image(systemName: "fuelpump.fill").foregroundStyle(Color.kiesBrass)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(stop.candidate?.name ?? "Tankstopp erforderlich").font(.caption.weight(.semibold))
+                                Text("Bei ca. \(formatDistance(stop.afterDistanceMetres))")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(Color.kiesForest)
                                 Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                             }
                         }
@@ -1141,6 +1147,9 @@ struct DriveContentView: View {
                                 }
                                 ForEach(result.breaks) { stop in
                                     Label(stop.candidate?.name ?? "Pausenort entlang der Route suchen", systemImage: "cup.and.saucer.fill")
+                                    Text("Nach \(formatTime(stop.afterDriving)) · bei ca. \(formatDistance(result.distanceMetres * stop.routeProgress)) · \(formatTime(stop.duration)) Pause")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color.kiesForest)
                                     Text(stop.explanation).font(.caption).foregroundStyle(.secondary)
                                     if stop.candidate != nil {
                                         Button("Als Zwischenstopp übernehmen") {
