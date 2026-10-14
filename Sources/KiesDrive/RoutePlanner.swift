@@ -92,6 +92,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var speedLimits: [SpeedLimitResult] = []
 
     private let synthesizer = AVSpeechSynthesizer()
+    private var activeUtterance: AVSpeechUtterance?
     private var navigationStepCursor = 0
     private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
     private var diagnosticManeuverKey: String?
@@ -1152,7 +1153,29 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         utterance.preUtteranceDelay = 0.08
         utterance.postUtteranceDelay = 0.12
         utterance.prefersAssistiveTechnologySettings = false
+        activeUtterance = utterance
         synthesizer.speak(utterance)
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                           didFinish utterance: AVSpeechUtterance) {
+        finishAudioSession(for: utterance)
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                           didCancel utterance: AVSpeechUtterance) {
+        finishAudioSession(for: utterance)
+    }
+
+    private func finishAudioSession(for utterance: AVSpeechUtterance) {
+        guard activeUtterance === utterance else { return }
+        activeUtterance = nil
+        #if os(iOS)
+        // Return music/podcasts to their normal volume as soon as this exact
+        // instruction ends. A cancelled older utterance must not deactivate
+        // the session underneath a newer instruction.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 
     private static func preferredGermanVoice() -> AVSpeechSynthesisVoice? {
