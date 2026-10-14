@@ -33,6 +33,35 @@ enum TollCost: Codable, Equatable {
     }
 }
 
+struct TollLookupSnapshot: Equatable {
+    let routeIdentity: String
+    let origin: CLLocationCoordinate2D
+    let cost: TollCost
+    let loadedAt: Date
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.routeIdentity == rhs.routeIdentity &&
+        lhs.origin.latitude == rhs.origin.latitude && lhs.origin.longitude == rhs.origin.longitude &&
+        lhs.cost == rhs.cost && lhs.loadedAt == rhs.loadedAt
+    }
+}
+
+enum TollLookupCachePolicy {
+    static let lifetime: TimeInterval = 15 * 60
+    static let maximumOriginMovement: CLLocationDistance = 10_000
+
+    static func reusable(_ snapshot: TollLookupSnapshot?, routeIdentity: String,
+                         origin: CLLocationCoordinate2D, now: Date = Date()) -> TollCost? {
+        guard let snapshot, snapshot.routeIdentity == routeIdentity,
+              now.timeIntervalSince(snapshot.loadedAt) >= 0,
+              now.timeIntervalSince(snapshot.loadedAt) <= lifetime else { return nil }
+        let movement = CLLocation(latitude: snapshot.origin.latitude, longitude: snapshot.origin.longitude)
+            .distance(from: CLLocation(latitude: origin.latitude, longitude: origin.longitude))
+        guard movement <= maximumOriginMovement else { return nil }
+        return snapshot.cost
+    }
+}
+
 struct TollRouteDescriptor: Sendable {
     let routeID: String
     let distanceMetres: Double

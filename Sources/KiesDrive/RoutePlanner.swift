@@ -81,6 +81,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published private(set) var isUsingOfflineGuidance = false
     private var comparisonRoute: MKRoute?
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
+    private var tollLookupSnapshot: TollLookupSnapshot?
     private var amenityBreakCandidates: [BreakCandidate] = []
 
     /// Tempolimits entlang der Route, parallel zu `speedLimitPoints` indiziert.
@@ -1246,15 +1247,27 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func loadTollCost(from start: CLLocationCoordinate2D) async {
         guard let destination else { return }
+        let destinationName = destination.placemark.title ?? destination.name ?? destinationText
+        let lock = routeLockStore.activeLock
+        let visited = Set(lock?.visitedWaypointIDs ?? [])
+        let via = lock?.waypoints.filter { $0.required && !visited.contains($0.id) }.map(\.name) ?? []
+        let destinationCoordinate = destination.placemark.coordinate
+        let routeIdentity = String(format: "%.5f:%.5f", destinationCoordinate.latitude,
+                                   destinationCoordinate.longitude) + "|" + via.joined(separator: "|")
+        if let cached = TollLookupCachePolicy.reusable(tollLookupSnapshot,
+                                                       routeIdentity: routeIdentity, origin: start) {
+            researchedToll = cached
+            return
+        }
         let generation = UUID()
         tollLoadGeneration = generation
         let origin = String(format: "%.4f, %.4f", start.latitude, start.longitude)
-        let destinationName = destination.placemark.title ?? destination.name ?? destinationText
-        let via = routeLockStore.activeLock?.waypoints.filter(\.required).map(\.name) ?? []
         do {
             let toll = try await DriveAPI.tollCost(origin: origin, destination: destinationName, via: via)
             guard generation == tollLoadGeneration else { return }
             researchedToll = toll
+            tollLookupSnapshot = .init(routeIdentity: routeIdentity, origin: start,
+                                       cost: toll, loadedAt: Date())
         } catch {
             guard generation == tollLoadGeneration else { return }
             researchedToll = .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)")

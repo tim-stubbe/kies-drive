@@ -3,6 +3,30 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testTollLookupCacheOnlyReusesSameNearbyTrip() {
+        let loadedAt = Date(timeIntervalSince1970: 10_000)
+        let snapshot = TollLookupSnapshot(
+            routeIdentity: "hochheim|wurzenpass", origin: .init(latitude: 50, longitude: 8),
+            cost: .known(amount: 27.4, currency: "EUR", source: "Provider"), loadedAt: loadedAt
+        )
+        XCTAssertEqual(TollLookupCachePolicy.reusable(
+            snapshot, routeIdentity: "hochheim|wurzenpass",
+            origin: .init(latitude: 50.02, longitude: 8), now: loadedAt.addingTimeInterval(300)
+        ), snapshot.cost)
+        XCTAssertNil(TollLookupCachePolicy.reusable(
+            snapshot, routeIdentity: "hochheim|anderer-pass",
+            origin: .init(latitude: 50.02, longitude: 8), now: loadedAt.addingTimeInterval(300)
+        ))
+        XCTAssertNil(TollLookupCachePolicy.reusable(
+            snapshot, routeIdentity: "hochheim|wurzenpass",
+            origin: .init(latitude: 50.2, longitude: 8), now: loadedAt.addingTimeInterval(300)
+        ))
+        XCTAssertNil(TollLookupCachePolicy.reusable(
+            snapshot, routeIdentity: "hochheim|wurzenpass",
+            origin: .init(latitude: 50.02, longitude: 8), now: loadedAt.addingTimeInterval(1_000)
+        ))
+    }
+
     func testRouteProjectionMeasuresBetweenSparseGeometryPoints() throws {
         let route = [
             CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0),
