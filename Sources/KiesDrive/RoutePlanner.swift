@@ -188,8 +188,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
     }
 
-    func startNavigation() {
+    func startNavigation(voiceGuidance: Bool? = nil) {
         guard !legs.isEmpty else { return }
+        let shouldSpeak = voiceGuidance ?? DriveSettings.shared.voiceGuidance
         isUsingOfflineGuidance = false
         persistActiveTrip()
         isNavigating = true
@@ -198,7 +199,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastAnnouncement = nextInstruction ?? "Route gestartet"
         let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
             ?? "Route gestartet."
-        speak(opening)
+        if shouldSpeak { speak(opening) }
         DriveDiagnosticStore.append(.navigationStarted, detail: destination?.name ?? destinationText)
     }
 
@@ -277,7 +278,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         destination = item
         await calculate(from: current, settings: settings)
         if !legs.isEmpty {
-            startNavigation()
+            startNavigation(voiceGuidance: settings.voiceGuidance)
         } else {
             startOfflineGuidanceIfAvailable()
         }
@@ -369,7 +370,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             activeRouteLock = previousLock
             return false
         }
-        startNavigation()
+        startNavigation(voiceGuidance: settings.voiceGuidance)
         return true
     }
 
@@ -553,7 +554,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             activeRouteLock = previousLock
             return false
         }
-        startNavigation()
+        startNavigation(voiceGuidance: settings.voiceGuidance)
         return true
     }
 
