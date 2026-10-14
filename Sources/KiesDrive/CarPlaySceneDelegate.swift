@@ -121,12 +121,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             .sink { [weak self] location in
                 self?.updateCamera(for: location)
                 self?.updateGuidanceEstimates()
+                self?.restoreLockedTripIfNeeded(at: location)
             }
             .store(in: &cancellables)
     }
 
-    private func restoreLockedTripIfNeeded() {
-        guard let location = LocationService.shared.location,
+    private func restoreLockedTripIfNeeded(at suppliedLocation: CLLocation? = nil) {
+        guard let location = suppliedLocation ?? LocationService.shared.location,
               NavigationLocationPolicy.accepts(location, after: nil) else { return }
         Task {
             await RoutePlanner.shared.restoreActiveTripIfNeeded(
@@ -472,7 +473,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         guard let mapView else { return }
         mapView.removeOverlays(mapView.overlays)
         visibleRoutePolylines.forEach { mapView.addOverlay($0, level: .aboveRoads) }
-        if mapView.userTrackingMode == .none { showRouteOverview() }
+        // MapKit may temporarily report `.none` after a programmatic camera
+        // update. `cameraMode` is the user's actual intent and prevents a
+        // route refresh/reroute from unexpectedly replacing follow mode with
+        // a full-route overview.
+        if cameraMode == .overview { showRouteOverview() }
     }
 
     private var visibleRoutePolylines: [MKPolyline] {
@@ -592,6 +597,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 }
 
 extension CarPlaySceneDelegate: MKMapViewDelegate {
+    func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+        var recognizers = mapView.gestureRecognizers ?? []
+        for subview in mapView.subviews {
+            recognizers.append(contentsOf: subview.gestureRecognizers ?? [])
+        }
+        let isUserGesture = recognizers.contains { recognizer in
+            recognizer.state == .began || recognizer.state == .changed
+        }
+        if isUserGesture {
+            // Respect manual pan/zoom until the driver explicitly taps the
+            // location button. Incoming GPS fixes must not fight the gesture.
+            cameraMode = .overview
+            mapView.setUserTrackingMode(.none, animated: false)
+        }
+    }
+
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         guard let polyline = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
         let renderer = MKPolylineRenderer(polyline: polyline)
