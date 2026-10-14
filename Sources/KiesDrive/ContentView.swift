@@ -3,6 +3,8 @@ import MapKit
 import Combine
 import KiesDriveCore
 import UniformTypeIdentifiers
+import CoreImage
+import CoreImage.CIFilterBuiltins
 #if os(iOS)
 import UIKit
 #endif
@@ -1866,15 +1868,30 @@ private struct TwoFactorSetupView: View {
                         Button("Fertig") { dismiss() }.buttonStyle(.borderedProminent)
                     } else if let setup {
                         Text("Öffne deine Authenticator-App und füge dieses Konto hinzu.")
+                        if let qrCode = TwoFactorQRCode.image(for: setup.provisioningURI) {
+                            Image(decorative: qrCode, scale: 1)
+                                .interpolation(.none)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 220, maxHeight: 220)
+                                .padding(12)
+                                .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .accessibilityLabel("QR-Code für die Authenticator-App")
+                        }
                         Link("In Authenticator öffnen", destination: URL(string: setup.provisioningURI)!)
                         LabeledContent("Schlüssel", value: setup.secret)
                             .textSelection(.enabled)
-                        #if os(iOS)
-                        TextField("6-stelliger Code", text: $code)
-                            .textContentType(.oneTimeCode).keyboardType(.numberPad)
-                        #else
-                        TextField("6-stelliger Code", text: $code).textContentType(.oneTimeCode)
-                        #endif
+                        Group {
+                            #if os(iOS)
+                            TextField("6-stelliger Code", text: $code)
+                                .textContentType(.oneTimeCode).keyboardType(.numberPad)
+                            #else
+                            TextField("6-stelliger Code", text: $code).textContentType(.oneTimeCode)
+                            #endif
+                        }
+                        .onChange(of: code) { _, value in
+                            code = String(value.filter { $0.isNumber }.prefix(6))
+                        }
                         Button("2FA aktivieren") { enable() }
                             .disabled(isWorking || code.count != 6)
                     } else if let message {
@@ -1909,6 +1926,20 @@ private struct TwoFactorSetupView: View {
         }
     }
 
+}
+
+private enum TwoFactorQRCode {
+    private static let context = CIContext(options: [.useSoftwareRenderer: false])
+
+    static func image(for value: String) -> CGImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(value.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage?.transformed(by: .init(scaleX: 8, y: 8)) else {
+            return nil
+        }
+        return context.createCGImage(output, from: output.extent)
+    }
 }
 
 private struct AccountWelcomeView: View {
