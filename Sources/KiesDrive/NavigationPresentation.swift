@@ -246,17 +246,29 @@ enum ManeuverDiagnosticPolicy {
 /// and app resumes; those must not advance maneuvers or trigger rerouting.
 enum NavigationLocationPolicy {
     static func accepts(_ candidate: CLLocation, after previous: CLLocation?, now: Date = Date()) -> Bool {
-        guard candidate.horizontalAccuracy >= 0, candidate.horizontalAccuracy <= 100,
-              candidate.timestamp.timeIntervalSince(now) <= 5,
-              now.timeIntervalSince(candidate.timestamp) <= 20 else { return false }
-        guard let previous else { return true }
+        rejectionReason(for: candidate, after: previous, now: now) == nil
+    }
+
+    static func rejectionReason(for candidate: CLLocation, after previous: CLLocation?,
+                                now: Date = Date()) -> String? {
+        guard candidate.horizontalAccuracy >= 0 else { return "GPS-Genauigkeit fehlt" }
+        guard candidate.horizontalAccuracy <= 100 else {
+            return "GPS zu ungenau (±\(Int(candidate.horizontalAccuracy.rounded())) m)"
+        }
+        guard candidate.timestamp.timeIntervalSince(now) <= 5 else { return "GPS-Zeit liegt in der Zukunft" }
+        guard now.timeIntervalSince(candidate.timestamp) <= 20 else { return "GPS-Messung ist veraltet" }
+        guard let previous else { return nil }
         let elapsed = candidate.timestamp.timeIntervalSince(previous.timestamp)
-        guard elapsed > 0 else { return false }
+        guard elapsed > 0 else { return "GPS-Zeit ist nicht fortlaufend" }
         let accuracyAllowance = max(0, candidate.horizontalAccuracy) + max(0, previous.horizontalAccuracy)
         // 80 m/s is deliberately above realistic road speed. The fixed floor
         // tolerates coarse first fixes without accepting kilometre-scale jumps.
         let plausibleDistance = max(350, elapsed * 80 + accuracyAllowance)
-        return candidate.distance(from: previous) <= plausibleDistance
+        let distance = candidate.distance(from: previous)
+        guard distance <= plausibleDistance else {
+            return "Unplausibler GPS-Sprung (\(Int(distance.rounded())) m in \(Int(elapsed.rounded())) s)"
+        }
+        return nil
     }
 }
 

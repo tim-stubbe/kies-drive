@@ -250,6 +250,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     func stopNavigation() {
         let wasNavigating = isNavigating
+        if wasNavigating { closeOutstandingManeuverDiagnostic() }
         isNavigating = false
         isUsingOfflineGuidance = false
         synthesizer.stopSpeaking(at: .immediate)
@@ -879,11 +880,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// neu berechnen.
     func updateProgress(at location: CLLocation, settings: DriveSettings) {
         guard isNavigating, !legs.isEmpty || isUsingOfflineGuidance else { return }
-        guard NavigationLocationPolicy.accepts(location, after: lastAcceptedNavigationLocation) else {
+        let evaluationDate = Date()
+        if let rejection = NavigationLocationPolicy.rejectionReason(
+            for: location, after: lastAcceptedNavigationLocation, now: evaluationDate
+        ) {
             if lastLocationRejectionLoggedAt.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
                 lastLocationRejectionLoggedAt = Date()
                 DriveDiagnosticStore.append(.locationRejected,
-                                            detail: "Genauigkeit \(Int(location.horizontalAccuracy)) m")
+                                            detail: DriveDiagnosticDetail.navigationSample(
+                                                rejection, location: location
+                                            ))
             }
             return
         }
@@ -1062,6 +1068,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard arrivalStrikes >= NavigationArrivalPolicy.requiredConsecutiveFixes else { return false }
 
         arrivalStrikes = 0
+        closeOutstandingManeuverDiagnostic()
         isNavigating = false
         isRecalculating = false
         remainingDistanceMetres = 0
@@ -1217,6 +1224,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func recordManeuverTransition(key: String, instruction: String) {
         guard diagnosticManeuverKey != key else { return }
+        closeOutstandingManeuverDiagnostic()
+        diagnosticManeuverKey = key
+        diagnosticManeuverInstruction = instruction
+    }
+
+    private func closeOutstandingManeuverDiagnostic() {
         if let previous = diagnosticManeuverKey,
            ManeuverDiagnosticPolicy.missedFinalCue(stages: announcedManeuverStages[previous] ?? []) {
             DriveDiagnosticStore.append(.maneuverFinalCueMissed,
@@ -1225,8 +1238,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                                             location: lastAcceptedNavigationLocation
                                         ))
         }
-        diagnosticManeuverKey = key
-        diagnosticManeuverInstruction = instruction
+        diagnosticManeuverKey = nil
+        diagnosticManeuverInstruction = nil
     }
 
     @discardableResult

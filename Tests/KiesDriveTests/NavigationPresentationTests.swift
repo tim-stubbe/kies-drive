@@ -355,6 +355,12 @@ final class NavigationPresentationTests: XCTestCase {
                                horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: now.addingTimeInterval(-60))
         XCTAssertFalse(NavigationLocationPolicy.accepts(jump, after: first, now: now))
         XCTAssertFalse(NavigationLocationPolicy.accepts(stale, after: nil, now: now))
+        XCTAssertTrue(NavigationLocationPolicy.rejectionReason(
+            for: jump, after: first, now: now
+        )?.contains("Unplausibler GPS-Sprung") == true)
+        XCTAssertEqual(NavigationLocationPolicy.rejectionReason(
+            for: stale, after: nil, now: now
+        ), "GPS-Messung ist veraltet")
     }
 
     func testNavigationLocationPolicyAcceptsNormalMovement() {
