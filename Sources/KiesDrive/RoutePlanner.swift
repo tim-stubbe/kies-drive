@@ -197,11 +197,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func stopNavigation() {
+        let wasNavigating = isNavigating
         isNavigating = false
         isUsingOfflineGuidance = false
         synthesizer.stopSpeaking(at: .immediate)
         lastAnnouncement = nil
         speedWarning = false
+        if wasNavigating {
+            DriveDiagnosticStore.append(.navigationStopped,
+                                        detail: destination?.name ?? destinationText)
+        }
     }
 
     func setVoiceGuidanceEnabled(_ enabled: Bool) {
@@ -1016,7 +1021,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         if let previous = diagnosticManeuverKey,
            ManeuverDiagnosticPolicy.missedFinalCue(stages: announcedManeuverStages[previous] ?? []) {
             DriveDiagnosticStore.append(.maneuverFinalCueMissed,
-                                        detail: diagnosticManeuverInstruction ?? "Unbekanntes Manöver")
+                                        detail: DriveDiagnosticDetail.navigationSample(
+                                            diagnosticManeuverInstruction ?? "Unbekanntes Manöver",
+                                            location: lastAcceptedNavigationLocation
+                                        ))
         }
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction
@@ -1078,7 +1086,10 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
               ) else { return }
         resetDeviationTracking()
         lastRerouteAt = Date()
-        DriveDiagnosticStore.append(.rerouteRequested, detail: "Abweichung \(Int(nearest)) m")
+        DriveDiagnosticStore.append(.rerouteRequested,
+                                    detail: DriveDiagnosticDetail.navigationSample(
+                                        "Abweichung \(Int(nearest)) m", location: location
+                                    ))
         Task {
             isRecalculating = true
             defer { isRecalculating = false }

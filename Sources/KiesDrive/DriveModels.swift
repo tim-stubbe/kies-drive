@@ -141,7 +141,23 @@ enum DriveFavoriteStore {
 
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
-    case arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
+    case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
+}
+
+/// Produces useful driving diagnostics without ever recording coordinates or
+/// a location trail. Accuracy and speed are enough to distinguish a guidance
+/// bug from a weak GPS fix when a real drive is reviewed later.
+enum DriveDiagnosticDetail {
+    static func navigationSample(_ description: String, location: CLLocation?) -> String {
+        guard let location else { return description }
+        let accuracy = location.horizontalAccuracy >= 0
+            ? "GPS ±\(Int(location.horizontalAccuracy.rounded())) m"
+            : "GPS-Genauigkeit unbekannt"
+        let speed = location.speed >= 0 && location.speed.isFinite
+            ? "\(Int((location.speed * 3.6).rounded())) km/h"
+            : "Geschwindigkeit unbekannt"
+        return "\(description) · \(accuracy) · \(speed)"
+    }
 }
 
 struct DriveDiagnosticEvent: Codable, Identifiable, Equatable {

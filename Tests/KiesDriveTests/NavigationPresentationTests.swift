@@ -274,6 +274,18 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(report.contains("Keine vollständige Standortspur"))
     }
 
+    func testDiagnosticContextContainsQualityButNeverCoordinates() {
+        let location = CLLocation(
+            coordinate: .init(latitude: 50.123456, longitude: 8.654321),
+            altitude: 0, horizontalAccuracy: 13.6, verticalAccuracy: 5,
+            course: 90, speed: 27.8, timestamp: Date()
+        )
+        let detail = DriveDiagnosticDetail.navigationSample("Rechts abbiegen", location: location)
+        XCTAssertEqual(detail, "Rechts abbiegen · GPS ±14 m · 100 km/h")
+        XCTAssertFalse(detail.contains("50.123456"))
+        XCTAssertFalse(detail.contains("8.654321"))
+    }
+
     func testNavigationLocationPolicyRejectsImpossibleJumpAndStaleFix() {
         let now = Date()
         let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
