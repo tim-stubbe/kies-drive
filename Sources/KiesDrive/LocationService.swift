@@ -55,6 +55,12 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.desiredAccuracy = active ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyNearestTenMeters
         manager.distanceFilter = active ? 8 : 25
         #if os(iOS)
+        if NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: active,
+            hasWhenInUseAuthorization: manager.authorizationStatus == .authorizedWhenInUse
+        ) {
+            manager.requestAlwaysAuthorization()
+        }
         manager.allowsBackgroundLocationUpdates = active
         manager.pausesLocationUpdatesAutomatically = !active
         #endif

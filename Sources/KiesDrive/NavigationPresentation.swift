@@ -272,6 +272,17 @@ enum NavigationLocationPolicy {
     }
 }
 
+enum NavigationLocationAuthorizationPolicy {
+    /// iOS commonly answers the first "Always" request with When-In-Use.
+    /// Ask for the background upgrade only when guidance actually begins, so
+    /// the prompt is relevant and locked-screen/CarPlay navigation can keep
+    /// receiving fixes.
+    static func shouldRequestAlways(navigationActive: Bool,
+                                    hasWhenInUseAuthorization: Bool) -> Bool {
+        navigationActive && hasWhenInUseAuthorization
+    }
+}
+
 /// Shared plausibility rules for motion values reported by Core Location.
 /// A position can be good enough to advance along a route while its speed or
 /// course is still unusable (for example directly after leaving a tunnel).

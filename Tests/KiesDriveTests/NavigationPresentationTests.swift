@@ -18,6 +18,18 @@ final class NavigationPresentationTests: XCTestCase {
         ]), DriveSettings.standaloneBaseURL)
     }
 
+    func testAlwaysLocationUpgradeIsRequestedOnlyForActiveGuidance() {
+        XCTAssertTrue(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: true, hasWhenInUseAuthorization: true
+        ))
+        XCTAssertFalse(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: false, hasWhenInUseAuthorization: true
+        ))
+        XCTAssertFalse(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: true, hasWhenInUseAuthorization: false
+        ))
+    }
+
     func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
         XCTAssertEqual(NavigationMotionPolicy.reliableSpeed(
             speedMetresPerSecond: 27, speedAccuracy: 1.5, horizontalAccuracy: 12), 27)
