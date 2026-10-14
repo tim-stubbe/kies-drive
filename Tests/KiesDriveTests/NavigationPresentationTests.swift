@@ -542,6 +542,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 0)
     }
 
+    func testDiagnosticSummaryEndsAtStopAndIgnoresLateAsyncEvents() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .maneuverAnnounced, detail: "Rechts"),
+            DriveDiagnosticEvent(kind: .navigationStopped, detail: "Fahrt beendet"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Verspätete Antwort"),
+            DriveDiagnosticEvent(kind: .maneuverFinalCueMissed, detail: "Verspätete Diagnose"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.eventCount, 3)
+        XCTAssertEqual(summary.rerouteFailures, 0)
+        XCTAssertEqual(summary.missedFinalCues, 0)
+    }
+
     func testNavigationLocationPolicyRejectsImpossibleJumpAndStaleFix() {
         let now = Date()
         let first = CLLocation(coordinate: .init(latitude: 50, longitude: 8), altitude: 0,

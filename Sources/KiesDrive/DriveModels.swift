@@ -212,7 +212,14 @@ struct DriveDiagnosticSummary: Equatable {
 
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
         guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
-        let session = events[start...]
+        let afterStart = events.index(after: start)..<events.endIndex
+        let terminal = afterStart.first(where: {
+            events[$0].kind == .navigationStopped || events[$0].kind == .arrivalReached
+        })
+        // A completed drive ends at its first terminal event. Async network
+        // work from that drive may finish later, but must not retroactively
+        // turn a clean session into a warning or critical result.
+        let session = terminal.map { events[start...$0] } ?? events[start...]
         let lastRecovery = session.lastIndex(where: { $0.kind == .rerouteSucceeded })
         let unresolved = lastRecovery.map { session[session.index(after: $0)...] } ?? session[session.startIndex...]
         let totalFailures = session.filter { $0.kind == .rerouteFailed }.count
