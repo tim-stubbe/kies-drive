@@ -485,7 +485,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let routeGeneration = routeCalculationGeneration
         routeSearchQuery = cleanQuery
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
-        let searchPoints = evenlySpaced(routeCoordinates, maximum: 5)
+        let currentRouteProgress: Double = {
+            guard let location = LocationService.shared.location,
+                  let projection = RouteGeometryProgress.nearestProgress(
+                    of: location.coordinate, on: routeCoordinates,
+                    progressRange: currentRouteProgressSearchRange
+                  ), projection.distance <= 5_000 else { return 0 }
+            return projection.progress
+        }()
+        let remainingCoordinates = RouteSearchPolicy.remainingRouteCoordinates(
+            routeCoordinates, currentProgress: currentRouteProgress
+        )
+        let searchPoints = evenlySpaced(remainingCoordinates, maximum: 5)
         var matches: [String: MKMapItem] = [:]
         await withTaskGroup(of: [MKMapItem].self) { group in
             for point in searchPoints {
@@ -506,14 +517,6 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard generation == routeSearchGeneration,
               routeGeneration == routeCalculationGeneration,
               routeSearchQuery == cleanQuery else { return }
-        let currentRouteProgress: Double = {
-            guard let location = LocationService.shared.location,
-                  let projection = RouteGeometryProgress.nearestProgress(
-                    of: location.coordinate, on: routeCoordinates,
-                    progressRange: currentRouteProgressSearchRange
-                  ), projection.distance <= 5_000 else { return 0 }
-            return projection.progress
-        }()
         let candidates = matches.values.compactMap {
             item -> (item: MKMapItem, progress: Double, airDistance: Double,
                      routeCoordinate: CLLocationCoordinate2D)? in

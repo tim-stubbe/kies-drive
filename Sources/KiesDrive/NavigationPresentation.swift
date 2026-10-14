@@ -530,6 +530,19 @@ enum RouteSearchPolicy {
         candidateProgress >= max(0, currentProgress - 0.02)
     }
 
+    /// Removes the materially completed part before issuing MapKit searches.
+    /// Filtering only after the provider request wastes calls on towns behind
+    /// the vehicle and can crowd useful future results out of the response.
+    static func remainingRouteCoordinates(_ coordinates: [CLLocationCoordinate2D],
+                                          currentProgress: Double)
+        -> [CLLocationCoordinate2D] {
+        guard coordinates.count > 1 else { return coordinates }
+        let progress = RouteGeometryProgress.cumulativeFractions(coordinates)
+        let lowerBound = max(0, min(1, currentProgress) - 0.02)
+        let first = progress.firstIndex(where: { $0 >= lowerBound }) ?? (coordinates.count - 1)
+        return Array(coordinates[first...])
+    }
+
     /// A stop that needs more than 20 km of additional driving is not an
     /// "along the route" result, even if it looks close across a river,
     /// motorway barrier or mountain in straight-line geometry.

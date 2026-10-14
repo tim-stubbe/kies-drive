@@ -630,6 +630,16 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.75, currentProgress: 0.50))
     }
 
+    func testRouteSearchQueriesOnlyTheRemainingRoute() {
+        let route = (0...10).map {
+            CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) / 100)
+        }
+        let remaining = RouteSearchPolicy.remainingRouteCoordinates(route, currentProgress: 0.6)
+        XCTAssertLessThan(remaining.count, route.count)
+        XCTAssertGreaterThanOrEqual(remaining.first?.longitude ?? 0, 8.05)
+        XCTAssertEqual(remaining.last?.longitude, route.last?.longitude)
+    }
+
     func testRouteSearchRejectsExcessiveOrInvalidDrivingDetours() {
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(4_500))
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(20_000))
