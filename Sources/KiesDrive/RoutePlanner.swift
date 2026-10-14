@@ -85,6 +85,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
     private var tollLookupSnapshot: TollLookupSnapshot?
     private var amenityBreakCandidates: [BreakCandidate] = []
+    private var measuredBreakDetours: [String: CLLocationDistance] = [:]
 
     /// Tempolimits entlang der Route, parallel zu `speedLimitPoints` indiziert.
     private var speedLimitPoints: [CLLocationCoordinate2D] = []
@@ -685,6 +686,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             legs = computedLegs
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
+            measuredBreakDetours = [:]
             resetLiveNavigationProgress()
             seedInitialNavigationPresentation()
             isUsingOfflineGuidance = false
@@ -702,6 +704,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 await self.loadStations(fuel: settings.fuel)
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.loadBreakAmenities()
+                guard calculationGeneration == self.routeCalculationGeneration else { return }
+                await self.measureBreakCandidateDetours()
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.loadSpeedLimits()
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
@@ -1310,7 +1314,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let unlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
             points: speedLimitPoints, limits: speedLimits
         )
-        let candidates = breakCandidates(along: legs)
+        let candidates = breakCandidates(along: legs, useMeasuredDetours: true)
         var inputs = [RoutePlanningInput(
             id: settings.avoidTolls ? "toll-avoiding" : "standard",
             title: settings.avoidTolls ? "Maut vermeiden" : "Schnellste Route",
@@ -1379,26 +1383,55 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         buildLongTripPlan(settings: settings)
     }
 
-    private func breakCandidates(along routes: [MKRoute]) -> [BreakCandidate] {
+    private func breakCandidates(along routes: [MKRoute], useMeasuredDetours: Bool = true) -> [BreakCandidate] {
         let routeCoordinates = routes.flatMap { sample($0.polyline, maximum: 160) }
         guard routeCoordinates.count > 1 else { return [] }
         let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
             guard let projection = RouteGeometryProgress.nearestProgress(of: station.coordinate, on: routeCoordinates),
                   projection.distance <= 4_000 else { return nil }
             return BreakCandidateFactory.fuelStation(
-                station, progress: projection.progress, detourMetres: projection.distance * 2
+                station, progress: projection.progress,
+                detourMetres: useMeasuredDetours ? measuredBreakDetours[station.id] ?? projection.distance * 2 : projection.distance * 2,
+                detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[station.id] == nil
             )
         }
         let amenities = amenityBreakCandidates.compactMap { candidate -> BreakCandidate? in
             guard let projection = RouteGeometryProgress.nearestProgress(of: candidate.coordinate, on: routeCoordinates),
                   projection.distance <= 4_000 else { return nil }
             return .init(id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
-                         progress: projection.progress, detourMetres: projection.distance * 2,
+                         progress: projection.progress,
+                         detourMetres: useMeasuredDetours ? measuredBreakDetours[candidate.id] ?? projection.distance * 2 : projection.distance * 2,
+                         detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[candidate.id] == nil,
                          isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel)
         }
-        return (fuelCandidates + amenities)
-            .reduce(into: [String: BreakCandidate]()) { result, candidate in result[candidate.id] = candidate }
-            .values.sorted { $0.progress < $1.progress }
+        return BreakCandidateSelectionPolicy.shortlist(fuelCandidates + amenities)
+    }
+
+    /// Measures only the already shortlisted stops. Six candidates mean at
+    /// most twelve directions requests (out and back), independent of the
+    /// number of stations returned by providers.
+    private func measureBreakCandidateDetours() async {
+        let generation = breakCandidateLoadGeneration
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
+        let candidates = breakCandidates(along: legs, useMeasuredDetours: false)
+        var measurements: [String: CLLocationDistance] = [:]
+        await withTaskGroup(of: (String, CLLocationDistance?).self) { group in
+            for candidate in candidates {
+                guard let projection = RouteGeometryProgress.nearestProgress(
+                    of: candidate.coordinate, on: routeCoordinates
+                ) else { continue }
+                group.addTask { [weak self] in
+                    let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
+                    let distance = await self?.drivingDetour(between: projection.coordinate, and: item)
+                    return (candidate.id, distance)
+                }
+            }
+            for await (id, distance) in group {
+                if let distance, distance <= 20_000 { measurements[id] = distance }
+            }
+        }
+        guard generation == breakCandidateLoadGeneration else { return }
+        measuredBreakDetours = measurements
     }
 
     /// Finds real rest areas and motorway service locations near the route so

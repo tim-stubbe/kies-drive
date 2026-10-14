@@ -3,6 +3,37 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testBreakCandidateShortlistIsBoundedAndDistributed() {
+        let candidates = (0..<18).map { index in
+            BreakCandidate(id: "candidate-\(index)", name: "Halt \(index)", coordinate: .init(),
+                           progress: Double(index) / 18, detourMetres: Double(1_000 - index),
+                           isOpen: true, supportsFuel: index.isMultiple(of: 3))
+        }
+
+        let result = BreakCandidateSelectionPolicy.shortlist(candidates, maximum: 6)
+
+        XCTAssertEqual(result.count, 6)
+        XCTAssertEqual(result.map { Int($0.progress * 6) }, Array(0..<6))
+        XCTAssertEqual(result.map(\.id), ["candidate-0", "candidate-3", "candidate-6",
+                                           "candidate-9", "candidate-12", "candidate-15"])
+    }
+
+    func testBreakCandidateShortlistPrefersUsefulOpenFuelStop() {
+        let closed = BreakCandidate(id: "closed", name: "Closed", coordinate: .init(),
+                                    progress: 0.4, detourMetres: 10, isOpen: false,
+                                    supportsFuel: true)
+        let rest = BreakCandidate(id: "rest", name: "Rest", coordinate: .init(),
+                                  progress: 0.42, detourMetres: 100, isOpen: true)
+        let fuel = BreakCandidate(id: "fuel", name: "Fuel", coordinate: .init(),
+                                  progress: 0.44, detourMetres: 400,
+                                  detourIsEstimated: false, isOpen: true, supportsFuel: true)
+
+        let result = BreakCandidateSelectionPolicy.shortlist([closed, rest, fuel], maximum: 1)
+
+        XCTAssertEqual(result.map(\.id), ["fuel"])
+        XCTAssertFalse(result[0].detourIsEstimated)
+    }
+
     func testTollLookupCacheOnlyReusesSameNearbyTrip() {
         let loadedAt = Date(timeIntervalSince1970: 10_000)
         let snapshot = TollLookupSnapshot(

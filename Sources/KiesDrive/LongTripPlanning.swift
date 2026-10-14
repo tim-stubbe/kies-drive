@@ -146,18 +146,23 @@ struct BreakCandidate: Identifiable, Equatable {
     let coordinate: CLLocationCoordinate2D
     let progress: Double
     let detourMetres: Double
+    /// False only after MapKit has measured the actual drive from the route
+    /// to the stop and back. Air-line fallbacks remain visibly approximate.
+    let detourIsEstimated: Bool
     /// `nil` means the provider supplied no trustworthy opening status.
     /// Unknown is preferable to claiming that an unstaffed or closed stop is open.
     let isOpen: Bool?
     let supportsFuel: Bool
 
     init(id: String, name: String, coordinate: CLLocationCoordinate2D, progress: Double,
-         detourMetres: Double, isOpen: Bool?, supportsFuel: Bool = false) {
+         detourMetres: Double, detourIsEstimated: Bool = true,
+         isOpen: Bool?, supportsFuel: Bool = false) {
         self.id = id
         self.name = name
         self.coordinate = coordinate
         self.progress = progress
         self.detourMetres = detourMetres
+        self.detourIsEstimated = detourIsEstimated
         self.isOpen = isOpen
         self.supportsFuel = supportsFuel
     }
@@ -165,15 +170,49 @@ struct BreakCandidate: Identifiable, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
+enum BreakCandidateSelectionPolicy {
+    /// Long routes can contain hundreds of nearby places. Keep one useful
+    /// candidate per route section so the UI stays small and only a bounded
+    /// number of real driving-detour requests is needed.
+    static func shortlist(_ candidates: [BreakCandidate], maximum: Int = 6) -> [BreakCandidate] {
+        guard maximum > 0 else { return [] }
+        let unique = candidates.reduce(into: [String: BreakCandidate]()) { result, candidate in
+            if let existing = result[candidate.id] {
+                result[candidate.id] = preferred(existing, candidate)
+            } else {
+                result[candidate.id] = candidate
+            }
+        }
+        let buckets = Dictionary(grouping: unique.values) {
+            min(maximum - 1, max(0, Int(min(0.999_999, max(0, $0.progress)) * Double(maximum))))
+        }
+        return buckets.keys.sorted().compactMap { bucket in
+            buckets[bucket]?.min(by: isPreferred)
+        }
+    }
+
+    private static func preferred(_ lhs: BreakCandidate, _ rhs: BreakCandidate) -> BreakCandidate {
+        isPreferred(lhs, rhs) ? lhs : rhs
+    }
+
+    private static func isPreferred(_ lhs: BreakCandidate, _ rhs: BreakCandidate) -> Bool {
+        let lhsScore = lhs.detourMetres + (lhs.supportsFuel ? 0 : 500) + (lhs.isOpen == false ? 10_000 : 0)
+        let rhsScore = rhs.detourMetres + (rhs.supportsFuel ? 0 : 500) + (rhs.isOpen == false ? 10_000 : 0)
+        return lhsScore == rhsScore ? lhs.id < rhs.id : lhsScore < rhsScore
+    }
+}
+
 enum BreakCandidateFactory {
     /// Keep an absent provider opening status absent. Treating `nil` as open
     /// would make an unverified station look safe for a night-time pause.
     static func fuelStation(_ station: FuelStation, progress: Double,
-                            detourMetres: Double) -> BreakCandidate {
+                            detourMetres: Double,
+                            detourIsEstimated: Bool = true) -> BreakCandidate {
         BreakCandidate(
             id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
             coordinate: station.coordinate, progress: progress,
-            detourMetres: detourMetres, isOpen: station.open, supportsFuel: true
+            detourMetres: detourMetres, detourIsEstimated: detourIsEstimated,
+            isOpen: station.open, supportsFuel: true
         )
     }
 }
@@ -304,7 +343,9 @@ struct FuelStopPlanner {
             result.append(.init(
                 id: "fuel-\(index)", candidate: best,
                 afterDistanceMetres: stopDistance, routeProgress: progress,
-                explanation: best.map { "Tankstopp vor der Reserve · ca. \(Int($0.detourMetres)) m Umweg" }
+                explanation: best.map {
+                    "Tankstopp vor der Reserve · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres)) m Umweg"
+                }
                     ?? "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
             ))
             guard stopDistance > lastStopDistance else { break }
@@ -350,7 +391,9 @@ struct BreakPlanner {
             }
             let progress = best?.progress ?? idealProgress
             let breakDrivingTime = drivingTime * progress
-            let detour = best.map { " · \(Int($0.detourMetres / 100) * 100) m Umweg" } ?? ""
+            let detour = best.map {
+                " · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres / 100) * 100) m Umweg"
+            } ?? ""
             result.append(PlannedBreak(
                 id: "break-\(index)", candidate: best,
                 afterDriving: breakDrivingTime, duration: defaultBreakDuration,
