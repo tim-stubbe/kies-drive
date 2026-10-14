@@ -114,7 +114,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var routeCalculationGeneration = UUID()
     private var destinationSearchGeneration = UUID()
     private var routeSearchGeneration = UUID()
-    private var didAttemptAutomaticRestore = false
+    private var automaticRestoreInProgress = false
+    private var lastAutomaticRestoreAttempt: Date?
     private static let cacheKey = "drive.offlineRoute"
     private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
     private let routeLockStore = RouteLockStore.shared
@@ -210,6 +211,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         synthesizer.stopSpeaking(at: .immediate)
         lastAnnouncement = nil
         speedWarning = false
+        // A persistent trip remains resumable, but cancelling guidance must
+        // not make the very next GPS fix restart it immediately.
+        lastAutomaticRestoreAttempt = Date()
         if wasNavigating {
             DriveDiagnosticStore.append(.navigationStopped,
                                         detail: destination?.name ?? destinationText)
@@ -268,9 +272,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// wird neu gerechnet; dadurch setzt MapKit am passenden aktuellen
     /// Routenabschnitt an, waehrend Pflichtpunkte und Segmentregeln erhalten bleiben.
     func restoreActiveTripIfNeeded(from current: CLLocationCoordinate2D, settings: DriveSettings) async {
-        guard !didAttemptAutomaticRestore else { return }
-        didAttemptAutomaticRestore = true
         guard let lock = routeLockStore.activeLock, lock.isActive else { return }
+        guard RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: isNavigating,
+            attemptInProgress: automaticRestoreInProgress,
+            lastAttempt: lastAutomaticRestoreAttempt
+        ) else { return }
+        automaticRestoreInProgress = true
+        lastAutomaticRestoreAttempt = Date()
+        defer { automaticRestoreInProgress = false }
         activeRouteLock = lock
         destinationText = lock.destinationName
         let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
@@ -285,7 +295,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     func restoreActiveTrip(from current: CLLocationCoordinate2D, settings: DriveSettings) async {
-        didAttemptAutomaticRestore = false
+        lastAutomaticRestoreAttempt = nil
         await restoreActiveTripIfNeeded(from: current, settings: settings)
     }
 
@@ -297,8 +307,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
         item.name = lock.destinationName
         destination = item
-        didAttemptAutomaticRestore = false
         stopNavigation()
+        lastAutomaticRestoreAttempt = nil
         legs = []
         alternatives = []
     }
@@ -311,8 +321,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
         item.name = lock.destinationName
         destination = item
-        didAttemptAutomaticRestore = false
         stopNavigation()
+        lastAutomaticRestoreAttempt = nil
         legs = []
         alternatives = []
     }

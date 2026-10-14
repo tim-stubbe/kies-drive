@@ -120,8 +120,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func restoreLockedTripIfNeeded() {
-        guard let coordinate = LocationService.shared.location?.coordinate else { return }
-        Task { await RoutePlanner.shared.restoreActiveTripIfNeeded(from: coordinate, settings: .shared) }
+        guard let location = LocationService.shared.location,
+              NavigationLocationPolicy.accepts(location, after: nil) else { return }
+        Task {
+            await RoutePlanner.shared.restoreActiveTripIfNeeded(
+                from: location.coordinate, settings: .shared
+            )
+        }
     }
 
     private func makeMapButtons() -> [CPMapButton] {

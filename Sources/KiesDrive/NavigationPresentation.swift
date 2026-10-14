@@ -419,6 +419,20 @@ enum OfflineRouteRecoveryPolicy {
     }
 }
 
+/// A persistent trip lock must survive a transient MapKit outage. Automatic
+/// restoration is retried at a calm cadence instead of being permanently
+/// consumed by the first failed request or hammering MapKit on every GPS fix.
+enum RouteLockRestorePolicy {
+    static let retryInterval: TimeInterval = 90
+
+    static func shouldAttempt(navigationActive: Bool, attemptInProgress: Bool,
+                              lastAttempt: Date?, now: Date = Date()) -> Bool {
+        guard !navigationActive, !attemptInProgress else { return false }
+        guard let lastAttempt else { return true }
+        return now.timeIntervalSince(lastAttempt) >= retryInterval
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

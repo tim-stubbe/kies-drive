@@ -501,6 +501,27 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testLockedTripRestoreRetriesAfterTransientFailureWithoutRequestStorm() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: false, attemptInProgress: false, lastAttempt: nil, now: now
+        ))
+        XCTAssertFalse(RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: false, attemptInProgress: false,
+            lastAttempt: now.addingTimeInterval(-89), now: now
+        ))
+        XCTAssertTrue(RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: false, attemptInProgress: false,
+            lastAttempt: now.addingTimeInterval(-90), now: now
+        ))
+        XCTAssertFalse(RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: true, attemptInProgress: false, lastAttempt: nil, now: now
+        ))
+        XCTAssertFalse(RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: false, attemptInProgress: true, lastAttempt: nil, now: now
+        ))
+    }
+
     func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
         let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         XCTAssertTrue(OfflineRouteCachePolicy.matches(

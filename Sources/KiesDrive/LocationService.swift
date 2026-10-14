@@ -86,7 +86,11 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         }
 
         Task {
-            await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
+            // A cached, stale or kilometre-uncertain first fix must not spend
+            // the restore attempt or calculate a route from the wrong place.
+            if NavigationLocationPolicy.accepts(latest, after: nil) {
+                await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
+            }
             await DriveRemoteBridge.shared.sync(location: latest)
         }
     }
