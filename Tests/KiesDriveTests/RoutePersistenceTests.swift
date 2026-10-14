@@ -144,6 +144,34 @@ final class RoutePersistenceTests: XCTestCase {
         ))
     }
 
+    func testOnlyRouteConstraintsBecomeTollEvidenceAnchors() throws {
+        let constraint = LockedWaypoint(
+            id: "pass", name: "Wurzenpass", coordinate: .init(latitude: 46.5, longitude: 13.7),
+            required: true, optionsAfter: nil, kind: .routeConstraint
+        )
+        let restaurant = LockedWaypoint(
+            id: "poi-1", name: "McDonald’s", coordinate: .init(latitude: 47, longitude: 13),
+            required: true, optionsAfter: nil, kind: .userStop
+        )
+        let fuel = LockedWaypoint(
+            id: "fuel-1", name: "Tankstelle", coordinate: .init(latitude: 48, longitude: 12),
+            required: true, optionsAfter: nil, kind: .fuelStop
+        )
+
+        XCTAssertTrue(constraint.isTollEvidenceAnchor)
+        XCTAssertFalse(restaurant.isTollEvidenceAnchor)
+        XCTAssertFalse(fuel.isTollEvidenceAnchor)
+
+        // A lock written before the kind field existed must still decode and
+        // retain its historic meaning as a mandatory route constraint.
+        let legacy = """
+        {"id":"legacy","name":"Grenze","coordinate":{"latitude":46,"longitude":15},"required":true,"optionsAfter":null}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(LockedWaypoint.self, from: legacy)
+        XCTAssertNil(decoded.kind)
+        XCTAssertTrue(decoded.isTollEvidenceAnchor)
+    }
+
     func testWaypointVisitRequiresNextPointAndRoadLevelProximity() {
         let waypoints = [
             LockedWaypoint(id: "first", name: "First",

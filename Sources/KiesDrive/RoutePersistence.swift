@@ -117,6 +117,12 @@ struct LockedRouteOptions: Codable, Equatable, Sendable {
 }
 
 struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case routeConstraint
+        case userStop
+        case fuelStop
+    }
+
     let id: String
     var name: String
     var coordinate: DriveCoordinate
@@ -124,6 +130,14 @@ struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
     /// Vorgaben fuer die Strecke, die an diesem Punkt beginnt. `nil` erbt die
     /// allgemeinen Trip-Vorgaben.
     var optionsAfter: LockedRouteOptions?
+    /// Optional keeps route locks written by earlier releases decodable. Old
+    /// waypoints were route constraints, so `nil` intentionally retains that
+    /// meaning while all newly inserted comfort stops set an explicit kind.
+    var kind: Kind? = nil
+
+    var isTollEvidenceAnchor: Bool {
+        kind == nil || kind == .routeConstraint
+    }
 }
 
 struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {

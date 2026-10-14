@@ -672,7 +672,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= 30
         })?.routeProgress
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: stopName,
-                             coordinate: coordinate, knownProgress: knownProgress)
+                             coordinate: coordinate, knownProgress: knownProgress,
+                             kind: .userStop)
         routeSearchResults = []
         isSearchingAlongRoute = false
         let succeeded = await calculate(from: start, settings: settings)
@@ -717,7 +718,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// avoids the former split-brain state where fuel stops lived only in
     /// `viaStations` and disappeared whenever mandatory route points existed.
     private func insertLockedWaypoint(id: String, name: String, coordinate: CLLocationCoordinate2D,
-                                      knownProgress: Double? = nil) {
+                                      knownProgress: Double? = nil,
+                                      kind: LockedWaypoint.Kind = .userStop) {
         guard var lock = routeLockStore.activeLock,
               !lock.waypoints.contains(where: { $0.id == id }) else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 240) }
@@ -727,7 +729,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lock.insertWaypoint(.init(
             id: id, name: name,
             coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-            required: true, optionsAfter: nil
+            required: true, optionsAfter: nil, kind: kind
         ), knownProgress: knownProgress, progress: { progress($0.clLocationCoordinate) })
         routeLockStore.save(lock)
         activeRouteLock = lock
@@ -1820,7 +1822,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let destinationName = destination.placemark.title ?? destination.name ?? destinationText
         let lock = routeLockStore.activeLock
         let visited = Set(lock?.visitedWaypointIDs ?? [])
-        let via = lock?.waypoints.filter { $0.required && !visited.contains($0.id) }.map(\.name) ?? []
+        let via = lock?.waypoints.filter {
+            $0.required && !visited.contains($0.id) && $0.isTollEvidenceAnchor
+        }.map(\.name) ?? []
         let destinationCoordinate = destination.placemark.coordinate
         let baseRouteIdentity = String(format: "%.5f:%.5f", destinationCoordinate.latitude,
                                        destinationCoordinate.longitude) + "|" + via.joined(separator: "|")
@@ -2065,7 +2069,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if routeLockStore.activeLock == nil { persistActiveTrip() }
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
-                coordinate: station.coordinate
+                coordinate: station.coordinate, kind: .fuelStop
             )
         }
         guard await calculate(from: start, settings: settings) else {
@@ -2092,7 +2096,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if routeLockStore.activeLock == nil { persistActiveTrip() }
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
-                coordinate: station.coordinate
+                coordinate: station.coordinate, kind: .fuelStop
             )
             guard await calculate(from: start, settings: settings) else {
                 viaStations = previousStations
