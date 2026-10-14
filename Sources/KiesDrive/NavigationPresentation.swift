@@ -631,6 +631,12 @@ enum OfflineRouteRecoveryPolicy {
         guard let lastAttempt else { return true }
         return now.timeIntervalSince(lastAttempt) >= retryInterval
     }
+
+    static func acceptsOnlineResult(calculationSucceeded: Bool,
+                                    navigationActive: Bool,
+                                    stillUsingOfflineGuidance: Bool) -> Bool {
+        calculationSucceeded && navigationActive && !stillUsingOfflineGuidance
+    }
 }
 
 /// A persistent trip lock must survive a transient MapKit outage. Automatic

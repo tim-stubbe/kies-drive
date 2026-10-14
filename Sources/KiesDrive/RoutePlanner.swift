@@ -1043,7 +1043,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             lastOfflineRecoveryAttempt = Date()
             Task { [weak self] in
                 guard let self, self.isUsingOfflineGuidance, self.isNavigating else { return }
-                await self.calculate(from: location.coordinate, settings: settings, showLoading: false)
+                let succeeded = await self.calculate(
+                    from: location.coordinate, settings: settings, showLoading: false
+                )
+                guard OfflineRouteRecoveryPolicy.acceptsOnlineResult(
+                    calculationSucceeded: succeeded,
+                    navigationActive: self.isNavigating,
+                    stillUsingOfflineGuidance: self.isUsingOfflineGuidance
+                ) else { return }
+                DriveDiagnosticStore.append(
+                    .rerouteSucceeded, detail: "Online-Route nach Offline-Fahrt wiederhergestellt"
+                )
+                if settings.voiceGuidance {
+                    self.announceRecalculatedRoute(at: location)
+                }
             }
         }
 

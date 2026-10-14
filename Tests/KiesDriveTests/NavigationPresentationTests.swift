@@ -737,6 +737,25 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineRecoveryPublishesOnlyACommittedActiveOnlineRoute() {
+        XCTAssertTrue(OfflineRouteRecoveryPolicy.acceptsOnlineResult(
+            calculationSucceeded: true, navigationActive: true,
+            stillUsingOfflineGuidance: false
+        ))
+        XCTAssertFalse(OfflineRouteRecoveryPolicy.acceptsOnlineResult(
+            calculationSucceeded: false, navigationActive: true,
+            stillUsingOfflineGuidance: true
+        ))
+        XCTAssertFalse(OfflineRouteRecoveryPolicy.acceptsOnlineResult(
+            calculationSucceeded: true, navigationActive: false,
+            stillUsingOfflineGuidance: false
+        ))
+        XCTAssertFalse(OfflineRouteRecoveryPolicy.acceptsOnlineResult(
+            calculationSucceeded: true, navigationActive: true,
+            stillUsingOfflineGuidance: true
+        ))
+    }
+
     func testLockedTripRestoreRetriesAfterTransientFailureWithoutRequestStorm() {
         let now = Date(timeIntervalSince1970: 1_000)
         XCTAssertTrue(RouteLockRestorePolicy.shouldAttempt(
