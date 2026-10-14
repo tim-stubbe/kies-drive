@@ -867,6 +867,7 @@ struct DriveContentView: View {
                         Spacer()
                         if let exit = maneuver.exitLabel {
                             Text(exit).font(.subheadline.bold())
+                                .lineLimit(1).minimumScaleFactor(0.8).fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
                                 .background(.white.opacity(0.14), in: Capsule())
                         }
