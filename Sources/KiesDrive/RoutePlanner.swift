@@ -159,6 +159,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var routeSearchGeneration = UUID()
     private var automaticRestoreInProgress = false
     private var lastAutomaticRestoreAttempt: Date?
+    private var lastRouteProgressPersistedAt: Date?
     private static let cacheKey = "drive.offlineRoute"
     private static let offlineCacheStore = OfflineRouteCacheStore.live()
     private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
@@ -912,6 +913,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             updateNextManeuver(using: progress)
             if settings.voiceGuidance { announce(progress, guidanceSpeedMps: guidanceSpeed) }
         }
+        persistRouteLockProgress(at: location)
         markReachedWaypoints(at: location, settings: settings)
         if !isUsingOfflineGuidance {
             checkSpeedLimit(at: location.coordinate,
@@ -1184,6 +1186,32 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         }
         activeRouteLock = routeLockStore.activeLock
         Task { await calculate(from: location.coordinate, settings: settings) }
+    }
+
+    private func persistRouteLockProgress(at location: CLLocation) {
+        guard let lock = routeLockStore.activeLock,
+              let corridor = lock.corridorPoints, corridor.count > 2,
+              let match = RouteCorridorRestorePolicy.forwardNearBestMatch(
+                for: .init(latitude: location.coordinate.latitude,
+                           longitude: location.coordinate.longitude),
+                in: corridor, previousProgress: lock.lastRouteProgress
+              ),
+              match.distance <= max(lock.corridorWidthMetres * 2, 5_000)
+        else { return }
+        let progress = Double(match.index) / Double(corridor.count - 1)
+        let previous = lock.lastRouteProgress ?? 0
+        guard progress >= previous else { return }
+        let now = location.timestamp
+        let enoughMovement = progress - previous >= 0.003
+        let periodicCheckpoint = lastRouteProgressPersistedAt.map {
+            now.timeIntervalSince($0) >= 60
+        } ?? true
+        guard enoughMovement || periodicCheckpoint else { return }
+        routeLockStore.update { current in
+            current.lastRouteProgress = max(current.lastRouteProgress ?? 0, progress)
+        }
+        activeRouteLock = routeLockStore.activeLock
+        lastRouteProgressPersistedAt = now
     }
 
     private func checkSpeedLimit(at coordinate: CLLocationCoordinate2D, speedMps: Double?) {

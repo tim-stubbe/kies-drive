@@ -84,6 +84,31 @@ enum RouteCorridorRestorePolicy {
         else { return nil }
         return (index, minimum)
     }
+
+    /// Uses persisted forward progress to disambiguate a corridor crossing.
+    /// A small backwards allowance tolerates sparse corridor samples and GPS
+    /// drift, but a restart can no longer jump back to an earlier visit of the
+    /// same physical junction.
+    static func forwardNearBestMatch(for coordinate: DriveCoordinate,
+                                     in corridor: [DriveCoordinate],
+                                     previousProgress: Double?,
+                                     backwardsAllowance: Double = 0.02,
+                                     toleranceMetres: CLLocationDistance = 75)
+        -> (index: Int, distance: CLLocationDistance)? {
+        guard !corridor.isEmpty else { return nil }
+        let lowerProgress = max(0, min(1, previousProgress ?? 0) - max(0, backwardsAllowance))
+        let start = min(corridor.count - 1,
+                        Int((lowerProgress * Double(max(0, corridor.count - 1))).rounded(.down)))
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let matches = corridor.indices.dropFirst(start).map { index in
+            (index, location.distance(from: CLLocation(latitude: corridor[index].latitude,
+                                                       longitude: corridor[index].longitude)))
+        }
+        guard let minimum = matches.map(\.1).min(), minimum.isFinite,
+              let match = matches.first(where: { $0.1 <= minimum + max(0, toleranceMetres) })
+        else { return nil }
+        return match
+    }
 }
 
 struct LockedRouteOptions: Codable, Equatable, Sendable {
@@ -113,6 +138,9 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var corridorWidthMetres: Double
     var corridorPoints: [DriveCoordinate]?
     var visitedWaypointIDs: [String]?
+    /// Monotonic progress on the original locked corridor. Optional so route
+    /// locks written by older app versions continue to decode.
+    var lastRouteProgress: Double? = nil
     var status: Status
     var createdAt: Date
     var updatedAt: Date
@@ -153,8 +181,8 @@ extension ActiveRouteLock {
     /// empty when the current position is not plausibly inside the corridor.
     func passedWaypointIDs(at current: DriveCoordinate) -> [String] {
         guard let corridorPoints, corridorPoints.count > 2 else { return [] }
-        guard let currentMatch = RouteCorridorRestorePolicy.earliestNearBestMatch(
-            for: current, in: corridorPoints
+        guard let currentMatch = RouteCorridorRestorePolicy.forwardNearBestMatch(
+            for: current, in: corridorPoints, previousProgress: lastRouteProgress
         ), currentMatch.distance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
 
         return waypoints.compactMap { waypoint in

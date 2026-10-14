@@ -4,6 +4,26 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testPersistedProgressDisambiguatesLaterVisitAtRouteCrossing() throws {
+        let corridor = [
+            DriveCoordinate(latitude: 50.0, longitude: 8.0),
+            DriveCoordinate(latitude: 50.0, longitude: 8.1),
+            DriveCoordinate(latitude: 50.1, longitude: 8.1),
+            DriveCoordinate(latitude: 50.0, longitude: 8.1),
+            DriveCoordinate(latitude: 50.0, longitude: 8.2),
+        ]
+        let crossing = DriveCoordinate(latitude: 50.0, longitude: 8.1)
+        let early = try XCTUnwrap(RouteCorridorRestorePolicy.forwardNearBestMatch(
+            for: crossing, in: corridor, previousProgress: nil
+        ))
+        let late = try XCTUnwrap(RouteCorridorRestorePolicy.forwardNearBestMatch(
+            for: crossing, in: corridor, previousProgress: 0.7
+        ))
+
+        XCTAssertEqual(early.index, 1)
+        XCTAssertEqual(late.index, 3)
+    }
+
     func testOfflineRouteFileStoreRoundTripsAndClearsAtomically() {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KiesDriveOfflineCacheTests-\(UUID().uuidString)", isDirectory: true)
