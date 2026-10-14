@@ -447,6 +447,20 @@ enum NavigationDeviationPolicy {
     }
 }
 
+/// Deviation detection must compare the car with the route it is supposed to
+/// drive now. Looking at the complete journey lets a later crossing, parallel
+/// motorway or return loop mask a genuine wrong turn.
+enum NavigationDeviationCorridorPolicy {
+    static let forwardStepCount = 16
+
+    static func indices(current: Int, stepCount: Int) -> Range<Int> {
+        guard stepCount > 0 else { return 0..<0 }
+        let start = min(max(0, current), stepCount - 1)
+        let end = min(stepCount, start + forwardStepCount + 1)
+        return start..<end
+    }
+}
+
 /// Failed MapKit requests must not turn a genuine deviation into a spoken
 /// recalculation loop. Successful reroutes retain the short normal cooldown;
 /// repeated failures back off while the old route remains visible.

@@ -90,6 +90,24 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testDeviationCorridorIgnoresDistantFutureCrossing() {
+        XCTAssertEqual(
+            NavigationDeviationCorridorPolicy.indices(current: 4, stepCount: 80),
+            4..<21
+        )
+        XCTAssertFalse(
+            NavigationDeviationCorridorPolicy.indices(current: 4, stepCount: 80).contains(60),
+            "A much later route crossing must not hide a current wrong turn"
+        )
+    }
+
+    func testDeviationCorridorClampsAtFinalStepAndInvalidCursor() {
+        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 78, stepCount: 80), 78..<80)
+        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 200, stepCount: 80), 79..<80)
+        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: -5, stepCount: 3), 0..<3)
+        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 0, stepCount: 0), 0..<0)
+    }
+
     func testFailedReroutesBackOffInsteadOfLooping() {
         let attemptedAt = Date(timeIntervalSince1970: 10_000)
         XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 0), 45)

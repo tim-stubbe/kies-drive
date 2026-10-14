@@ -1312,8 +1312,13 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             lastAttempt: lastRerouteAt,
             consecutiveFailures: consecutiveRerouteFailures
         ) else { return }
-        let nearest = legs.map { Self.distance(from: location.coordinate, to: $0.polyline) }.min()
-            ?? .greatestFiniteMagnitude
+        let steps = routeSteps()
+        let corridor = NavigationDeviationCorridorPolicy.indices(
+            current: navigationStepCursor, stepCount: steps.count
+        )
+        let nearest = corridor.map {
+            Self.distance(from: location.coordinate, to: steps[$0].step.polyline)
+        }.min() ?? .greatestFiniteMagnitude
         let shouldAccumulate = NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
