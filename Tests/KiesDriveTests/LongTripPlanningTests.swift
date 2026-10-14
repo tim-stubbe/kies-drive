@@ -166,6 +166,35 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
     }
 
+    func testBreakPlannerAlignsUnverifiedFuelStopInsideSafeWindow() {
+        let fuelStop = PlannedFuelStop(
+            id: "fuel-1", candidate: nil, afterDistanceMetres: 180_000,
+            routeProgress: 0.37,
+            explanation: "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
+        )
+
+        let breaks = BreakPlanner().plan(drivingTime: 5 * 3600, candidates: [],
+                                         plannedFuelStops: [fuelStop])
+
+        XCTAssertEqual(breaks.first?.routeProgress ?? 0, 0.37, accuracy: 0.001)
+        XCTAssertNil(breaks.first?.candidate)
+        XCTAssertTrue(breaks.first?.explanation.contains("Tank- und Pausenstopp") == true)
+    }
+
+    func testBreakPlannerNeverDelaysSafetyBreakForLateFuelStop() {
+        let lateFuelStop = PlannedFuelStop(
+            id: "fuel-1", candidate: nil, afterDistanceMetres: 250_000,
+            routeProgress: 0.5,
+            explanation: "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
+        )
+
+        let breaks = BreakPlanner().plan(drivingTime: 5 * 3600, candidates: [],
+                                         plannedFuelStops: [lateFuelStop])
+
+        XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
+        XCTAssertFalse(breaks.first?.explanation.contains("Tank- und Pausenstopp") == true)
+    }
+
     func testRouteSearchSamplesByDistanceInsteadOfPointDensity() {
         let clustered = (0...8).map {
             CLLocationCoordinate2D(latitude: 0, longitude: Double($0) * 0.001)
