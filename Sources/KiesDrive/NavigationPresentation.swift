@@ -32,13 +32,7 @@ struct NavigationManeuverPresentation: Equatable {
         let lower = instruction.lowercased()
         if lower.contains("kreisverkehr") || lower.contains("roundabout") { direction = .roundabout }
         else if lower.contains("wenden") || lower.contains("u-turn") { direction = .uTurn }
-        else if lower.contains("scharf rechts") { direction = .sharpRight }
-        else if lower.contains("leicht rechts") || lower.contains("rechts halten") { direction = .slightRight }
-        else if lower.contains("rechts") || lower.contains("ausfahrt") || lower.contains("exit") { direction = .right }
-        else if lower.contains("scharf links") { direction = .sharpLeft }
-        else if lower.contains("leicht links") || lower.contains("links halten") { direction = .slightLeft }
-        else if lower.contains("links") { direction = .left }
-        else { direction = .straight }
+        else { direction = Self.firstDirection(in: lower) }
 
         let pattern = #"(?i)(?:Ausfahrt|Exit)\s+([0-9]+[a-z]?)"#
         if let regex = try? NSRegularExpression(pattern: pattern),
@@ -62,11 +56,50 @@ struct NavigationManeuverPresentation: Equatable {
         if let regex = try? NSRegularExpression(pattern: destinationPattern),
            let match = regex.firstMatch(in: instruction, range: NSRange(instruction.startIndex..., in: instruction)),
            let range = Range(match.range(at: 1), in: instruction) {
-            let value = instruction[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = Self.cleanedDestination(String(instruction[range]))
             destinationLabel = value.isEmpty ? nil : value
         } else {
             destinationLabel = nil
         }
+    }
+
+    private static func firstDirection(in text: String) -> Direction {
+        if text.contains("ausfahrt links") || text.contains("exit left") { return .left }
+        if text.contains("ausfahrt rechts") || text.contains("exit right") { return .right }
+        let candidates: [(String, Direction, Int)] = [
+            ("scharf rechts", .sharpRight, 3), ("sharp right", .sharpRight, 3),
+            ("leicht rechts", .slightRight, 2), ("rechts halten", .slightRight, 2),
+            ("slight right", .slightRight, 2), ("keep right", .slightRight, 2),
+            ("rechts", .right, 1), ("turn right", .right, 1),
+            ("scharf links", .sharpLeft, 3), ("sharp left", .sharpLeft, 3),
+            ("leicht links", .slightLeft, 2), ("links halten", .slightLeft, 2),
+            ("slight left", .slightLeft, 2), ("keep left", .slightLeft, 2),
+            ("links", .left, 1), ("turn left", .left, 1),
+            ("ausfahrt", .right, 0), ("exit", .right, 0),
+        ]
+        let matches = candidates.compactMap { phrase, direction, specificity
+            -> (offset: Int, direction: Direction, specificity: Int)? in
+            guard let range = text.range(of: phrase) else { return nil }
+            return (text.distance(from: text.startIndex, to: range.lowerBound), direction, specificity)
+        }
+        return matches.min {
+            $0.offset == $1.offset ? $0.specificity > $1.specificity : $0.offset < $1.offset
+        }?.direction ?? .straight
+    }
+
+    private static func cleanedDestination(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = [
+            #"(?i)\s+auf\s+(?:die|der|den)?\s*(?:A|B|E|L|K)\s?[0-9]{1,4}[a-z]?(?:\s+fahren)?$"#,
+            #"(?i)\s+(?:nehmen|fahren|folgen|weiterfahren|abbiegen)$"#,
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            value = regex.stringByReplacingMatches(
+                in: value, range: NSRange(value.startIndex..., in: value), withTemplate: ""
+            )
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
     }
 }
 

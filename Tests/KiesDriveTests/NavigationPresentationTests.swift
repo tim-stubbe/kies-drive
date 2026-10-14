@@ -157,7 +157,27 @@ final class NavigationPresentationTests: XCTestCase {
         let presentation = NavigationManeuverPresentation("Ausfahrt 69 rechts Richtung Neufahrn nehmen")
         XCTAssertEqual(presentation.exitLabel, "Ausfahrt 69")
         XCTAssertEqual(presentation.direction, .right)
-        XCTAssertEqual(presentation.destinationLabel, "Neufahrn nehmen")
+        XCTAssertEqual(presentation.destinationLabel, "Neufahrn")
+    }
+
+    func testManeuverUsesFirstActionWhenInstructionMentionsFollowingTurn() {
+        XCTAssertEqual(
+            NavigationManeuverPresentation("Links halten, danach rechts abbiegen").direction,
+            .slightLeft
+        )
+        XCTAssertEqual(
+            NavigationManeuverPresentation("Scharf rechts, danach links").direction,
+            .sharpRight
+        )
+    }
+
+    func testDestinationSignOmitsRepeatedRoadAction() {
+        let presentation = NavigationManeuverPresentation(
+            "Ausfahrt 12 rechts Richtung Wiesbaden auf die A66"
+        )
+        XCTAssertEqual(presentation.exitLabel, "Ausfahrt 12")
+        XCTAssertEqual(presentation.roadLabel, "A66")
+        XCTAssertEqual(presentation.destinationLabel, "Wiesbaden")
     }
 
     func testFollowingRoadDefaultsToStraight() {
