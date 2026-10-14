@@ -970,6 +970,25 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineRouteIsNeverDisplayedWithoutMatchingActiveDestination() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        let cached = CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0)
+        XCTAssertFalse(OfflineRouteAvailabilityPolicy.isUsable(
+            savedAt: now, cacheName: "Altes Ziel", cacheCoordinate: cached,
+            destinationName: nil, destinationCoordinate: nil, now: now
+        ))
+        XCTAssertFalse(OfflineRouteAvailabilityPolicy.isUsable(
+            savedAt: now, cacheName: "Altes Ziel", cacheCoordinate: cached,
+            destinationName: "Neues Ziel",
+            destinationCoordinate: .init(latitude: 51, longitude: 9), now: now
+        ))
+        XCTAssertTrue(OfflineRouteAvailabilityPolicy.isUsable(
+            savedAt: now, cacheName: "Ziel", cacheCoordinate: cached,
+            destinationName: "Ziel",
+            destinationCoordinate: .init(latitude: 50.001, longitude: 8), now: now
+        ))
+    }
+
     func testRouteSearchNeverSuggestsMateriallyPassedStops() {
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateIndex: 20, currentIndex: 60,
                                                  routePointCount: 100))

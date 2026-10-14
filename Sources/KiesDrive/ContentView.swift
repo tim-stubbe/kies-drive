@@ -1251,7 +1251,7 @@ struct DriveContentView: View {
             if let error = planner.errorMessage {
                 Section {
                     Text(error).foregroundStyle(.red)
-                    if let offline = planner.offlineRoute {
+                    if let offline = planner.usableOfflineRoute {
                         offlineRouteView(offline)
                     }
                 }

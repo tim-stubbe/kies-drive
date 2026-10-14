@@ -198,8 +198,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard !legs.isEmpty else { return nil }
         return legs.reduce(MKMapRect.null) { $0.union($1.polyline.boundingMapRect) }
     }
+    var usableOfflineRoute: CachedRoute? {
+        guard let cache = offlineRoute,
+              OfflineRouteAvailabilityPolicy.isUsable(
+                savedAt: cache.savedAt,
+                cacheName: cache.destinationName,
+                cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
+                destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
+                destinationCoordinate: destination?.placemark.coordinate
+              ) else { return nil }
+        return cache
+    }
     var offlinePolylines: [MKPolyline] {
-        offlineRoute?.legs.compactMap { leg in
+        usableOfflineRoute?.legs.compactMap { leg in
             guard let values = leg.coordinates, values.count > 1 else { return nil }
             var coordinates = values.map(\.clLocationCoordinate)
             return MKPolyline(coordinates: &coordinates, count: coordinates.count)
@@ -344,11 +355,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         destination = item
         let onlineCalculationSucceeded = await calculate(from: current, settings: settings)
         let hasMatchingOfflineRoute = offlineRoute.map {
-            OfflineRouteFreshnessPolicy.isUsable(savedAt: $0.savedAt) &&
-            OfflineRouteCachePolicy.matches(
+            OfflineRouteAvailabilityPolicy.isUsable(
+                savedAt: $0.savedAt,
                 cacheName: $0.destinationName,
                 cacheCoordinate: $0.destinationCoordinate?.clLocationCoordinate,
-                destinationName: destination?.name ?? destinationText,
+                destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
                 destinationCoordinate: destination?.placemark.coordinate
             ) && $0.legs.flatMap(\.steps).contains { ($0.coordinates?.count ?? 0) > 1 }
         } ?? false
@@ -1008,11 +1019,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     private func startOfflineGuidanceIfAvailable(replacingLiveRoute: Bool = false) -> Bool {
         guard (legs.isEmpty || replacingLiveRoute), let cache = offlineRoute,
-              OfflineRouteFreshnessPolicy.isUsable(savedAt: cache.savedAt),
-              OfflineRouteCachePolicy.matches(
+              OfflineRouteAvailabilityPolicy.isUsable(
+                savedAt: cache.savedAt,
                 cacheName: cache.destinationName,
                 cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
-                destinationName: destination?.name ?? destinationText,
+                destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
                 destinationCoordinate: destination?.placemark.coordinate
               ),
               cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {

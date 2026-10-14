@@ -757,6 +757,20 @@ enum OfflineRouteFreshnessPolicy {
     }
 }
 
+enum OfflineRouteAvailabilityPolicy {
+    static func isUsable(savedAt: Date,
+                         cacheName: String, cacheCoordinate: CLLocationCoordinate2D?,
+                         destinationName: String?, destinationCoordinate: CLLocationCoordinate2D?,
+                         now: Date = Date()) -> Bool {
+        guard let destinationName else { return false }
+        return OfflineRouteFreshnessPolicy.isUsable(savedAt: savedAt, now: now) &&
+            OfflineRouteCachePolicy.matches(
+                cacheName: cacheName, cacheCoordinate: cacheCoordinate,
+                destinationName: destinationName, destinationCoordinate: destinationCoordinate
+            )
+    }
+}
+
 enum RouteSearchPolicy {
     /// Keeps a tiny tolerance for GPS jitter around the current route point,
     /// but never sends the driver materially backwards for an added stop.
