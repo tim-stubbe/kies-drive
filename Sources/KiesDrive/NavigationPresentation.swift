@@ -1159,6 +1159,28 @@ struct OfflineGuidanceStep {
     let coordinates: [CLLocationCoordinate2D]
 }
 
+enum OfflineGuidanceResumePolicy {
+    /// Converts the monotonic progress persisted by the trip lock into a safe
+    /// cached-step cursor. A small backward allowance keeps the next junction
+    /// visible when the last checkpoint was written just after crossing it,
+    /// while still preventing a restart at an old, geometrically nearby loop.
+    static func stepIndex(steps: [OfflineGuidanceStep], persistedProgress: Double?,
+                          backwardAllowance: Double = 0.015) -> Int {
+        guard !steps.isEmpty, let persistedProgress, persistedProgress.isFinite else { return 0 }
+        let distances = steps.map { max(0, $0.distance) }
+        let total = distances.reduce(0, +)
+        guard total > 0 else { return 0 }
+        let target = max(0, min(1, persistedProgress) - max(0, backwardAllowance)) * total
+        var accumulated = 0.0
+        for index in steps.indices {
+            let end = accumulated + distances[index]
+            if target <= end || index == steps.index(before: steps.endIndex) { return index }
+            accumulated = end
+        }
+        return 0
+    }
+}
+
 struct OfflineGuidanceProgress: Equatable {
     let currentStepIndex: Int
     let maneuverStepIndex: Int

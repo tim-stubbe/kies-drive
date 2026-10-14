@@ -1134,6 +1134,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         resetLiveNavigationProgress()
         errorMessage = nil
         isUsingOfflineGuidance = true
+        let cachedGuidanceSteps = cache.legs.flatMap(\.steps).compactMap { step -> OfflineGuidanceStep? in
+            guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
+            return .init(instruction: step.instructions, distance: step.distance,
+                         coordinates: coordinates.map(\.clLocationCoordinate))
+        }
+        navigationStepCursor = OfflineGuidanceResumePolicy.stepIndex(
+            steps: cachedGuidanceSteps,
+            persistedProgress: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress
+        )
         offlineNeedsInitialPositionMatch = true
         lastOfflineRecoveryAttempt = Date()
         beginNavigationSession()
@@ -1141,8 +1150,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         hasArrived = false
         remainingDistanceMetres = cache.legs.reduce(0) { $0 + $1.distance }
         remainingTravelTime = cache.legs.reduce(0) { $0 + $1.travelTime }
-        nextManeuverInstruction = cache.legs.flatMap(\.steps)
-            .first(where: { !$0.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.instructions
+        nextManeuverInstruction = cachedGuidanceSteps.dropFirst(navigationStepCursor)
+            .first(where: { !$0.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.instruction
         lastAnnouncement = "Offline-Route wiederhergestellt"
         DriveDiagnosticStore.append(.navigationStarted, detail: "Offline · \(cache.destinationName)")
         return true

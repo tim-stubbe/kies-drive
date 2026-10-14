@@ -944,6 +944,42 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertLessThan(progress.distanceFromRoute, 20)
     }
 
+    func testOfflineResumeStartsNearPersistedTripProgress() {
+        let steps = (0..<10).map { index in
+            OfflineGuidanceStep(
+                instruction: "Schritt \(index)", distance: 1_000,
+                coordinates: [
+                    .init(latitude: 50, longitude: 8 + Double(index) * 0.01),
+                    .init(latitude: 50, longitude: 8 + Double(index + 1) * 0.01),
+                ]
+            )
+        }
+
+        XCTAssertEqual(OfflineGuidanceResumePolicy.stepIndex(
+            steps: steps, persistedProgress: 0.72
+        ), 7)
+        XCTAssertEqual(OfflineGuidanceResumePolicy.stepIndex(
+            steps: steps, persistedProgress: nil
+        ), 0)
+    }
+
+    func testOfflineResumeKeepsSmallBackwardSafetyAllowance() {
+        let steps = (0..<5).map { index in
+            OfflineGuidanceStep(
+                instruction: "Schritt \(index)", distance: 1_000,
+                coordinates: [.init(latitude: 50, longitude: 8),
+                              .init(latitude: 50, longitude: 8.01)]
+            )
+        }
+
+        XCTAssertEqual(OfflineGuidanceResumePolicy.stepIndex(
+            steps: steps, persistedProgress: 0.405
+        ), 1, "A checkpoint just beyond a junction must retain the preceding guidance step")
+        XCTAssertEqual(OfflineGuidanceResumePolicy.stepIndex(
+            steps: steps, persistedProgress: 2
+        ), 4)
+    }
+
     func testOfflineGuidanceReportsDistanceFromCachedCorridor() throws {
         let steps = [
             OfflineGuidanceStep(instruction: "Geradeaus", distance: 1_000, coordinates: [
