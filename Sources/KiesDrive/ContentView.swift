@@ -11,7 +11,6 @@ struct DriveContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var settings = DriveSettings.shared
     @StateObject private var account = AccountSessionStore.shared
-    @AppStorage("drive.account.guestMode") private var guestMode = false
     @StateObject private var location = LocationService.shared
     @StateObject private var planner = RoutePlanner.shared
     @StateObject private var offlineMaps = OfflineMapPackageStore.shared
@@ -104,7 +103,7 @@ struct DriveContentView: View {
 
     private var accountOnboardingPresented: Binding<Bool> {
         Binding(get: {
-            isSimulatorAccountPreview || (account.session == nil && !guestMode && !bypassesAccountForSimulatorPreview)
+            isSimulatorAccountPreview || (account.session == nil && !bypassesAccountForSimulatorPreview)
         }, set: { _ in })
     }
 
@@ -1560,7 +1559,6 @@ struct DriveSettingsView: View {
     @StateObject private var offlineMaps = OfflineMapPackageStore.shared
     @State private var showOfflineMapImporter = false
     @State private var offlineMapImportError: String?
-    @AppStorage("drive.account.guestMode") private var guestMode = false
 
     fileprivate enum ConnectionStatus {
         case idle, testing, success, failed(String)
@@ -1573,12 +1571,8 @@ struct DriveSettingsView: View {
                     if let email = account.email {
                         LabeledContent("Angemeldet als", value: email)
                     } else {
-                        Text("Lokaler Modus: Navigation und gespeicherte Routen funktionieren ohne Konto. Live-Daten und Remotezugriff benötigen eine Anmeldung.")
+                        Text("Bitte melde dich an, um Kies Drive zu verwenden.")
                             .font(.caption).foregroundStyle(.secondary)
-                        Button("Konto anmelden oder erstellen") {
-                            guestMode = false
-                            dismiss()
-                        }
                     }
                     Button {
                         connectionStatus = .testing
@@ -1770,7 +1764,6 @@ struct DriveSettingsView: View {
                 Button("Endgültig löschen", role: .destructive) {
                     Task {
                         try? await DriveAPI.deleteAccount()
-                        guestMode = true
                         dismiss()
                     }
                 }
@@ -1865,7 +1858,7 @@ private struct AccountWelcomeView: View {
     @State private var isWorking = false
     @State private var message: String?
     @State private var isError = false
-    @AppStorage("drive.account.guestMode") private var guestMode = false
+    @State private var awaitingVerification = false
 
     var body: some View {
         ZStack {
@@ -1884,76 +1877,72 @@ private struct AccountWelcomeView: View {
                     }.foregroundStyle(.white)
 
                     VStack(spacing: 16) {
-                        Picker("Konto", selection: $mode) {
-                            ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: mode) { _, _ in
-                            needsTwoFactor = false
-                            totpCode = ""
-                            message = nil
-                        }
-
-                        #if os(iOS)
-                        TextField("E-Mail-Adresse", text: $email)
-                            .textContentType(.emailAddress).textInputAutocapitalization(.never)
-                            .keyboardType(.emailAddress)
-                        #else
-                        TextField("E-Mail-Adresse", text: $email)
-                            .textContentType(.emailAddress)
-                        #endif
-                        SecureField("Passwort (mindestens 12 Zeichen)", text: $password)
-                            .textContentType(mode == .login ? .password : .newPassword)
-                        if mode == .login && needsTwoFactor {
-                            #if os(iOS)
-                            TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
-                                .textContentType(.oneTimeCode).textInputAutocapitalization(.characters)
-                                .keyboardType(.asciiCapable)
-                            #else
-                            TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
-                                .textContentType(.oneTimeCode)
-                            #endif
-                        }
-
-                        if let message {
-                            Label(message, systemImage: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                                .font(.footnote).foregroundStyle(isError ? .red : Color.kiesForest)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        Button(action: submit) {
-                            Group {
-                                if isWorking { ProgressView().tint(.white) }
-                                else { Text(mode.rawValue).fontWeight(.semibold) }
-                            }.frame(maxWidth: .infinity).frame(height: 24)
-                        }
-                        .buttonStyle(.borderedProminent).tint(Color.kiesForest)
-                        .disabled(isWorking || email.isEmpty || password.isEmpty)
-
-                        if mode == .login {
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: 20) {
-                                    Button("Passwort vergessen?") { requestPasswordReset() }
-                                    Button("Bestätigungs-Mail erneut senden") { resendVerification() }
-                                }
-                                VStack(spacing: 12) {
-                                    Button("Passwort vergessen?") { requestPasswordReset() }
-                                    Button("Bestätigungs-Mail erneut senden") { resendVerification() }
-                                }
+                        if awaitingVerification {
+                            verificationPanel
+                        } else {
+                            Picker("Konto", selection: $mode) {
+                                ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
                             }
-                            .buttonStyle(.plain).font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.kiesForest)
-                            .disabled(isWorking || email.isEmpty)
-                        }
+                            .pickerStyle(.segmented)
+                            .onChange(of: mode) { _, _ in
+                                needsTwoFactor = false
+                                totpCode = ""
+                                message = nil
+                            }
 
-                        if mode == .register {
-                            Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Danach kannst du dich anmelden.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+                            #if os(iOS)
+                            TextField("E-Mail-Adresse", text: $email)
+                                .textContentType(.emailAddress).textInputAutocapitalization(.never)
+                                .keyboardType(.emailAddress)
+                            #else
+                            TextField("E-Mail-Adresse", text: $email)
+                                .textContentType(.emailAddress)
+                            #endif
+                            SecureField("Passwort (mindestens 12 Zeichen)", text: $password)
+                                .textContentType(mode == .login ? .password : .newPassword)
+                            if mode == .login && needsTwoFactor {
+                                #if os(iOS)
+                                TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
+                                    .textContentType(.oneTimeCode).textInputAutocapitalization(.characters)
+                                    .keyboardType(.asciiCapable)
+                                #else
+                                TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
+                                    .textContentType(.oneTimeCode)
+                                #endif
+                            }
 
-                        Button("Ohne Konto lokal fortfahren") { guestMode = true }
-                            .buttonStyle(.plain).font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.kiesForest)
+                            statusMessage
+
+                            Button(action: submit) {
+                                Group {
+                                    if isWorking { ProgressView().tint(.white) }
+                                    else { Text(mode.rawValue).fontWeight(.semibold) }
+                                }.frame(maxWidth: .infinity).frame(height: 24)
+                            }
+                            .buttonStyle(.borderedProminent).tint(Color.kiesForest)
+                            .disabled(isWorking || email.isEmpty || password.isEmpty)
+
+                            if mode == .login {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 20) {
+                                        Button("Passwort vergessen?") { requestPasswordReset() }
+                                        Button("Bestätigungs-Mail erneut senden") { resendVerification() }
+                                    }
+                                    VStack(spacing: 12) {
+                                        Button("Passwort vergessen?") { requestPasswordReset() }
+                                        Button("Bestätigungs-Mail erneut senden") { resendVerification() }
+                                    }
+                                }
+                                .buttonStyle(.plain).font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.kiesForest)
+                                .disabled(isWorking || email.isEmpty)
+                            }
+
+                            if mode == .register {
+                                Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Danach kannst du dich anmelden.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .textFieldStyle(.roundedBorder)
                     .padding(22)
@@ -1967,6 +1956,41 @@ private struct AccountWelcomeView: View {
         .interactiveDismissDisabled()
     }
 
+    @ViewBuilder private var statusMessage: some View {
+        if let message {
+            Label(message, systemImage: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .font(.footnote).foregroundStyle(isError ? .red : Color.kiesForest)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var verificationPanel: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "envelope.badge.shield.half.filled")
+                .font(.system(size: 42)).foregroundStyle(Color.kiesBrass)
+            Text("Bestätige deine E-Mail").font(.title3.bold())
+            Text("Wir haben einen sicheren Bestätigungslink an **\(email)** gesendet. Öffne ihn und kehre danach hierher zurück.")
+                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            statusMessage
+            Button("Ich habe die E-Mail bestätigt") {
+                awaitingVerification = false
+                mode = .login
+                message = nil
+            }
+            .buttonStyle(.borderedProminent).tint(Color.kiesForest)
+            Button("E-Mail erneut senden") { resendVerification() }
+                .buttonStyle(.plain).font(.footnote.weight(.semibold))
+                .disabled(isWorking)
+            Button("Andere E-Mail-Adresse verwenden") {
+                awaitingVerification = false
+                mode = .register
+                password = ""
+                message = nil
+            }
+            .buttonStyle(.plain).font(.footnote)
+        }
+    }
+
     private func submit() {
         isWorking = true
         message = nil
@@ -1974,9 +1998,9 @@ private struct AccountWelcomeView: View {
             do {
                 if mode == .register {
                     try await DriveAPI.register(email: email, password: password)
-                    message = "E-Mail ist unterwegs. Bitte bestätige sie und melde dich danach an."
+                    message = nil
                     isError = false
-                    mode = .login
+                    awaitingVerification = true
                     password = ""
                 } else {
                     _ = try await DriveAPI.login(email: email, password: password, totpCode: totpCode)

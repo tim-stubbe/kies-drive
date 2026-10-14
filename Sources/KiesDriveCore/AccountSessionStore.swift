@@ -18,6 +18,7 @@ public final class AccountSessionStore: ObservableObject {
         email = Self.load(account: emailAccount, service: service)
         // Remove the retired manually provisioned device credential.
         Self.delete(account: "active-device-token", service: "app.kies.drive.device-token")
+        UserDefaults.standard.removeObject(forKey: "drive.account.guestMode")
     }
 
     public func signIn(session: String, email: String) {
@@ -25,7 +26,6 @@ public final class AccountSessionStore: ObservableObject {
         Self.save(email, account: emailAccount, service: service)
         self.session = session
         self.email = email
-        UserDefaults.standard.set(false, forKey: "drive.account.guestMode")
     }
 
     public func signOut() {
