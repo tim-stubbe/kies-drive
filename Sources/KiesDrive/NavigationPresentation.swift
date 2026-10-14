@@ -468,6 +468,22 @@ enum NavigationEstimatePolicy {
     }
 }
 
+enum RouteRemainingTimePolicy {
+    /// Preserves MapKit's per-leg traffic/road characteristics. A slow pass
+    /// followed by a fast motorway must not inherit one whole-trip average.
+    static func estimate(currentLegRemainingDistance: Double,
+                         currentLegDistance: Double,
+                         currentLegTravelTime: TimeInterval,
+                         followingLegTravelTimes: [TimeInterval]) -> TimeInterval? {
+        guard currentLegRemainingDistance.isFinite,
+              currentLegDistance.isFinite, currentLegDistance > 0,
+              currentLegTravelTime.isFinite, currentLegTravelTime >= 0 else { return nil }
+        let fraction = min(1, max(0, currentLegRemainingDistance / currentLegDistance))
+        let following = followingLegTravelTimes.filter { $0.isFinite && $0 > 0 }.reduce(0, +)
+        return currentLegTravelTime * fraction + following
+    }
+}
+
 enum NavigationDeviationPolicy {
     static let requiredConsecutiveFixes = 3
 

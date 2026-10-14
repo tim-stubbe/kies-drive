@@ -1103,6 +1103,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let maneuverFlatIndex: Int
         let distance: CLLocationDistance
         let totalRemainingDistance: CLLocationDistance
+        let totalRemainingTravelTime: TimeInterval
         let upcomingInstructions: [String]
         let followingManeuverDistance: CLLocationDistance?
     }
@@ -1194,9 +1195,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         )
         let currentIndex = navigationStepCursor
 
-        let routeRemaining = max(0, Self.remainingDistance(from: location.coordinate,
-                                                            on: steps[currentIndex].step.polyline)
+        let currentStepRemaining = Self.remainingDistance(
+            from: location.coordinate, on: steps[currentIndex].step.polyline
+        )
+        let routeRemaining = max(0, currentStepRemaining
             + steps.dropFirst(currentIndex + 1).reduce(0) { $0 + $1.step.distance })
+        let routeRemainingTime = estimatedRemainingTravelTime(
+            currentIndex: currentIndex, currentStepRemaining: currentStepRemaining,
+            steps: steps, totalRemainingDistance: routeRemaining
+        )
 
         guard let maneuverIndex = steps.indices.dropFirst(currentIndex + 1).first(where: {
             !steps[$0].step.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1208,8 +1215,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             nextManeuverDistance = routeRemaining
             upcomingManeuverInstructions = ["Dem Straßenverlauf bis zum Ziel folgen"]
             remainingDistanceMetres = routeRemaining
-            let averageMetresPerSecond = totalDistance / max(totalTravelTime, 1)
-            remainingTravelTime = routeRemaining / max(averageMetresPerSecond, 1)
+            remainingTravelTime = routeRemainingTime
             return nil
         }
 
@@ -1235,6 +1241,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             maneuver: steps[maneuverIndex], maneuverFlatIndex: maneuverIndex,
             distance: max(0, distance),
             totalRemainingDistance: routeRemaining,
+            totalRemainingTravelTime: routeRemainingTime,
             upcomingInstructions: Array(upcoming.prefix(5)),
             followingManeuverDistance: followingDistance
         )
@@ -1251,8 +1258,32 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         nextManeuverDistance = progress.distance
         upcomingManeuverInstructions = progress.upcomingInstructions
         remainingDistanceMetres = progress.totalRemainingDistance
-        let averageMetresPerSecond = totalDistance / max(totalTravelTime, 1)
-        remainingTravelTime = progress.totalRemainingDistance / max(averageMetresPerSecond, 1)
+        remainingTravelTime = progress.totalRemainingTravelTime
+    }
+
+    private func estimatedRemainingTravelTime(currentIndex: Int,
+                                              currentStepRemaining: CLLocationDistance,
+                                              steps: [LiveRouteStep],
+                                              totalRemainingDistance: CLLocationDistance) -> TimeInterval {
+        guard let current = steps[safe: currentIndex],
+              let leg = legs[safe: current.legIndex] else {
+            let average = totalDistance / max(totalTravelTime, 1)
+            return totalRemainingDistance / max(average, 1)
+        }
+        let remainingInCurrentLeg = max(0, currentStepRemaining + steps.dropFirst(currentIndex + 1)
+            .prefix { $0.legIndex == current.legIndex }
+            .reduce(0) { $0 + $1.step.distance })
+        let followingTimes = legs.dropFirst(current.legIndex + 1).map(\.expectedTravelTime)
+        if let estimate = RouteRemainingTimePolicy.estimate(
+            currentLegRemainingDistance: remainingInCurrentLeg,
+            currentLegDistance: leg.distance,
+            currentLegTravelTime: leg.expectedTravelTime,
+            followingLegTravelTimes: followingTimes
+        ) {
+            return estimate
+        }
+        let average = totalDistance / max(totalTravelTime, 1)
+        return totalRemainingDistance / max(average, 1)
     }
 
     private func markReachedWaypoints(at location: CLLocation, settings: DriveSettings) {

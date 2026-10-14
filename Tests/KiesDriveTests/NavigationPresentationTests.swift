@@ -3,6 +3,34 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testRemainingTimePreservesPerLegTravelCharacteristics() throws {
+        let estimate = try XCTUnwrap(RouteRemainingTimePolicy.estimate(
+            currentLegRemainingDistance: 25_000,
+            currentLegDistance: 100_000,
+            currentLegTravelTime: 2 * 3600,
+            followingLegTravelTimes: [3600]
+        ))
+
+        XCTAssertEqual(estimate, 1.5 * 3600, accuracy: 1)
+    }
+
+    func testRemainingTimeClampsProgressAndRejectsInvalidLegs() throws {
+        let estimate = try XCTUnwrap(RouteRemainingTimePolicy.estimate(
+            currentLegRemainingDistance: 120_000,
+            currentLegDistance: 100_000,
+            currentLegTravelTime: 3600,
+            followingLegTravelTimes: [1800, .nan, -20]
+        ))
+
+        XCTAssertEqual(estimate, 5400, accuracy: 1)
+        XCTAssertNil(RouteRemainingTimePolicy.estimate(
+            currentLegRemainingDistance: 1,
+            currentLegDistance: 0,
+            currentLegTravelTime: 10,
+            followingLegTravelTimes: [20]
+        ))
+    }
+
     func testManagedServerURLUsesProductionHTTPSConfiguration() {
         XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
             DriveSettings.serverURLInfoKey: " https://drive.example.test/ "
