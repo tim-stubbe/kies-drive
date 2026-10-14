@@ -405,9 +405,9 @@ struct PlannedFuelStop: Identifiable, Equatable {
 }
 
 struct FuelStopPlanner {
-    /// Assumes departure with a full tank and reserves the profile's unusable
-    /// fraction. Stops are placed before the reserve, never at the theoretical
-    /// last kilometre of the tank.
+    /// Respects the configured departure level and reserves the profile's
+    /// unusable fraction. Stops are placed before the reserve, never at the
+    /// theoretical last kilometre of the tank.
     func plan(distanceMetres: Double, consumptionLPer100km: Double,
               vehicle: VehicleProfile, candidates: [BreakCandidate]) -> [PlannedFuelStop] {
         guard distanceMetres > 0, consumptionLPer100km > 0,
@@ -424,6 +424,14 @@ struct FuelStopPlanner {
         var lastStopDistance = 0.0
         var currentSafeRange = departureSafeRange
         var result: [PlannedFuelStop] = []
+        if departureSafeRange <= 0 {
+            result.append(.init(
+                id: "fuel-1", candidate: nil,
+                afterDistanceMetres: 0, routeProgress: 0,
+                explanation: "Tankstand liegt auf der Sicherheitsreserve · vor Abfahrt tanken."
+            ))
+            currentSafeRange = fullSafeRange
+        }
         // Each leg is checked from the actual previous stop, not from a fixed
         // whole-trip grid. This prevents a slightly late first station from
         // making the following leg silently exceed the safe tank range.

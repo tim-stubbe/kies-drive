@@ -59,6 +59,29 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testFuelPlannerContinuesAfterMandatoryDepartureRefuel() {
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10,
+            fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50,
+            usableTankFraction: 0.8,
+            initialFuelFraction: 0.1
+        )
+
+        let stops = FuelStopPlanner().plan(
+            distanceMetres: 900_000,
+            consumptionLPer100km: 10,
+            vehicle: vehicle,
+            candidates: []
+        )
+
+        XCTAssertGreaterThan(stops.count, 1, "The remainder must still be planned after refuelling at departure")
+        XCTAssertEqual(stops.first?.afterDistanceMetres, 0)
+        XCTAssertEqual(stops.first?.routeProgress, 0)
+        XCTAssertTrue(stops.first?.explanation.contains("vor Abfahrt tanken") == true)
+        XCTAssertTrue(stops.dropFirst().allSatisfy { $0.afterDistanceMetres > 0 })
+    }
+
     func testTollLookupCacheOnlyReusesSameNearbyTrip() {
         let loadedAt = Date(timeIntervalSince1970: 10_000)
         let snapshot = TollLookupSnapshot(
