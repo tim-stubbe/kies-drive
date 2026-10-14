@@ -240,6 +240,21 @@ struct NavigationInitialManeuver: Equatable {
     let followingManeuverDistance: CLLocationDistance?
 }
 
+enum CarPlayGuidancePresentationPolicy {
+    /// CarPlay maneuver objects are expensive presentation state. Rebuild
+    /// them only from real route instructions; transient spoken status text
+    /// such as "Route wird neu berechnet" must never become a turn card.
+    static func instructions(upcoming: [String], next: String?) -> [String] {
+        let cleanedUpcoming = upcoming.compactMap { value -> String? in
+            let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return cleaned.isEmpty ? nil : cleaned
+        }
+        if !cleanedUpcoming.isEmpty { return Array(cleanedUpcoming.prefix(3)) }
+        let cleanedNext = next?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return [cleanedNext.isEmpty ? "Route folgen" : cleanedNext]
+    }
+}
+
 /// Builds the first guidance card directly from a newly committed route.
 /// This is deliberately independent of the previous GPS cursor so changing a
 /// destination or completing a reroute can never briefly publish or speak an

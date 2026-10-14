@@ -95,9 +95,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func observeDriveState() {
         let planner = RoutePlanner.shared
-        Publishers.CombineLatest4(planner.$legs, planner.$destination, planner.$isNavigating, planner.$lastAnnouncement)
+        Publishers.CombineLatest3(planner.$legs, planner.$destination, planner.$isNavigating)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _, _, isNavigating, _ in
+            .sink { [weak self] _, _, isNavigating in
                 // CarPlay can own the only visible scene. Do not rely on the
                 // phone SwiftUI view to switch Core Location into navigation
                 // accuracy/background mode when a trip starts in the car.
@@ -107,12 +107,23 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest3(planner.$nextManeuverInstruction,
-                                  planner.$nextManeuverDistance,
-                                  planner.$upcomingManeuverInstructions)
+        Publishers.CombineLatest(
+            planner.$nextManeuverInstruction.removeDuplicates(),
+            planner.$upcomingManeuverInstructions.removeDuplicates()
+        )
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _, _, _ in
+            .sink { [weak self] _, _ in
                 self?.publishManeuver()
+                self?.updateGuidanceEstimates()
+            }
+            .store(in: &cancellables)
+
+        planner.$nextManeuverDistance
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Distance changes every GPS fix. Update estimates in place;
+                // replacing CPManeuver objects here causes visible flicker and
+                // can briefly remove the instruction at busy junctions.
                 self?.updateGuidanceEstimates()
             }
             .store(in: &cancellables)
@@ -541,9 +552,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func publishManeuver() {
         guard let session = navigationSession else { return }
         let planner = RoutePlanner.shared
-        let instructions = planner.upcomingManeuverInstructions.isEmpty
-            ? [planner.nextInstruction ?? planner.lastAnnouncement ?? "Route folgen"]
-            : Array(planner.upcomingManeuverInstructions.prefix(3))
+        let instructions = CarPlayGuidancePresentationPolicy.instructions(
+            upcoming: planner.upcomingManeuverInstructions,
+            next: planner.nextInstruction
+        )
         session.upcomingManeuvers = instructions.enumerated().map { index, instruction in
             let maneuver = CPManeuver()
             maneuver.instructionVariants = [instruction]

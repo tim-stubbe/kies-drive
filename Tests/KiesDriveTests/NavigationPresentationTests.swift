@@ -374,6 +374,19 @@ final class NavigationPresentationTests: XCTestCase {
         ]))
     }
 
+    func testCarPlayGuidanceUsesOnlyRealRouteInstructions() {
+        XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
+            upcoming: [" Rechts abbiegen ", "", "Links halten", "Ausfahrt nehmen"],
+            next: "Ignorierter alter Hinweis"
+        ), ["Rechts abbiegen", "Links halten", "Ausfahrt nehmen"])
+        XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
+            upcoming: [], next: " Geradeaus fahren "
+        ), ["Geradeaus fahren"])
+        XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
+            upcoming: ["  "], next: nil
+        ), ["Route folgen"])
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .now)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)
