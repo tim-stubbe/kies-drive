@@ -22,6 +22,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
     private var carPlaySearchGeneration = UUID()
     private var activeCarPlaySearch: MKLocalSearch?
+    private var hasShownLocationAccessAlert = false
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -88,6 +89,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeCarPlaySearch?.cancel()
         activeCarPlaySearch = nil
         carPlaySearchResults = [:]
+        hasShownLocationAccessAlert = false
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
@@ -122,6 +124,20 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 self?.updateCamera(for: location)
                 self?.updateGuidanceEstimates()
                 self?.restoreLockedTripIfNeeded(at: location)
+            }
+            .store(in: &cancellables)
+
+        LocationService.shared.$authorization
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] authorization in
+                guard let self,
+                      NavigationLocationAuthorizationPolicy.requiresSystemSettings(authorization),
+                      !self.hasShownLocationAccessAlert else { return }
+                self.hasShownLocationAccessAlert = true
+                self.showFailure(
+                    "Standortzugriff fehlt. Bitte aktiviere ihn in den iPhone-Einstellungen für Kies Drive."
+                )
             }
             .store(in: &cancellables)
     }
