@@ -648,12 +648,18 @@ enum NavigationDeviationPolicy {
 /// drive now. Looking at the complete journey lets a later crossing, parallel
 /// motorway or return loop mask a genuine wrong turn.
 enum NavigationDeviationCorridorPolicy {
+    /// Keeps a tiny amount of the route behind the cursor in scope. Map
+    /// matching can briefly advance the cursor at motorway junctions or after
+    /// receiving a batched location update; excluding the road the car is
+    /// actually still on would otherwise trigger a false reroute.
+    static let backwardStepCount = 2
     static let forwardStepCount = 16
 
     static func indices(current: Int, stepCount: Int) -> Range<Int> {
         guard stepCount > 0 else { return 0..<0 }
-        let start = min(max(0, current), stepCount - 1)
-        let end = min(stepCount, start + forwardStepCount + 1)
+        let cursor = min(max(0, current), stepCount - 1)
+        let start = max(0, cursor - backwardStepCount)
+        let end = min(stepCount, cursor + forwardStepCount + 1)
         return start..<end
     }
 }

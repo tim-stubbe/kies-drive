@@ -184,7 +184,15 @@ final class NavigationPresentationTests: XCTestCase {
     func testDeviationCorridorIgnoresDistantFutureCrossing() {
         XCTAssertEqual(
             NavigationDeviationCorridorPolicy.indices(current: 4, stepCount: 80),
-            4..<21
+            2..<21
+        )
+        XCTAssertTrue(
+            NavigationDeviationCorridorPolicy.indices(current: 4, stepCount: 80).contains(3),
+            "A briefly advanced manoeuvre cursor must still include the road immediately behind it"
+        )
+        XCTAssertFalse(
+            NavigationDeviationCorridorPolicy.indices(current: 4, stepCount: 80).contains(0),
+            "Old route sections must not mask a genuine deviation"
         )
         XCTAssertFalse(
             NavigationDeviationCorridorPolicy.indices(current: 4, stepCount: 80).contains(60),
@@ -193,8 +201,8 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testDeviationCorridorClampsAtFinalStepAndInvalidCursor() {
-        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 78, stepCount: 80), 78..<80)
-        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 200, stepCount: 80), 79..<80)
+        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 78, stepCount: 80), 76..<80)
+        XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 200, stepCount: 80), 77..<80)
         XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: -5, stepCount: 3), 0..<3)
         XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 0, stepCount: 0), 0..<0)
     }
