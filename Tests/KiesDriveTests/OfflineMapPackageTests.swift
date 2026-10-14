@@ -82,6 +82,15 @@ final class OfflineMapPackageTests: XCTestCase {
         ))
     }
 
+    func testXYZTileCoordinatesStayInsideZoomGrid() {
+        XCTAssertTrue(OfflineTileCoordinatePolicy.isValid(z: 8, x: 132, y: 87))
+        XCTAssertTrue(OfflineTileCoordinatePolicy.isValid(z: 0, x: 0, y: 0))
+        XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 8, x: 256, y: 87))
+        XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 8, x: 132, y: 256))
+        XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 8, x: -1, y: 87))
+        XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 23, x: 0, y: 0))
+    }
+
     private func validPNG() -> Data {
         Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
     }

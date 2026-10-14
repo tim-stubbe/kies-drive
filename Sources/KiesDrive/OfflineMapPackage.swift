@@ -36,6 +36,14 @@ enum OfflineMapCoveragePolicy {
     }
 }
 
+enum OfflineTileCoordinatePolicy {
+    static func isValid(z: Int, x: Int, y: Int) -> Bool {
+        guard (0...22).contains(z), x >= 0, y >= 0 else { return false }
+        let axisTileCount = 1 << z
+        return x < axisTileCount && y < axisTileCount
+    }
+}
+
 struct OfflineMapManifest: Codable, Identifiable, Equatable {
     static let supportedFormat = "raster-xyz-v1"
 
@@ -148,7 +156,7 @@ final class OfflineMapPackageStore: ObservableObject {
 
     func tileURL(z: Int, x: Int, y: Int, package: InstalledOfflineMapPackage) -> URL? {
         guard z >= package.manifest.minimumZoom, z <= package.manifest.maximumZoom,
-              x >= 0, y >= 0 else { return nil }
+              OfflineTileCoordinatePolicy.isValid(z: z, x: x, y: y) else { return nil }
         let url = package.directoryURL
             .appendingPathComponent("tiles", isDirectory: true)
             .appendingPathComponent(String(z), isDirectory: true)
@@ -197,7 +205,8 @@ final class OfflineMapPackageStore: ObservableObject {
                   let zoom = Int(relative[relative.startIndex]),
                   let x = Int(relative[relative.index(after: relative.startIndex)]),
                   let y = Int(tileURL.deletingPathExtension().lastPathComponent),
-                  (manifest.minimumZoom...manifest.maximumZoom).contains(zoom), x >= 0, y >= 0,
+                  (manifest.minimumZoom...manifest.maximumZoom).contains(zoom),
+                  OfflineTileCoordinatePolicy.isValid(z: zoom, x: x, y: y),
                   let data = try? Data(contentsOf: tileURL, options: .mappedIfSafe),
                   data.count > pngSignature.count, data.prefix(pngSignature.count) == pngSignature else { continue }
             return true
