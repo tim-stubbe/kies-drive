@@ -456,16 +456,52 @@ def explicit_toll_amount(text: str) -> float | None:
 
 
 def toll_source_matches_route(text: str, destination: str, via: list[str]) -> bool:
-    """Reject a labelled price that is clearly about some unrelated route."""
+    """Require the destination and every mandatory via point in the evidence."""
     haystack = text.casefold()
-    route_labels = [destination, *via]
-    tokens = {
-        token.casefold()
-        for label in route_labels
-        for token in re.findall(r"[\wÀ-ÿ-]{4,}", label)
-        if not token.isdigit()
-    }
-    return bool(tokens) and any(token in haystack for token in tokens)
+    groups = [
+        {
+            token.casefold()
+            for token in re.findall(r"[\wÀ-ÿ-]{4,}", label)
+            if not token.isdigit()
+        }
+        for label in [destination, *via]
+    ]
+    return bool(groups) and all(group and any(token in haystack for token in group)
+                                for group in groups)
+
+
+OFFICIAL_TOLL_HOSTS = ("asfinag.at", "dars.si", "hac.hr", "autostrade.it",
+                       "vinci-autoroutes.com")
+
+
+def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
+                           via: list[str]) -> tuple[float, str, str] | None:
+    """Accept one official source or two independent corroborating domains."""
+    evidence: list[tuple[float, str, str, bool]] = []
+    for source in sources:
+        source_text = f"{source['title']} {source['snippet']}"
+        amount = explicit_toll_amount(source_text)
+        parsed = urlparse(source["url"])
+        host = (parsed.hostname or "").lower()
+        if (amount is None or parsed.scheme != "https" or not host
+                or not toll_source_matches_route(source_text, destination, via)):
+            continue
+        official = any(host == domain or host.endswith(f".{domain}")
+                       for domain in OFFICIAL_TOLL_HOSTS)
+        evidence.append((amount, host, source["title"], official))
+    if official := next((item for item in evidence if item[3]), None):
+        return official[0], official[2], next(
+            source["url"] for source in sources if source["title"] == official[2]
+        )
+    for amount, _, _, _ in evidence:
+        corroborating = [item for item in evidence if abs(item[0] - amount) <= 0.01]
+        if len({item[1] for item in corroborating}) >= 2:
+            titles = " + ".join(dict.fromkeys(item[2] for item in corroborating))[:300]
+            first_title = corroborating[0][2]
+            return amount, titles, next(
+                source["url"] for source in sources if source["title"] == first_title
+            )
+    return None
 
 
 @app.post("/api/navigation/toll-search")
@@ -495,13 +531,10 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
         "url": str(item.get("url") or "")[:2_000],
         "snippet": str(item.get("content") or item.get("snippet") or "")[:1_000],
     } for item in results[:5] if isinstance(item, dict)]
-    for source in sources:
-        amount = explicit_toll_amount(f"{source['title']} {source['snippet']}")
-        source_text = f"{source['title']} {source['snippet']}"
-        if (amount is not None and source["url"].startswith("https://")
-                and toll_source_matches_route(source_text, destination, via)):
-            return {"status": "known", "amount": amount, "currency": "EUR",
-                    "source": source["title"], "source_url": source["url"], "sources": sources}
+    if evidence := verified_toll_evidence(sources, destination, via):
+        amount, source_name, source_url = evidence
+        return {"status": "known", "amount": amount, "currency": "EUR",
+                "source": source_name, "source_url": source_url, "sources": sources}
     return {"status": "unknown", "amount": None, "currency": "EUR",
             "source": "SearXNG", "source_url": None, "sources": sources}
 

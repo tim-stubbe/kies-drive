@@ -20,12 +20,31 @@ def test_toll_source_must_match_destination_or_required_via_point():
     assert main.toll_source_matches_route(
         "Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass", "Hochheim am Main", ["Wurzenpass"]
     )
-    assert main.toll_source_matches_route(
+    assert not main.toll_source_matches_route(
         "Wurzenpass Mautkosten: 27,40 EUR", "Hochheim am Main", ["Wurzenpass"]
     )
     assert not main.toll_source_matches_route(
         "Paris nach Lyon Mautkosten: 27,40 EUR", "Hochheim am Main", ["Wurzenpass"]
     )
+
+
+def test_toll_evidence_requires_official_or_independent_corroboration():
+    route_text = "Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
+    unofficial = {"title": route_text, "snippet": "", "url": "https://blog.example/trip"}
+    assert main.verified_toll_evidence([unofficial], "Hochheim am Main", ["Wurzenpass"]) is None
+
+    second = {"title": "Mautkosten: 27,40 EUR Hochheim via Wurzenpass",
+              "snippet": "", "url": "https://calculator.example/route"}
+    evidence = main.verified_toll_evidence(
+        [unofficial, second], "Hochheim am Main", ["Wurzenpass"]
+    )
+    assert evidence is not None
+    assert evidence[0] == 27.4
+
+    official = {"title": route_text, "snippet": "", "url": "https://shop.asfinag.at/route"}
+    assert main.verified_toll_evidence(
+        [official], "Hochheim am Main", ["Wurzenpass"]
+    )[0] == 27.4
 
 
 def test_verification_email_can_be_resent_without_account_disclosure(tmp_path, monkeypatch):
