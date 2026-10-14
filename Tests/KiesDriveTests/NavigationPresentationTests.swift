@@ -1085,4 +1085,38 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertNil(RouteSearchPolicy.estimatedDetour(airDistance: .infinity))
         XCTAssertNil(RouteSearchPolicy.estimatedDetour(airDistance: -1))
     }
+
+    func testRouteSearchCompletionPublishesOnlyForCurrentGeometryAndQuery() {
+        let request = UUID()
+        let route = UUID()
+        XCTAssertEqual(RouteSearchCompletionPolicy.disposition(
+            request: request, currentRequest: request,
+            routeGeneration: route, currentRouteGeneration: route,
+            query: "McDonald’s", currentQuery: "McDonald’s"
+        ), .publish)
+    }
+
+    func testRouteSearchCompletionFinishesSpinnerWhenOwnedSearchBecomesStale() {
+        let request = UUID()
+        XCTAssertEqual(RouteSearchCompletionPolicy.disposition(
+            request: request, currentRequest: request,
+            routeGeneration: UUID(), currentRouteGeneration: UUID(),
+            query: "Tankstelle", currentQuery: "Tankstelle"
+        ), .discardAndFinish)
+        let route = UUID()
+        XCTAssertEqual(RouteSearchCompletionPolicy.disposition(
+            request: request, currentRequest: request,
+            routeGeneration: route, currentRouteGeneration: route,
+            query: "Tankstelle", currentQuery: "Raststätte"
+        ), .discardAndFinish)
+    }
+
+    func testOlderRouteSearchCannotFinishNewerSearchState() {
+        let route = UUID()
+        XCTAssertEqual(RouteSearchCompletionPolicy.disposition(
+            request: UUID(), currentRequest: UUID(),
+            routeGeneration: route, currentRouteGeneration: route,
+            query: "Essen", currentQuery: "Essen"
+        ), .superseded)
+    }
 }

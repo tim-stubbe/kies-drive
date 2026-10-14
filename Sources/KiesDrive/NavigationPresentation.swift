@@ -873,6 +873,28 @@ enum RouteSearchPolicy {
     }
 }
 
+enum RouteSearchCompletionDisposition: Equatable {
+    case publish
+    case discardAndFinish
+    case superseded
+}
+
+enum RouteSearchCompletionPolicy {
+    /// A newer search owns all visible state and must never be modified by an
+    /// older completion. If only the route or edited query changed, this
+    /// request still owns the spinner and has to finish it without publishing
+    /// results calculated for stale geometry or text.
+    static func disposition(request: UUID, currentRequest: UUID,
+                            routeGeneration: UUID, currentRouteGeneration: UUID,
+                            query: String, currentQuery: String)
+        -> RouteSearchCompletionDisposition {
+        guard request == currentRequest else { return .superseded }
+        guard routeGeneration == currentRouteGeneration,
+              query == currentQuery else { return .discardAndFinish }
+        return .publish
+    }
+}
+
 struct OfflineGuidanceStep {
     let instruction: String
     let distance: CLLocationDistance

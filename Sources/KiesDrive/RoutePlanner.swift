@@ -563,9 +563,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 }
             }
         }
-        guard generation == routeSearchGeneration,
-              routeGeneration == routeCalculationGeneration,
-              routeSearchQuery == cleanQuery else { return }
+        switch RouteSearchCompletionPolicy.disposition(
+            request: generation, currentRequest: routeSearchGeneration,
+            routeGeneration: routeGeneration, currentRouteGeneration: routeCalculationGeneration,
+            query: cleanQuery, currentQuery: routeSearchQuery
+        ) {
+        case .publish:
+            break
+        case .discardAndFinish:
+            finishRouteSearch(generation: generation, clearResults: true)
+            return
+        case .superseded:
+            return
+        }
         activeRouteSearches = []
         let candidates = matches.values.compactMap {
             item -> (item: MKMapItem, progress: Double, airDistance: Double,
@@ -611,14 +621,32 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 if let result { routed.append(result) }
             }
         }
-        guard generation == routeSearchGeneration,
-              routeGeneration == routeCalculationGeneration,
-              routeSearchQuery == cleanQuery else { return }
+        switch RouteSearchCompletionPolicy.disposition(
+            request: generation, currentRequest: routeSearchGeneration,
+            routeGeneration: routeGeneration, currentRouteGeneration: routeCalculationGeneration,
+            query: cleanQuery, currentQuery: routeSearchQuery
+        ) {
+        case .publish:
+            break
+        case .discardAndFinish:
+            finishRouteSearch(generation: generation, clearResults: true)
+            return
+        case .superseded:
+            return
+        }
         routeSearchResults = routed.sorted {
             $0.routeProgress == $1.routeProgress
                 ? $0.detourMetres < $1.detourMetres
                 : $0.routeProgress < $1.routeProgress
         }
+        isSearchingAlongRoute = false
+    }
+
+    private func finishRouteSearch(generation: UUID, clearResults: Bool) {
+        guard generation == routeSearchGeneration else { return }
+        activeRouteSearches.forEach { $0.cancel() }
+        activeRouteSearches = []
+        if clearResults { routeSearchResults = [] }
         isSearchingAlongRoute = false
     }
 
