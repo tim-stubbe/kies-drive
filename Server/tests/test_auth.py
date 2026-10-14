@@ -16,6 +16,12 @@ def test_toll_amount_parser_accepts_only_explicit_total():
     assert main.explicit_toll_amount("Mautkosten: 99999 EUR") is None
 
 
+def test_no_toll_parser_requires_complete_route_statement():
+    assert main.explicit_no_toll("Die gesamte Route ist mautfrei")
+    assert main.explicit_no_toll("Gesamtmaut: 0,00 EUR")
+    assert not main.explicit_no_toll("Dieser kurze Abschnitt ist mautfrei")
+
+
 def test_toll_source_must_match_destination_or_required_via_point():
     assert main.toll_source_matches_route(
         "Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass", "Hochheim am Main", ["Wurzenpass"]
@@ -45,6 +51,16 @@ def test_toll_evidence_requires_official_or_independent_corroboration():
     assert main.verified_toll_evidence(
         [official], "Hochheim am Main", ["Wurzenpass"]
     )[0] == 27.4
+
+
+def test_no_toll_evidence_requires_official_or_two_independent_sources():
+    text = "Hochheim über Wurzenpass: gesamte Route mautfrei"
+    one = {"title": text, "snippet": "", "url": "https://blog.example/trip"}
+    assert main.verified_no_toll_evidence([one], "Hochheim am Main", ["Wurzenpass"]) is None
+    two = {"title": text, "snippet": "", "url": "https://routes.example/trip"}
+    assert main.verified_no_toll_evidence(
+        [one, two], "Hochheim am Main", ["Wurzenpass"]
+    ) is not None
 
 
 def test_verification_email_can_be_resent_without_account_disclosure(tmp_path, monkeypatch):

@@ -233,8 +233,11 @@ enum DriveAPI {
         return try JSONDecoder().decode(SpeedLimitEnvelope.self, from: payload).limits
     }
 
-    static func tollCost(origin: String, destination: String, via: [String] = []) async throws -> TollCost {
-        let body = try JSONEncoder().encode(TollSearchRequest(origin: origin, destination: destination, via: via))
+    static func tollCost(origin: String, destination: String, via: [String] = [],
+                         avoidTolls: Bool = false) async throws -> TollCost {
+        let body = try JSONEncoder().encode(TollSearchRequest(
+            origin: origin, destination: destination, via: via, avoidTolls: avoidTolls
+        ))
         let payload = try await data(for: try request(path: "/api/navigation/toll-search", method: "POST", body: body))
         let result = try JSONDecoder().decode(TollSearchResponse.self, from: payload)
         if let evidence = TollEvidenceValidator.validate(
@@ -242,6 +245,11 @@ enum DriveAPI {
             source: result.source, sourceURL: result.sourceURL
         ) {
             return .known(amount: Decimal(evidence.amount), currency: evidence.currency, source: evidence.source)
+        }
+        if TollEvidenceValidator.validatesNoToll(
+            status: result.status, source: result.source, sourceURL: result.sourceURL
+        ) {
+            return .noToll(source: result.source)
         }
         let titles = result.sources.prefix(3).map(\.title).joined(separator: " · ")
         return .unknown(reason: titles.isEmpty ? "SearXNG fand keinen eindeutig belegten Gesamtpreis." : "SearXNG geprüft: \(titles)")
@@ -356,6 +364,11 @@ private struct TollSearchRequest: Encodable {
     let origin: String
     let destination: String
     let via: [String]
+    let avoidTolls: Bool
+    enum CodingKeys: String, CodingKey {
+        case origin, destination, via
+        case avoidTolls = "avoid_tolls"
+    }
 }
 private struct TollSearchSource: Decodable { let title: String; let url: String; let snippet: String }
 private struct TollSearchResponse: Decodable {
@@ -383,5 +396,14 @@ enum TollEvidenceValidator {
               let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
               url.host != nil else { return nil }
         return Evidence(amount: amount, currency: currency, source: source)
+    }
+
+
+    static func validatesNoToll(status: String, source: String, sourceURL: String?) -> Bool {
+        guard status == "no_toll",
+              !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let sourceURL, let url = URL(string: sourceURL),
+              url.scheme?.lowercased() == "https", url.host != nil else { return false }
+        return true
     }
 }

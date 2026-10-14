@@ -342,6 +342,14 @@ final class LongTripPlanningTests: XCTestCase {
             status: "known", amount: 27.4, currency: "EUR", source: "Provider",
             sourceURL: "http://example.test/tolls"
         ))
+        XCTAssertTrue(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free"
+        ))
+        XCTAssertFalse(TollEvidenceValidator.validatesNoToll(
+            status: "unknown", source: "Search",
+            sourceURL: "https://example.test/toll-free"
+        ))
     }
 
     func testShortTripDoesNotAddBreak() {

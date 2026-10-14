@@ -70,6 +70,7 @@ class TollSearchRequest(BaseModel):
     origin: str
     destination: str
     via: Optional[list[str]] = None
+    avoid_tolls: bool = False
 
 
 class PasswordResetRequest(BaseModel):
@@ -455,6 +456,17 @@ def explicit_toll_amount(text: str) -> float | None:
     return None
 
 
+def explicit_no_toll(text: str) -> bool:
+    """Accept only an explicit statement that the complete route is toll-free."""
+    lowered = text.lower()
+    patterns = (
+        r"(?:gesamte route|strecke|route).{0,40}(?:mautfrei|ohne maut|keine maut)",
+        r"(?:mautfrei|ohne maut|keine maut).{0,40}(?:gesamte route|strecke|route)",
+        r"(?:gesamtmaut|mautkosten)\s*(?::|-)?\s*0(?:[.,]00)?\s*(?:€|eur)",
+    )
+    return any(re.search(pattern, lowered) for pattern in patterns)
+
+
 def toll_source_matches_route(text: str, destination: str, via: list[str]) -> bool:
     """Require the destination and every mandatory via point in the evidence."""
     haystack = text.casefold()
@@ -504,6 +516,33 @@ def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
     return None
 
 
+def verified_no_toll_evidence(sources: list[dict[str, str]], destination: str,
+                              via: list[str]) -> tuple[str, str] | None:
+    """Require official evidence or two domains before claiming zero toll."""
+    evidence: list[tuple[str, str, bool]] = []
+    for source in sources:
+        source_text = f"{source['title']} {source['snippet']}"
+        parsed = urlparse(source["url"])
+        host = (parsed.hostname or "").lower()
+        if (parsed.scheme != "https" or not host or not explicit_no_toll(source_text)
+                or not toll_source_matches_route(source_text, destination, via)):
+            continue
+        official = any(host == domain or host.endswith(f".{domain}")
+                       for domain in OFFICIAL_TOLL_HOSTS)
+        evidence.append((host, source["title"], official))
+    if official := next((item for item in evidence if item[2]), None):
+        return official[1], next(
+            source["url"] for source in sources if source["title"] == official[1]
+        )
+    if len({item[0] for item in evidence}) >= 2:
+        titles = " + ".join(dict.fromkeys(item[1] for item in evidence))[:300]
+        first_title = evidence[0][1]
+        return titles, next(
+            source["url"] for source in sources if source["title"] == first_title
+        )
+    return None
+
+
 @app.post("/api/navigation/toll-search")
 async def toll_search(payload: TollSearchRequest, authorization: str | None = Header(None)):
     current_user(authorization)
@@ -516,7 +555,10 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
     if len(origin) < 2 or len(destination) < 2:
         raise HTTPException(422, "Start und Ziel fehlen.")
     via_query = f" über {' '.join(via)}" if via else ""
-    query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination}{via_query} {date.today().year}"
+    if payload.avoid_tolls:
+        query = f"PKW mautfreie Route keine Maut {origin} nach {destination}{via_query} {date.today().year}"
+    else:
+        query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination}{via_query} {date.today().year}"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(f"{searxng_url}/search", params={
@@ -531,6 +573,10 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
         "url": str(item.get("url") or "")[:2_000],
         "snippet": str(item.get("content") or item.get("snippet") or "")[:1_000],
     } for item in results[:5] if isinstance(item, dict)]
+    if payload.avoid_tolls and (evidence := verified_no_toll_evidence(sources, destination, via)):
+        source_name, source_url = evidence
+        return {"status": "no_toll", "amount": 0, "currency": "EUR",
+                "source": source_name, "source_url": source_url, "sources": sources}
     if evidence := verified_toll_evidence(sources, destination, via):
         amount, source_name, source_url = evidence
         return {"status": "known", "amount": amount, "currency": "EUR",

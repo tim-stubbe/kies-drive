@@ -120,8 +120,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     @Published var hasArrived = false
     @Published private(set) var isUsingOfflineGuidance = false
     private var comparisonRoute: MKRoute?
-    private var researchedToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
-    private var tollLookupSnapshot: TollLookupSnapshot?
+    private var researchedStandardToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
+    private var researchedAvoidingToll: TollCost = .unknown(reason: "Mautfreie Route wird geprüft.")
+    private var tollLookupSnapshots: [Bool: TollLookupSnapshot] = [:]
     private var amenityBreakCandidates: [BreakCandidate] = []
     private var measuredBreakDetours: [String: CLLocationDistance] = [:]
 
@@ -1477,7 +1478,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             mapKitExpectedTravelTime: mainTime,
             unlimitedMotorwayFraction: unlimitedFraction,
             typicalUnlimitedSpeedKmh: 130,
-            toll: settings.avoidTolls ? .unknown(reason: "Mautvermeidung gewählt; Restmaut wird nicht als null angenommen.") : researchedToll,
+            toll: settings.avoidTolls ? researchedAvoidingToll : researchedStandardToll,
             breakCandidates: candidates
         )]
         if let comparisonRoute,
@@ -1489,7 +1490,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 mapKitExpectedTravelTime: comparisonRoute.expectedTravelTime,
                 unlimitedMotorwayFraction: 0,
                 typicalUnlimitedSpeedKmh: 130,
-                toll: settings.avoidTolls ? researchedToll : .unknown(reason: "Mautvermeidung gewählt; Restmaut wird nicht als null angenommen."),
+                toll: settings.avoidTolls ? researchedStandardToll : researchedAvoidingToll,
                 breakCandidates: breakCandidates(along: [comparisonRoute])
             ))
         }
@@ -1510,26 +1511,42 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let visited = Set(lock?.visitedWaypointIDs ?? [])
         let via = lock?.waypoints.filter { $0.required && !visited.contains($0.id) }.map(\.name) ?? []
         let destinationCoordinate = destination.placemark.coordinate
-        let routeIdentity = String(format: "%.5f:%.5f", destinationCoordinate.latitude,
-                                   destinationCoordinate.longitude) + "|" + via.joined(separator: "|")
-        if let cached = TollLookupCachePolicy.reusable(tollLookupSnapshot,
-                                                       routeIdentity: routeIdentity, origin: start) {
-            researchedToll = cached
-            return
-        }
+        let baseRouteIdentity = String(format: "%.5f:%.5f", destinationCoordinate.latitude,
+                                       destinationCoordinate.longitude) + "|" + via.joined(separator: "|")
         let generation = UUID()
         tollLoadGeneration = generation
         let origin = String(format: "%.4f, %.4f", start.latitude, start.longitude)
-        do {
-            let toll = try await DriveAPI.tollCost(origin: origin, destination: destinationName, via: via)
-            guard generation == tollLoadGeneration else { return }
-            researchedToll = toll
-            tollLookupSnapshot = .init(routeIdentity: routeIdentity, origin: start,
-                                       cost: toll, loadedAt: Date())
-        } catch {
-            guard generation == tollLoadGeneration else { return }
-            researchedToll = .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)")
+        for avoidTolls in [false, true] {
+            let routeIdentity = baseRouteIdentity + (avoidTolls ? "|avoid" : "|standard")
+            if let cached = TollLookupCachePolicy.reusable(
+                tollLookupSnapshots[avoidTolls], routeIdentity: routeIdentity, origin: start
+            ) {
+                setResearchedToll(cached, avoidTolls: avoidTolls)
+                continue
+            }
+            do {
+                let toll = try await DriveAPI.tollCost(
+                    origin: origin, destination: destinationName, via: via,
+                    avoidTolls: avoidTolls
+                )
+                guard generation == tollLoadGeneration else { return }
+                setResearchedToll(toll, avoidTolls: avoidTolls)
+                tollLookupSnapshots[avoidTolls] = .init(
+                    routeIdentity: routeIdentity, origin: start, cost: toll, loadedAt: Date()
+                )
+            } catch {
+                guard generation == tollLoadGeneration else { return }
+                setResearchedToll(
+                    .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)"),
+                    avoidTolls: avoidTolls
+                )
+            }
         }
+    }
+
+    private func setResearchedToll(_ toll: TollCost, avoidTolls: Bool) {
+        if avoidTolls { researchedAvoidingToll = toll }
+        else { researchedStandardToll = toll }
     }
 
     /// Recomputes scenario numbers from the already loaded route when vehicle
