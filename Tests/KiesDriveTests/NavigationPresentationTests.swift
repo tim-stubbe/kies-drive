@@ -31,6 +31,27 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineRemainingTimeKeepsFollowingLegEstimate() throws {
+        let estimate = try XCTUnwrap(OfflineRouteRemainingTimePolicy.estimate(
+            totalRemainingDistance: 125_000,
+            currentLegIndex: 0,
+            legs: [
+                (distance: 100_000, travelTime: 2 * 3600),
+                (distance: 100_000, travelTime: 3600),
+            ]
+        ))
+
+        XCTAssertEqual(estimate, 1.5 * 3600, accuracy: 1)
+    }
+
+    func testOfflineRemainingTimeRejectsUnknownLeg() {
+        XCTAssertNil(OfflineRouteRemainingTimePolicy.estimate(
+            totalRemainingDistance: 1_000,
+            currentLegIndex: 2,
+            legs: [(distance: 1_000, travelTime: 60)]
+        ))
+    }
+
     func testManagedServerURLUsesProductionHTTPSConfiguration() {
         XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
             DriveSettings.serverURLInfoKey: " https://drive.example.test/ "

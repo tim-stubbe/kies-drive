@@ -981,11 +981,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func updateOfflineProgress(at location: CLLocation, guidanceSpeedMps: Double,
                                        settings: DriveSettings) {
         guard let cache = offlineRoute else { return }
-        let steps = cache.legs.flatMap(\.steps).compactMap { step -> OfflineGuidanceStep? in
-            guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
-            return .init(instruction: step.instructions, distance: step.distance,
-                         coordinates: coordinates.map(\.clLocationCoordinate))
+        let guidanceEntries = cache.legs.enumerated().flatMap { legIndex, leg in
+            leg.steps.compactMap { step -> (legIndex: Int, step: OfflineGuidanceStep)? in
+                guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
+                return (legIndex, .init(
+                    instruction: step.instructions, distance: step.distance,
+                    coordinates: coordinates.map(\.clLocationCoordinate)
+                ))
+            }
         }
+        let steps = guidanceEntries.map(\.step)
         guard let progress = OfflineGuidanceEngine.progress(
             at: location.coordinate, currentIndex: navigationStepCursor, steps: steps,
             transitionRadius: max(8, location.horizontalAccuracy * 1.5),
@@ -1063,9 +1068,18 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         nextManeuverDistance = progress.distanceToManeuver
         upcomingManeuverInstructions = progress.upcomingInstructions
         remainingDistanceMetres = progress.remainingDistance
-        let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
-        let cachedTime = cache.legs.reduce(0) { $0 + $1.travelTime }
-        remainingTravelTime = progress.remainingDistance / max(cachedDistance / max(cachedTime, 1), 1)
+        if let entry = guidanceEntries[safe: progress.currentStepIndex],
+           let estimate = OfflineRouteRemainingTimePolicy.estimate(
+            totalRemainingDistance: progress.remainingDistance,
+            currentLegIndex: entry.legIndex,
+            legs: cache.legs.map { (distance: $0.distance, travelTime: $0.travelTime) }
+           ) {
+            remainingTravelTime = estimate
+        } else {
+            let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
+            let cachedTime = cache.legs.reduce(0) { $0 + $1.travelTime }
+            remainingTravelTime = progress.remainingDistance / max(cachedDistance / max(cachedTime, 1), 1)
+        }
 
         guard settings.voiceGuidance else { return }
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"

@@ -484,6 +484,28 @@ enum RouteRemainingTimePolicy {
     }
 }
 
+enum OfflineRouteRemainingTimePolicy {
+    /// Reconstructs the remaining time from cached MapKit leg estimates. The
+    /// current leg is reduced proportionally while every later leg keeps its
+    /// own road and traffic characteristics.
+    static func estimate(totalRemainingDistance: Double,
+                         currentLegIndex: Int,
+                         legs: [(distance: Double, travelTime: TimeInterval)]) -> TimeInterval? {
+        guard totalRemainingDistance.isFinite, totalRemainingDistance >= 0,
+              legs.indices.contains(currentLegIndex) else { return nil }
+        let following = legs.dropFirst(currentLegIndex + 1)
+        let followingDistance = following.reduce(0) { $0 + max(0, $1.distance) }
+        let currentRemaining = max(0, totalRemainingDistance - followingDistance)
+        let current = legs[currentLegIndex]
+        return RouteRemainingTimePolicy.estimate(
+            currentLegRemainingDistance: currentRemaining,
+            currentLegDistance: current.distance,
+            currentLegTravelTime: current.travelTime,
+            followingLegTravelTimes: following.map(\.travelTime)
+        )
+    }
+}
+
 enum NavigationDeviationPolicy {
     static let requiredConsecutiveFixes = 3
 
