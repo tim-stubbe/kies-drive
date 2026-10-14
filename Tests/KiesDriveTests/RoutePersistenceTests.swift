@@ -37,7 +37,7 @@ final class RoutePersistenceTests: XCTestCase {
         lock.insertWaypoint(
             .init(id: "fuel", name: "Fuel", coordinate: .init(latitude: 0, longitude: 50),
                   required: true, optionsAfter: nil),
-            progress: { Int($0.longitude) }
+            progress: { $0.longitude }
         )
 
         XCTAssertEqual(lock.waypoints.map(\.id), ["first", "fuel", "last"])
@@ -45,6 +45,31 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertFalse(lock.visitedWaypointIDs?.contains("fuel") == true)
         lock.removeWaypoint(id: "fuel")
         XCTAssertEqual(lock.waypoints.map(\.id), ["first", "last"])
+    }
+
+    func testKnownRouteProgressDisambiguatesStopAtRouteCrossing() {
+        let now = Date(timeIntervalSince1970: 1)
+        var lock = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Home",
+            destination: .init(latitude: 0, longitude: 100),
+            waypoints: [
+                .init(id: "first", name: "First", coordinate: .init(latitude: 0, longitude: 20),
+                      required: true, optionsAfter: nil),
+                .init(id: "last", name: "Last", coordinate: .init(latitude: 0, longitude: 80),
+                      required: true, optionsAfter: nil),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil, visitedWaypointIDs: [],
+            status: .active, createdAt: now, updatedAt: now
+        )
+        lock.insertWaypoint(
+            .init(id: "poi", name: "POI", coordinate: .init(latitude: 0, longitude: 20),
+                  required: true, optionsAfter: nil),
+            knownProgress: 0.5,
+            progress: { $0.longitude / 100 }
+        )
+
+        XCTAssertEqual(lock.waypoints.map(\.id), ["first", "poi", "last"])
     }
 
     func testHochheimPresetForcesRoadPointOnWurzenpass() {

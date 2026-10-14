@@ -4,6 +4,8 @@
 DerivedData/
 data/
 .env
+__pycache__/
+*.py[cod]
 *.xcuserstate
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/

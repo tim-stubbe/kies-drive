@@ -88,9 +88,10 @@ extension ActiveRouteLock {
     /// of the segment it splits. Fuel, food and arbitrary POIs therefore cannot
     /// silently bypass a locked Slovenia or mountain-pass constraint.
     mutating func insertWaypoint(_ waypoint: LockedWaypoint,
-                                 progress: (DriveCoordinate) -> Int) {
+                                 knownProgress: Double? = nil,
+                                 progress: (DriveCoordinate) -> Double) {
         guard !waypoints.contains(where: { $0.id == waypoint.id }) else { return }
-        let insertionProgress = progress(waypoint.coordinate)
+        let insertionProgress = knownProgress ?? progress(waypoint.coordinate)
         let index = waypoints.firstIndex { progress($0.coordinate) > insertionProgress }
             ?? waypoints.endIndex
         let inheritedOptions = index == 0

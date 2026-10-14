@@ -470,8 +470,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return false
         }
         let coordinate = item.placemark.coordinate
+        // A route-search result already has an unambiguous progress value.
+        // Reuse it so a POI beside a later parallel carriageway or a route
+        // crossing cannot be inserted into an earlier locked segment.
+        let knownProgress = routeSearchResults.first(where: { result in
+            let resultCoordinate = result.mapItem.placemark.coordinate
+            return CLLocation(latitude: resultCoordinate.latitude, longitude: resultCoordinate.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= 30
+        })?.routeProgress
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: item.name ?? "Zwischenstopp",
-                             coordinate: coordinate)
+                             coordinate: coordinate, knownProgress: knownProgress)
         routeSearchResults = []
         let succeeded = await calculate(from: start, settings: settings)
         guard succeeded else {
@@ -508,22 +516,19 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     /// Every user-selected stop is written into the persistent trip lock. This
     /// avoids the former split-brain state where fuel stops lived only in
     /// `viaStations` and disappeared whenever mandatory route points existed.
-    private func insertLockedWaypoint(id: String, name: String, coordinate: CLLocationCoordinate2D) {
+    private func insertLockedWaypoint(id: String, name: String, coordinate: CLLocationCoordinate2D,
+                                      knownProgress: Double? = nil) {
         guard var lock = routeLockStore.activeLock,
               !lock.waypoints.contains(where: { $0.id == id }) else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 240) }
-        func progress(_ coordinate: CLLocationCoordinate2D) -> Int {
-            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            return routeCoordinates.enumerated().min(by: {
-                CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude).distance(from: location) <
-                CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude).distance(from: location)
-            })?.offset ?? routeCoordinates.count
+        func progress(_ coordinate: CLLocationCoordinate2D) -> Double {
+            RouteGeometryProgress.nearestProgress(of: coordinate, on: routeCoordinates)?.progress ?? 1
         }
         lock.insertWaypoint(.init(
             id: id, name: name,
             coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
             required: true, optionsAfter: nil
-        ), progress: { progress($0.clLocationCoordinate) })
+        ), knownProgress: knownProgress, progress: { progress($0.clLocationCoordinate) })
         routeLockStore.save(lock)
         activeRouteLock = lock
     }
