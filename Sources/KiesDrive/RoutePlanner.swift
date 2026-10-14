@@ -1199,7 +1199,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let metrics = steps.map {
             NavigationStepMetric(
                 distanceFromRoute: Self.distance(from: location.coordinate, to: $0.step.polyline),
-                remainingOnStep: Self.remainingDistance(from: location.coordinate, on: $0.step.polyline)
+                remainingOnStep: Self.remainingDistance(from: location.coordinate, on: $0.step.polyline),
+                stepDistance: $0.step.distance
             )
         }
         let transitionRadius = max(8, location.horizontalAccuracy * 1.5)

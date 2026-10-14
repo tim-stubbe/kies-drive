@@ -397,6 +397,14 @@ enum NavigationArrivalPolicy {
 struct NavigationStepMetric: Equatable {
     let distanceFromRoute: CLLocationDistance
     let remainingOnStep: CLLocationDistance
+    let stepDistance: CLLocationDistance
+
+    init(distanceFromRoute: CLLocationDistance, remainingOnStep: CLLocationDistance,
+         stepDistance: CLLocationDistance = 0) {
+        self.distanceFromRoute = distanceFromRoute
+        self.remainingOnStep = remainingOnStep
+        self.stepDistance = stepDistance
+    }
 }
 
 /// Advances through route steps in order. A geometrically close future step
@@ -406,6 +414,8 @@ enum NavigationStepSelectionPolicy {
     /// Prevents a crossing or parallel piece of the same long route from
     /// snapping guidance hours ahead after one inaccurate tunnel fix.
     private static let maximumRecoveryStepAdvance = 16
+    private static let maximumMeasuredRecoveryStepAdvance = 80
+    private static let maximumRecoveryDistance: CLLocationDistance = 25_000
 
     static func selectedIndex(current: Int, metrics: [NavigationStepMetric],
                               transitionRadius: CLLocationDistance,
@@ -439,12 +449,18 @@ enum NavigationStepSelectionPolicy {
 
         // A large discontinuity is the explicit recovery path after a tunnel,
         // long pause or sparse background update. Recovery only moves forward.
-        let recoveryEnd = min(metrics.count, current + maximumRecoveryStepAdvance + 1)
-        if metrics[current].distanceFromRoute > 250,
-           let recovered = (current..<recoveryEnd).min(by: {
-               metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
-           }), metrics[recovered].distanceFromRoute + 80 < metrics[current].distanceFromRoute {
-            return recovered
+        let recovery = recoveryIndices(current: current, metrics: metrics)
+        if metrics[current].distanceFromRoute > 250 {
+            if let earliestPlausible = recovery.first(where: {
+                metrics[$0].distanceFromRoute <= max(45, radius * 1.5)
+            }) {
+                return earliestPlausible
+            }
+            if let recovered = recovery.min(by: {
+                metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
+            }), metrics[recovered].distanceFromRoute + 80 < metrics[current].distanceFromRoute {
+                return recovered
+            }
         }
 
         var selected = current
@@ -458,6 +474,23 @@ enum NavigationStepSelectionPolicy {
             selected += 1
         }
         return selected
+    }
+
+    private static func recoveryIndices(current: Int,
+                                        metrics: [NavigationStepMetric]) -> Range<Int> {
+        let hasMeasuredDistances = metrics[current...].contains { $0.stepDistance > 0 }
+        guard hasMeasuredDistances else {
+            return current..<min(metrics.count, current + maximumRecoveryStepAdvance + 1)
+        }
+        var end = current
+        var distance: CLLocationDistance = 0
+        while end + 1 < metrics.count,
+              end - current < maximumMeasuredRecoveryStepAdvance {
+            distance += max(0, metrics[end].stepDistance)
+            if distance >= maximumRecoveryDistance, end - current >= 3 { break }
+            end += 1
+        }
+        return current..<min(metrics.count, end + 1)
     }
 }
 enum NavigationEstimatePolicy {
@@ -716,7 +749,8 @@ enum OfflineGuidanceEngine {
         guard !steps.isEmpty else { return nil }
         let metrics = steps.map {
             NavigationStepMetric(distanceFromRoute: distance(from: coordinate, to: $0.coordinates),
-                                 remainingOnStep: remaining(from: coordinate, on: $0.coordinates))
+                                 remainingOnStep: remaining(from: coordinate, on: $0.coordinates),
+                                 stepDistance: $0.distance)
         }
         let selected = NavigationStepSelectionPolicy.selectedIndex(
             current: min(max(0, currentIndex), steps.count - 1), metrics: metrics,

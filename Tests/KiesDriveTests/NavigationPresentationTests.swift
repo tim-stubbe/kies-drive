@@ -603,6 +603,29 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 12), 3)
     }
 
+    func testStepRecoveryCanCatchUpAcrossManyShortUrbanSteps() {
+        var metrics = Array(repeating: NavigationStepMetric(
+            distanceFromRoute: 700, remainingOnStep: 0, stepDistance: 120
+        ), count: 50)
+        metrics[31] = .init(distanceFromRoute: 12, remainingOnStep: 80, stepDistance: 120)
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12
+        ), 31)
+    }
+
+    func testMeasuredRecoveryStillPrefersEarlierPlausibleCrossing() {
+        var metrics = Array(repeating: NavigationStepMetric(
+            distanceFromRoute: 700, remainingOnStep: 0, stepDistance: 150
+        ), count: 60)
+        metrics[22] = .init(distanceFromRoute: 35, remainingOnStep: 90, stepDistance: 150)
+        metrics[40] = .init(distanceFromRoute: 2, remainingOnStep: 600, stepDistance: 150)
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12
+        ), 22)
+    }
+
     func testInitialOfflineRecoveryCanResumeFarBeyondShortRecoveryWindow() {
         var metrics = Array(repeating: NavigationStepMetric(
             distanceFromRoute: 3_000, remainingOnStep: 0
