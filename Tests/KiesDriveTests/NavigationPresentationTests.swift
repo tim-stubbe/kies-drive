@@ -79,6 +79,15 @@ final class NavigationPresentationTests: XCTestCase {
             distanceFromRoute: 210, previousDistance: 190, horizontalAccuracy: 15, speedMetresPerSecond: 20))
         XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 20), 12)
         XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 30), 8)
+        XCTAssertFalse(NavigationDeviationPolicy.isConfirmed(
+            elapsed: 30, consecutiveFixes: 2, speedMetresPerSecond: 30
+        ))
+        XCTAssertFalse(NavigationDeviationPolicy.isConfirmed(
+            elapsed: 7, consecutiveFixes: 3, speedMetresPerSecond: 30
+        ))
+        XCTAssertTrue(NavigationDeviationPolicy.isConfirmed(
+            elapsed: 8, consecutiveFixes: 3, speedMetresPerSecond: 30
+        ))
     }
 
     func testFailedReroutesBackOffInsteadOfLooping() {

@@ -137,6 +137,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var diagnosticManeuverKey: String?
     private var diagnosticManeuverInstruction: String?
     private var offRouteSince: Date?
+    private var offRouteFixCount = 0
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
     private var consecutiveRerouteFailures = 0
@@ -1304,9 +1305,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return
         }
         let now = location.timestamp
-        if offRouteSince == nil { offRouteSince = now }
+        if offRouteSince == nil {
+            offRouteSince = now
+            offRouteFixCount = 1
+        } else {
+            offRouteFixCount += 1
+        }
         guard let offRouteSince,
-              now.timeIntervalSince(offRouteSince) >= NavigationDeviationPolicy.confirmationDuration(
+              NavigationDeviationPolicy.isConfirmed(
+                elapsed: now.timeIntervalSince(offRouteSince),
+                consecutiveFixes: offRouteFixCount,
                 speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
               ) else { return }
         resetDeviationTracking()
@@ -1342,6 +1350,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
 
     private func resetDeviationTracking(keepingDistance distance: CLLocationDistance? = nil) {
         offRouteSince = nil
+        offRouteFixCount = 0
         previousOffRouteDistance = distance
     }
 

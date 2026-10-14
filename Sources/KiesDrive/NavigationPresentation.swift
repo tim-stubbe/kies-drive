@@ -409,6 +409,8 @@ enum NavigationEstimatePolicy {
 }
 
 enum NavigationDeviationPolicy {
+    static let requiredConsecutiveFixes = 3
+
     static func threshold(horizontalAccuracy: Double, speedMetresPerSecond: Double) -> Double {
         max(100, horizontalAccuracy * 3, min(220, max(speedMetresPerSecond, 0) * 4))
     }
@@ -424,6 +426,12 @@ enum NavigationDeviationPolicy {
 
     static func confirmationDuration(speedMetresPerSecond: Double) -> TimeInterval {
         speedMetresPerSecond > 22 ? 8 : 12
+    }
+
+    static func isConfirmed(elapsed: TimeInterval, consecutiveFixes: Int,
+                            speedMetresPerSecond: Double) -> Bool {
+        consecutiveFixes >= requiredConsecutiveFixes &&
+            elapsed >= confirmationDuration(speedMetresPerSecond: speedMetresPerSecond)
     }
 }
 
