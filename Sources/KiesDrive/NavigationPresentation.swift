@@ -245,6 +245,26 @@ enum NavigationMotionPolicy {
     }
 }
 
+/// Keeps announcement timing stable when Core Location temporarily publishes
+/// an invalid speed (common after tunnels, background resumes and CarPlay
+/// reconnects). A short-lived last trustworthy value is safer than suddenly
+/// shrinking a motorway warning horizon to the stationary fallback.
+enum NavigationGuidanceSpeedPolicy {
+    static let retention: TimeInterval = 20
+    static let fallbackMetresPerSecond = 13.9 // roughly 50 km/h
+
+    static func effective(current: Double?, previous: Double?, previousAt: Date?,
+                          now: Date) -> Double {
+        if let current { return current }
+        if let previous, let previousAt,
+           now.timeIntervalSince(previousAt) >= 0,
+           now.timeIntervalSince(previousAt) <= retention {
+            return previous
+        }
+        return fallbackMetresPerSecond
+    }
+}
+
 enum NavigationArrivalPolicy {
     static let requiredConsecutiveFixes = 3
 

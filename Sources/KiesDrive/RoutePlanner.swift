@@ -96,6 +96,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
     private var lastAcceptedNavigationLocation: CLLocation?
+    private var lastReliableGuidanceSpeedMps: Double?
+    private var lastReliableGuidanceSpeedAt: Date?
     private var lastLocationRejectionLoggedAt: Date?
     private var lastOfflineRecoveryAttempt: Date?
     private var arrivalStrikes = 0
@@ -708,12 +710,23 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return
         }
         lastAcceptedNavigationLocation = location
+        let currentSpeed = NavigationMotionPolicy.reliableSpeed(for: location)
+        let guidanceSpeed = NavigationGuidanceSpeedPolicy.effective(
+            current: currentSpeed,
+            previous: lastReliableGuidanceSpeedMps,
+            previousAt: lastReliableGuidanceSpeedAt,
+            now: location.timestamp
+        )
+        if let currentSpeed {
+            lastReliableGuidanceSpeedMps = currentSpeed
+            lastReliableGuidanceSpeedAt = location.timestamp
+        }
         if detectArrival(at: location, settings: settings) { return }
         if isUsingOfflineGuidance {
-            updateOfflineProgress(at: location, settings: settings)
+            updateOfflineProgress(at: location, guidanceSpeedMps: guidanceSpeed, settings: settings)
         } else if let progress = liveNavigationProgress(at: location) {
             updateNextManeuver(using: progress)
-            if settings.voiceGuidance { announce(progress, at: location) }
+            if settings.voiceGuidance { announce(progress, guidanceSpeedMps: guidanceSpeed) }
         }
         markReachedWaypoints(at: location, settings: settings)
         if !isUsingOfflineGuidance {
@@ -750,7 +763,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         return true
     }
 
-    private func updateOfflineProgress(at location: CLLocation, settings: DriveSettings) {
+    private func updateOfflineProgress(at location: CLLocation, guidanceSpeedMps: Double,
+                                       settings: DriveSettings) {
         guard let cache = offlineRoute else { return }
         let steps = cache.legs.flatMap(\.steps).compactMap { step -> OfflineGuidanceStep? in
             guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
@@ -784,7 +798,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard
               let stage = NavigationAnnouncementStage.stage(
                 distance: progress.distanceToManeuver,
-                speedKmh: (NavigationMotionPolicy.reliableSpeed(for: location) ?? 0) * 3.6
+                speedKmh: guidanceSpeedMps * 3.6
               ) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard !completed.contains(stage) else { return }
@@ -826,6 +840,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         resetDeviationTracking()
         arrivalStrikes = 0
         lastAcceptedNavigationLocation = nil
+        lastReliableGuidanceSpeedMps = nil
+        lastReliableGuidanceSpeedAt = nil
     }
 
     @discardableResult
@@ -968,8 +984,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         speedWarning = speedKmh > Double(maxspeed) + 5
     }
 
-    private func announce(_ progress: LiveNavigationProgress, at location: CLLocation) {
-        let speedKmh = (NavigationMotionPolicy.reliableSpeed(for: location) ?? 0) * 3.6
+    private func announce(_ progress: LiveNavigationProgress, guidanceSpeedMps: Double) {
+        let speedKmh = guidanceSpeedMps * 3.6
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
         recordManeuverTransition(key: key, instruction: progress.maneuver.step.instructions)
         guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }

@@ -40,6 +40,26 @@ final class NavigationPresentationTests: XCTestCase {
             courseDegrees: -1, courseAccuracy: 8, speedMetresPerSecond: 18))
     }
 
+    func testGuidanceSpeedSurvivesBriefInvalidGPSReading() {
+        let measuredAt = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
+            current: nil, previous: 33.3, previousAt: measuredAt,
+            now: measuredAt.addingTimeInterval(8)
+        ), 33.3, accuracy: 0.01)
+    }
+
+    func testGuidanceSpeedExpiresToSafeCityFallback() {
+        let measuredAt = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
+            current: nil, previous: 33.3, previousAt: measuredAt,
+            now: measuredAt.addingTimeInterval(30)
+        ), NavigationGuidanceSpeedPolicy.fallbackMetresPerSecond, accuracy: 0.01)
+        XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
+            current: 22, previous: 33.3, previousAt: measuredAt,
+            now: measuredAt.addingTimeInterval(30)
+        ), 22, accuracy: 0.01)
+    }
+
     func testManeuverEstimateUsesMovementAndSensibleFallback() {
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_000, speedMetresPerSecond: 20), 50, accuracy: 0.01)
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_390, speedMetresPerSecond: 0), 100, accuracy: 0.1)
