@@ -93,6 +93,14 @@ struct DriveContentView: View {
         #endif
     }
 
+    private var isSimulatorLocationDeniedPreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--location-denied-preview")
+        #else
+        false
+        #endif
+    }
+
     private var showsNavigationUI: Bool { planner.isNavigating || isSimulatorNavigationPreview }
 
     private var bypassesAccountForSimulatorPreview: Bool {
@@ -149,6 +157,10 @@ struct DriveContentView: View {
                     }
                 } else {
                     mobileHeader
+                }
+                if isSimulatorLocationDeniedPreview ||
+                    NavigationLocationAuthorizationPolicy.requiresSystemSettings(location.authorization) {
+                    locationPermissionCard
                 }
                 Spacer()
             }
@@ -237,6 +249,38 @@ struct DriveContentView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+    }
+
+    private var locationPermissionCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "location.slash.fill")
+                .font(.title2).foregroundStyle(Color.kiesBrass)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Standortzugriff fehlt").font(.subheadline.bold())
+                Text("Aktiviere den Standort, damit Navigation und Ansagen funktionieren.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            } label: {
+                Text("Öffnen")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(Color.kiesIvory)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(Color.kiesForest,
+                                in: Capsule(style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .foregroundStyle(Color.kiesForest)
+        .background(Color.kiesIvory.opacity(0.97),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .environment(\.colorScheme, .light)
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
     }
 
     private var mobileRouteDetails: some View {

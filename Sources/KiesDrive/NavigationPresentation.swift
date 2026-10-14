@@ -281,6 +281,10 @@ enum NavigationLocationAuthorizationPolicy {
                                     hasWhenInUseAuthorization: Bool) -> Bool {
         navigationActive && hasWhenInUseAuthorization
     }
+
+    static func requiresSystemSettings(_ authorization: CLAuthorizationStatus) -> Bool {
+        authorization == .denied || authorization == .restricted
+    }
 }
 
 /// Shared plausibility rules for motion values reported by Core Location.

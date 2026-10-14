@@ -28,6 +28,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
             navigationActive: true, hasWhenInUseAuthorization: false
         ))
+        XCTAssertTrue(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.denied))
+        XCTAssertTrue(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.restricted))
+        XCTAssertFalse(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.notDetermined))
     }
 
     func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
