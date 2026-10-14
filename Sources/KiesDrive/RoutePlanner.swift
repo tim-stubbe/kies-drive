@@ -1662,11 +1662,15 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func breakCandidates(along routes: [MKRoute], useMeasuredDetours: Bool = true) -> [BreakCandidate] {
         let routeCoordinates = routes.flatMap { sample($0.polyline, maximum: 160) }
         guard routeCoordinates.count > 1 else { return [] }
+        let timeline = routes.map { (distance: $0.distance, travelTime: $0.expectedTravelTime) }
         let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
             guard let projection = RouteGeometryProgress.nearestProgress(of: station.coordinate, on: routeCoordinates),
                   projection.distance <= 4_000 else { return nil }
             return BreakCandidateFactory.fuelStation(
                 station, progress: projection.progress,
+                timeProgress: RouteTravelTimeProgress.value(
+                    distanceProgress: projection.progress, segments: timeline
+                ),
                 detourMetres: useMeasuredDetours ? measuredBreakDetours[station.id] ?? projection.distance * 2 : projection.distance * 2,
                 detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[station.id] == nil
             )
@@ -1676,6 +1680,9 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                   projection.distance <= 4_000 else { return nil }
             return .init(id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
                          progress: projection.progress,
+                         timeProgress: RouteTravelTimeProgress.value(
+                            distanceProgress: projection.progress, segments: timeline
+                         ),
                          detourMetres: useMeasuredDetours ? measuredBreakDetours[candidate.id] ?? projection.distance * 2 : projection.distance * 2,
                          detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[candidate.id] == nil,
                          isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel)

@@ -179,6 +179,41 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(Set(breaks.compactMap { $0.candidate?.id }).count, 1, "A stop must not be suggested twice")
     }
 
+    func testRouteTravelTimeProgressAccountsForSlowLegs() {
+        let segments: [(distance: Double, travelTime: TimeInterval)] = [
+            (100_000, 3 * 3600),
+            (100_000, 1 * 3600),
+        ]
+
+        XCTAssertEqual(RouteTravelTimeProgress.value(
+            distanceProgress: 0.5, segments: segments
+        ), 0.75, accuracy: 0.001)
+        XCTAssertEqual(RouteTravelTimeProgress.value(
+            distanceProgress: 0.75, segments: segments
+        ), 0.875, accuracy: 0.001)
+    }
+
+    func testBreakPlannerChoosesByExpectedDrivingTimeNotDistanceShare() {
+        let candidates = [
+            BreakCandidate(
+                id: "geometrically-near", name: "Zu spät", coordinate: .init(),
+                progress: 0.4, timeProgress: 0.7,
+                detourMetres: 50, isOpen: true
+            ),
+            BreakCandidate(
+                id: "time-near", name: "Zeitlich passend", coordinate: .init(),
+                progress: 0.6, timeProgress: 0.4,
+                detourMetres: 200, isOpen: true
+            ),
+        ]
+
+        let breaks = BreakPlanner().plan(drivingTime: 5 * 3600, candidates: candidates)
+
+        XCTAssertEqual(breaks.first?.candidate?.id, "time-near")
+        XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
+        XCTAssertEqual(breaks.first?.routeProgress ?? 0, 0.6, accuracy: 0.001)
+    }
+
     func testBreaksFollowTwoHourDrivingIntervals() {
         let candidates = [
             BreakCandidate(id: "two-hours", name: "First", coordinate: .init(), progress: 0.4, detourMetres: 100, isOpen: true),

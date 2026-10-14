@@ -183,6 +183,10 @@ struct BreakCandidate: Identifiable, Equatable {
     let name: String
     let coordinate: CLLocationCoordinate2D
     let progress: Double
+    /// Fraction of expected driving time elapsed at this point. This differs
+    /// from geometric progress on slow mountain legs and congested sections.
+    /// Older/imported candidates may omit it and safely fall back to distance.
+    let timeProgress: Double?
     let detourMetres: Double
     /// False only after MapKit has measured the actual drive from the route
     /// to the stop and back. Air-line fallbacks remain visibly approximate.
@@ -193,12 +197,14 @@ struct BreakCandidate: Identifiable, Equatable {
     let supportsFuel: Bool
 
     init(id: String, name: String, coordinate: CLLocationCoordinate2D, progress: Double,
+         timeProgress: Double? = nil,
          detourMetres: Double, detourIsEstimated: Bool = true,
          isOpen: Bool?, supportsFuel: Bool = false) {
         self.id = id
         self.name = name
         self.coordinate = coordinate
         self.progress = progress
+        self.timeProgress = timeProgress
         self.detourMetres = detourMetres
         self.detourIsEstimated = detourIsEstimated
         self.isOpen = isOpen
@@ -222,7 +228,7 @@ enum BreakCandidateSelectionPolicy {
             }
         }
         let buckets = Dictionary(grouping: unique.values) {
-            min(maximum - 1, max(0, Int(min(0.999_999, max(0, $0.progress)) * Double(maximum))))
+            min(maximum - 1, max(0, Int(min(0.999_999, max(0, $0.timeProgress ?? $0.progress)) * Double(maximum))))
         }
         return buckets.keys.sorted().compactMap { bucket in
             buckets[bucket]?.min(by: isPreferred)
@@ -244,14 +250,43 @@ enum BreakCandidateFactory {
     /// Keep an absent provider opening status absent. Treating `nil` as open
     /// would make an unverified station look safe for a night-time pause.
     static func fuelStation(_ station: FuelStation, progress: Double,
+                            timeProgress: Double? = nil,
                             detourMetres: Double,
                             detourIsEstimated: Bool = true) -> BreakCandidate {
         BreakCandidate(
             id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
-            coordinate: station.coordinate, progress: progress,
+            coordinate: station.coordinate, progress: progress, timeProgress: timeProgress,
             detourMetres: detourMetres, detourIsEstimated: detourIsEstimated,
             isOpen: station.open, supportsFuel: true
         )
+    }
+}
+
+enum RouteTravelTimeProgress {
+    /// Maps a point's whole-route distance fraction to its expected-time
+    /// fraction using the individual MapKit leg ETAs. It intentionally works
+    /// with plain values so the safety-critical math remains unit-testable.
+    static func value(distanceProgress: Double,
+                      segments: [(distance: Double, travelTime: TimeInterval)]) -> Double {
+        let valid = segments.map {
+            (distance: max(0, $0.distance), travelTime: max(0, $0.travelTime))
+        }.filter { $0.distance > 0 }
+        let totalDistance = valid.reduce(0) { $0 + $1.distance }
+        let totalTime = valid.reduce(0) { $0 + $1.travelTime }
+        guard totalDistance > 0, totalTime > 0 else {
+            return min(1, max(0, distanceProgress))
+        }
+        var remainingDistance = min(1, max(0, distanceProgress)) * totalDistance
+        var elapsedTime = 0.0
+        for segment in valid {
+            if remainingDistance <= segment.distance {
+                elapsedTime += segment.travelTime * (remainingDistance / segment.distance)
+                return min(1, max(0, elapsedTime / totalTime))
+            }
+            remainingDistance -= segment.distance
+            elapsedTime += segment.travelTime
+        }
+        return 1
     }
 }
 
@@ -417,20 +452,22 @@ struct BreakPlanner {
             let latestDrivingTime = min(drivingTime, idealDrivingTime + latestStopTolerance)
             let coordinatedFuelStop = remainingFuelStops
                 .filter {
-                    let stopTime = $0.routeProgress * drivingTime
+                    let stopTime = ($0.candidate?.timeProgress ?? $0.routeProgress) * drivingTime
                     return stopTime > lastBreakDrivingTime &&
                         stopTime >= earliestDrivingTime && stopTime <= latestDrivingTime
                 }
                 .min {
-                    abs($0.routeProgress * drivingTime - idealDrivingTime) <
-                        abs($1.routeProgress * drivingTime - idealDrivingTime)
+                    abs(($0.candidate?.timeProgress ?? $0.routeProgress) * drivingTime - idealDrivingTime) <
+                        abs(($1.candidate?.timeProgress ?? $1.routeProgress) * drivingTime - idealDrivingTime)
                 }
             let candidatesAhead = remaining.filter {
-                let candidateTime = $0.progress * drivingTime
+                let candidateTime = ($0.timeProgress ?? $0.progress) * drivingTime
                 return candidateTime >= earliestDrivingTime &&
                     candidateTime <= latestDrivingTime
             }
-            let candidatesInWindow = candidatesAhead.filter { abs($0.progress - idealProgress) <= 0.12 }
+            let candidatesInWindow = candidatesAhead.filter {
+                abs(($0.timeProgress ?? $0.progress) - idealProgress) <= 0.12
+            }
             // A distant stop is not an "optimal" pause merely because it is
             // the only search result. Leave the location unverified instead.
             // A required fuel stop inside the safe pause window always does both
@@ -446,7 +483,11 @@ struct BreakPlanner {
                 remainingFuelStops.removeAll { $0.id == coordinatedFuelStop.id }
             }
             let progress = coordinatedFuelStop?.routeProgress ?? best?.progress ?? idealProgress
-            let breakDrivingTime = drivingTime * progress
+            let selectedTimeProgress = coordinatedFuelStop?.candidate?.timeProgress
+                ?? best?.timeProgress
+                ?? coordinatedFuelStop?.routeProgress
+                ?? progress
+            let breakDrivingTime = drivingTime * selectedTimeProgress
             let detour = best.map {
                 " · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres / 100) * 100) m Umweg"
             } ?? ""
@@ -480,7 +521,7 @@ struct BreakPlanner {
 
     private func score(_ candidate: BreakCandidate, idealProgress: Double) -> Double {
         let unknownOpeningPenalty = candidate.isOpen == nil ? 3.0 : 0
-        return abs(candidate.progress - idealProgress) * 100 +
+        return abs((candidate.timeProgress ?? candidate.progress) - idealProgress) * 100 +
             min(40, candidate.detourMetres / 1_000 * 8) + unknownOpeningPenalty
     }
 }
