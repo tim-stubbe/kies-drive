@@ -39,6 +39,7 @@ final class RoutePersistenceTests: XCTestCase {
         let store = OfflineRouteCacheStore(fileURL: directory.appendingPathComponent("route.json"))
         let route = CachedRoute(
             destinationName: "Hochheim",
+            tripID: UUID(),
             destinationCoordinate: .init(latitude: 50.01, longitude: 8.35),
             legs: [.init(
                 distance: 12_000, travelTime: 900,
@@ -53,6 +54,7 @@ final class RoutePersistenceTests: XCTestCase {
 
         XCTAssertTrue(store.save(route))
         XCTAssertEqual(store.load()?.destinationName, "Hochheim")
+        XCTAssertEqual(store.load()?.tripID, route.tripID)
         XCTAssertEqual(store.load()?.legs.first?.steps.first?.instructions, "Rechts abbiegen")
         store.clear()
         XCTAssertNil(store.load())
@@ -358,6 +360,7 @@ final class RoutePersistenceTests: XCTestCase {
         let json = #"{"destinationName":"Ziel","legs":[{"distance":1000,"travelTime":60,"steps":[]}],"stations":[],"savedAt":0}"#
         let cache = try JSONDecoder().decode(CachedRoute.self, from: Data(json.utf8))
         XCTAssertEqual(cache.destinationName, "Ziel")
+        XCTAssertNil(cache.tripID)
         XCTAssertNil(cache.legs.first?.coordinates)
         XCTAssertNil(cache.legs.first?.steps.first?.coordinates)
     }

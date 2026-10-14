@@ -34,12 +34,27 @@ struct CachedRoute: Codable {
         let coordinates: [DriveCoordinate]?
     }
     let destinationName: String
+    /// Identifies the exact persisted trip that produced this geometry. It is
+    /// optional so caches written by older app versions still decode, but an
+    /// untagged cache never receives extended active-trip retention.
+    let tripID: UUID?
     /// Optional for backwards compatibility with caches written before the
     /// destination identity was anchored geographically.
     let destinationCoordinate: DriveCoordinate?
     let legs: [Leg]
     let stations: [FuelStation]
     let savedAt: Date
+
+    init(destinationName: String, tripID: UUID? = nil,
+         destinationCoordinate: DriveCoordinate?, legs: [Leg],
+         stations: [FuelStation], savedAt: Date) {
+        self.destinationName = destinationName
+        self.tripID = tripID
+        self.destinationCoordinate = destinationCoordinate
+        self.legs = legs
+        self.stations = stations
+        self.savedAt = savedAt
+    }
 }
 
 struct OfflineRouteCacheStore {
@@ -939,6 +954,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard !legs.isEmpty else { return }
         let cached = CachedRoute(
             destinationName: destination?.name ?? destinationText,
+            tripID: routeLockStore.activeLock?.id,
             destinationCoordinate: destination.map {
                 .init(latitude: $0.placemark.coordinate.latitude,
                       longitude: $0.placemark.coordinate.longitude)
@@ -1087,7 +1103,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// selected destination with the same display state cannot accidentally
     /// revive an unrelated old cache.
     private func belongsToActiveTrip(_ cache: CachedRoute) -> Bool {
-        guard let lock = routeLockStore.activeLock, lock.isActive else { return false }
+        guard let lock = routeLockStore.activeLock,
+              OfflineRouteTripIdentityPolicy.belongs(
+                cacheTripID: cache.tripID, activeTripID: lock.id, active: lock.isActive
+              ) else { return false }
         return OfflineRouteCachePolicy.matches(
             cacheName: cache.destinationName,
             cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,

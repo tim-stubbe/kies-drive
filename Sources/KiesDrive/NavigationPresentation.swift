@@ -820,6 +820,13 @@ enum OfflineRouteFreshnessPolicy {
     }
 }
 
+enum OfflineRouteTripIdentityPolicy {
+    static func belongs(cacheTripID: UUID?, activeTripID: UUID?, active: Bool) -> Bool {
+        guard active, let cacheTripID, let activeTripID else { return false }
+        return cacheTripID == activeTripID
+    }
+}
+
 enum OfflineRouteAvailabilityPolicy {
     static func isUsable(savedAt: Date,
                          cacheName: String, cacheCoordinate: CLLocationCoordinate2D?,

@@ -1019,6 +1019,23 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testExtendedOfflineRetentionRequiresExactActiveTripIdentity() {
+        let firstTrip = UUID()
+        let secondTrip = UUID()
+        XCTAssertTrue(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: firstTrip, activeTripID: firstTrip, active: true
+        ))
+        XCTAssertFalse(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: firstTrip, activeTripID: secondTrip, active: true
+        ))
+        XCTAssertFalse(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: nil, activeTripID: firstTrip, active: true
+        ))
+        XCTAssertFalse(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: firstTrip, activeTripID: firstTrip, active: false
+        ))
+    }
+
     func testOfflineRouteIsNeverDisplayedWithoutMatchingActiveDestination() {
         let now = Date(timeIntervalSince1970: 2_000_000)
         let cached = CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0)
