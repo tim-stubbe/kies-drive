@@ -1637,9 +1637,20 @@ struct DriveSettingsView: View {
                     TextField("Adresse für Zuhause", text: $settings.homeAddress)
                         .textContentType(.fullStreetAddress)
                     Toggle("Vignetten und Maut vermeiden", isOn: $settings.avoidTolls)
+                        .onChange(of: settings.avoidTolls) { _, _ in applyRouteOptions() }
                     Toggle("Autobahnen vermeiden", isOn: $settings.avoidHighways)
+                        .onChange(of: settings.avoidHighways) { _, _ in applyRouteOptions() }
                     Toggle("Sprachansagen", isOn: $settings.voiceGuidance)
-                    Picker("Kraftstoff", selection: $settings.fuel) { ForEach(FuelKind.allCases) { Text($0.label).tag($0) } }
+                        .onChange(of: settings.voiceGuidance) { _, enabled in
+                            planner.setVoiceGuidanceEnabled(enabled)
+                        }
+                    Picker("Kraftstoff", selection: $settings.fuel) {
+                        ForEach(FuelKind.allCases) { Text($0.label).tag($0) }
+                    }
+                    .onChange(of: settings.fuel) { _, fuel in
+                        guard !planner.legs.isEmpty else { return }
+                        Task { await planner.reloadStopPlanning(fuel: fuel, settings: settings) }
+                    }
                     Picker("Kartendarstellung", selection: $settings.mapAppearance) { ForEach(DriveMapAppearance.allCases) { Text($0.label).tag($0) } }
                     Button("Kroatien-Trip nach Split fest aktivieren") {
                         planner.installCroatiaSplitTripLock()
@@ -1657,6 +1668,9 @@ struct DriveSettingsView: View {
                     LabeledContent("Tankgröße") {
                         TextField("Liter", value: $settings.tankCapacityL, format: .number.precision(.fractionLength(0)))
                             .multilineTextAlignment(.trailing).frame(width: 90)
+                            .onChange(of: settings.tankCapacityL) { _, _ in
+                                planner.refreshLongTripPlan(settings: settings)
+                            }
                     }
                     LabeledContent("Kraftstoffpreis") {
                         TextField("€/l", value: $settings.fuelPricePerLitre, format: .number.precision(.fractionLength(2)))
@@ -1742,6 +1756,9 @@ struct DriveSettingsView: View {
                 Section { Text("Interne Schlüssel für Tankpreise und Zusatzdienste bleiben ausschließlich auf deinem TrueNAS-Server. Deine Anmeldung wird automatisch im Apple-Schlüsselbund geschützt.").font(.caption).foregroundStyle(.secondary) }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.kiesCanvas)
+            .tint(Color.kiesForest)
             .navigationTitle("Einstellungen")
             .toolbar { Button("Fertig") { dismiss() } }
             .task { accountProfile = try? await DriveAPI.account() }
@@ -1781,6 +1798,17 @@ struct DriveSettingsView: View {
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 420)
         #endif
+        .environment(\.colorScheme, .light)
+    }
+
+    private func applyRouteOptions() {
+        planner.updateLockedRouteOptions(
+            waypointID: nil, avoidTolls: settings.avoidTolls,
+            avoidHighways: settings.avoidHighways
+        )
+        guard !planner.legs.isEmpty,
+              let current = LocationService.shared.location?.coordinate else { return }
+        Task { await planner.calculate(from: current, settings: settings) }
     }
 }
 
@@ -1848,6 +1876,7 @@ private struct TwoFactorSetupView: View {
             isWorking = false
         }
     }
+
 }
 
 private struct AccountWelcomeView: View {
