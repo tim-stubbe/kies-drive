@@ -118,6 +118,15 @@ struct FuelModel {
 }
 
 enum SpeedScenarioPolicy {
+    struct TimingComponents: Equatable {
+        let limitedDistance: Double
+        let unlimitedDistance: Double
+        let limitedTime: TimeInterval
+        let adjustedUnlimitedTime: TimeInterval
+
+        var totalTime: TimeInterval { limitedTime + adjustedUnlimitedTime }
+    }
+
     /// Measures unrestricted motorway share by route distance. Missing speed
     /// data stays conservative instead of inflating the known unrestricted
     /// samples to 100 percent of the journey.
@@ -137,6 +146,35 @@ enum SpeedScenarioPolicy {
             }
         }
         return totalDistance > 0 ? min(1, max(0, unlimitedDistance / totalDistance)) : 0
+    }
+
+
+    /// Splits MapKit's traffic-aware ETA without ever assigning zero time to
+    /// the limited part of a route. Sparse or inconsistent speed-limit data
+    /// must not make a 200 km/h scenario imply motorway speed through towns,
+    /// slip roads or congested limited sections.
+    static func timing(distanceMetres: Double, mapKitExpectedTravelTime: TimeInterval,
+                       unlimitedFraction: Double, typicalUnlimitedSpeedKmh: Double,
+                       targetSpeedKmh: Double) -> TimingComponents {
+        let distance = max(0, distanceMetres)
+        let fraction = min(1, max(0, unlimitedFraction))
+        let unlimitedDistance = distance * fraction
+        let limitedDistance = max(0, distance - unlimitedDistance)
+        let baselineSpeed = max(80, min(180, typicalUnlimitedSpeedKmh))
+        let targetSpeed = max(80, min(220, targetSpeedKmh))
+        let theoreticalUnlimitedTime = unlimitedDistance / (baselineSpeed / 3.6)
+        // Even a nominally limited motorway section cannot be planned above
+        // 130 km/h. MapKit traffic can only increase this reserved time.
+        let minimumLimitedTime = limitedDistance / (130 / 3.6)
+        let eta = max(0, mapKitExpectedTravelTime)
+        let baselineUnlimitedTime = min(theoreticalUnlimitedTime,
+                                        max(0, eta - minimumLimitedTime))
+        let limitedTime = max(minimumLimitedTime, eta - baselineUnlimitedTime)
+        let adjustedUnlimitedTime = unlimitedDistance / (targetSpeed / 3.6)
+        return .init(limitedDistance: limitedDistance,
+                     unlimitedDistance: unlimitedDistance,
+                     limitedTime: limitedTime,
+                     adjustedUnlimitedTime: adjustedUnlimitedTime)
     }
 }
 
@@ -547,20 +585,21 @@ struct RouteComparison {
 
     private func result(route: RoutePlanningInput, scenario: SpeedScenario, vehicle: VehicleProfile) -> RouteScenarioResult {
         let fraction = min(1, max(0, route.unlimitedMotorwayFraction))
-        let baseline = max(1, route.typicalUnlimitedSpeedKmh)
         let target = min(max(80, scenario.targetSpeedKmh), 220)
-        let unlimitedDistance = route.distanceMetres * fraction
-        let baselineUnlimitedTime = unlimitedDistance / (baseline / 3.6)
-        let limitedTime = max(0, route.mapKitExpectedTravelTime - baselineUnlimitedTime)
-        let limitedDistance = max(0, route.distanceMetres - unlimitedDistance)
-        let adjustedUnlimitedTime = unlimitedDistance / (target / 3.6)
+        let timing = SpeedScenarioPolicy.timing(
+            distanceMetres: route.distanceMetres,
+            mapKitExpectedTravelTime: route.mapKitExpectedTravelTime,
+            unlimitedFraction: fraction,
+            typicalUnlimitedSpeedKmh: route.typicalUnlimitedSpeedKmh,
+            targetSpeedKmh: target
+        )
         // Preserve MapKit's limited/urban/traffic component instead of assuming
         // the selected target speed applies to the whole route.
-        let drivingTime = limitedTime + adjustedUnlimitedTime
-        let limitedAverageSpeed = limitedDistance / max(1, limitedTime) * 3.6
+        let drivingTime = timing.totalTime
+        let limitedAverageSpeed = timing.limitedDistance / max(1, timing.limitedTime) * 3.6
         let routeFuel = fuelModel.estimate(segments: [
-            (limitedDistance, limitedAverageSpeed),
-            (unlimitedDistance, target)
+            (timing.limitedDistance, limitedAverageSpeed),
+            (timing.unlimitedDistance, target)
         ], profile: vehicle)
         let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
                                              consumptionLPer100km: routeFuel.averageConsumptionLPer100km,

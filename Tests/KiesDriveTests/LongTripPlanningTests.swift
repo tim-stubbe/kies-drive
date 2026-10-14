@@ -140,6 +140,31 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(result.drivingTime, expected, accuracy: 1)
     }
 
+    func testSpeedScenarioAlwaysReservesRealisticTimeForLimitedRoads() {
+        let timing = SpeedScenarioPolicy.timing(
+            distanceMetres: 600_000,
+            mapKitExpectedTravelTime: 4 * 3600,
+            unlimitedFraction: 0.9,
+            typicalUnlimitedSpeedKmh: 130,
+            targetSpeedKmh: 200
+        )
+        let minimumLimitedTime = 60_000 / (130 / 3.6)
+        XCTAssertGreaterThanOrEqual(timing.limitedTime, minimumLimitedTime)
+        XCTAssertGreaterThan(timing.totalTime, timing.adjustedUnlimitedTime)
+    }
+
+    func testSpeedScenarioPreservesTrafficTimeOnLimitedShare() {
+        let timing = SpeedScenarioPolicy.timing(
+            distanceMetres: 600_000,
+            mapKitExpectedTravelTime: 8 * 3600,
+            unlimitedFraction: 0.5,
+            typicalUnlimitedSpeedKmh: 130,
+            targetSpeedKmh: 200
+        )
+        let baselineUnlimitedTime = 300_000 / (130 / 3.6)
+        XCTAssertEqual(timing.limitedTime, 8 * 3600 - baselineUnlimitedTime, accuracy: 1)
+    }
+
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {
         let candidates = [
             BreakCandidate(id: "closed", name: "Closed", coordinate: .init(latitude: 0, longitude: 0), progress: 0.34, detourMetres: 50, isOpen: false),
