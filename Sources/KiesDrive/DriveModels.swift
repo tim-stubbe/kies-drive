@@ -207,26 +207,49 @@ struct DriveDiagnosticSummary: Equatable {
     let rejectedLocations: Int
     let missedFinalCues: Int
     let offlineRouteDepartures: Int
+    let resolvedRouteIssues: Int
+    let recommendation: String
 
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
         guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
         let session = events[start...]
-        let failures = session.filter { $0.kind == .rerouteFailed }.count
+        let lastRecovery = session.lastIndex(where: { $0.kind == .rerouteSucceeded })
+        let unresolved = lastRecovery.map { session[session.index(after: $0)...] } ?? session[session.startIndex...]
+        let totalFailures = session.filter { $0.kind == .rerouteFailed }.count
+        let totalOfflineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
+        let failures = unresolved.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
-        let offlineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
+        let offlineDepartures = unresolved.filter { $0.kind == .offlineRouteDeparture }.count
+        let resolved = max(0, totalFailures - failures) +
+            max(0, totalOfflineDepartures - offlineDepartures)
         let reroutes = session.filter { $0.kind == .rerouteRequested }.count
         let quality: Quality
+        let recommendation: String
         if failures > 0 || missed > 0 || offlineDepartures > 0 {
             quality = .critical
+            if missed > 0 {
+                recommendation = "Fahrhinweise prüfen; mindestens eine letzte Abbiegeansage fehlte."
+            } else if offlineDepartures > 0 {
+                recommendation = "Die gespeicherte Route wurde verlassen und noch nicht online ersetzt."
+            } else {
+                recommendation = "Die letzte Neuberechnung ist noch fehlgeschlagen; die alte Route blieb aktiv."
+            }
         } else if rejected >= 3 || reroutes >= 3 {
             quality = .attention
+            recommendation = rejected >= 3
+                ? "Mehrere GPS-Messungen waren unzuverlässig; freie Sicht zum Himmel verbessert die Führung."
+                : "Die Route wurde mehrfach neu berechnet; den Diagnosebericht nach der Fahrt prüfen."
         } else {
             quality = .good
+            recommendation = resolved > 0
+                ? "Ein vorübergehendes Routenproblem wurde automatisch behoben."
+                : "Keine auffälligen Navigationsprobleme erkannt."
         }
         return .init(quality: quality, eventCount: session.count,
                      rerouteFailures: failures, rejectedLocations: rejected,
-                     missedFinalCues: missed, offlineRouteDepartures: offlineDepartures)
+                     missedFinalCues: missed, offlineRouteDepartures: offlineDepartures,
+                     resolvedRouteIssues: resolved, recommendation: recommendation)
     }
 }
 

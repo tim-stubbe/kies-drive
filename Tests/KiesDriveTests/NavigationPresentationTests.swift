@@ -498,6 +498,7 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.eventCount, 3)
         XCTAssertEqual(summary.rerouteFailures, 0)
         XCTAssertEqual(summary.rejectedLocations, 1)
+        XCTAssertEqual(summary.resolvedRouteIssues, 0)
     }
 
     func testDiagnosticSummaryFlagsMissedFinalCue() throws {
@@ -509,6 +510,36 @@ final class NavigationPresentationTests: XCTestCase {
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
         XCTAssertEqual(summary.quality, .critical)
         XCTAssertEqual(summary.missedFinalCues, 1)
+    }
+
+    func testDiagnosticSummaryClearsTransientRouteFailureAfterSuccessfulRecovery() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Kein Netz"),
+            DriveDiagnosticEvent(kind: .offlineRouteDeparture, detail: "Korridor verlassen"),
+            DriveDiagnosticEvent(kind: .rerouteSucceeded, detail: "Online wiederhergestellt"),
+            DriveDiagnosticEvent(kind: .maneuverAnnounced, detail: "Rechts"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.rerouteFailures, 0)
+        XCTAssertEqual(summary.offlineRouteDepartures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 2)
+        XCTAssertTrue(summary.recommendation.contains("automatisch behoben"))
+    }
+
+    func testDiagnosticSummaryKeepsFailureAfterLatestRecoveryOpen() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .rerouteSucceeded, detail: "Erholt"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Erneut kein Netz"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.rerouteFailures, 1)
+        XCTAssertEqual(summary.resolvedRouteIssues, 0)
     }
 
     func testNavigationLocationPolicyRejectsImpossibleJumpAndStaleFix() {

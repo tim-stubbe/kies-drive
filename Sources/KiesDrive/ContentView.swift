@@ -1827,8 +1827,13 @@ struct DriveSettingsView: View {
                     let missedFinalCues = diagnosticEvents.filter { $0.kind == .maneuverFinalCueMissed }.count
                     if let latestSummary {
                         LabeledContent("Letzte Fahrt", value: latestSummary.quality.rawValue)
+                        Text(latestSummary.recommendation)
+                            .font(.caption).foregroundStyle(.secondary)
+                        if latestSummary.resolvedRouteIssues > 0 {
+                            LabeledContent("Automatisch behoben", value: "\(latestSummary.resolvedRouteIssues)")
+                        }
                         if latestSummary.quality != .good {
-                            Text("Letzte Fahrt: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
+                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     } else {
