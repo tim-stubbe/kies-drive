@@ -39,6 +39,9 @@ install before that approval.
   Für einen öffentlichen App-Build wird dieselbe Adresse als Xcode-Buildwert
   `KIES_DRIVE_SERVER_URL=https://…` gesetzt. Die App übernimmt sie automatisch;
   Nutzer sehen weder Serveradresse noch Zugangstoken.
+  Über `/readyz` lässt sich ohne Ausgabe von Zugangsdaten prüfen, ob öffentliche
+  HTTPS-Adresse und E-Mail-Versand für neue Registrierungen eingerichtet sind.
+  Erst wenn dort `ok: true` zurückkommt, ist der Account-Einstieg produktionsbereit.
 - Mautrecherche: `SEARXNG_URL` auf die interne URL der SearXNG-Instanz setzen.
   Kies Drive übernimmt nur ausdrücklich als Gesamtmaut bezeichnete Beträge aus
   HTTPS-Quellen; andernfalls bleibt der Preis bewusst unbekannt.

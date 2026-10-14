@@ -33,6 +33,20 @@ app = FastAPI(title="Kies Drive", version="1.0.0")
 KIES_BASE_URL = os.getenv("KIES_BASE_URL", "https://100.72.226.91:8000").rstrip("/")
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Keep account responses private and browser-based auth tightly scoped."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.path.startswith(("/auth/", "/oauth/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def db() -> sqlite3.Connection:
     db_path = Path(os.getenv("KIES_DRIVE_DB", "/data/kies-drive.db"))
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +120,23 @@ def current_user(authorization: str | None) -> sqlite3.Row:
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "kies-drive"}
+
+
+@app.get("/readyz")
+def readyz(response: Response):
+    """Report production onboarding readiness without exposing any secret."""
+    public_url = os.getenv("KIES_DRIVE_PUBLIC_URL", "").strip()
+    checks = {
+        "public_https": public_url.startswith("https://"),
+        "email_delivery": bool(
+            os.getenv("SMTP_HOST", "").strip()
+            and os.getenv("SMTP_FROM", "").strip()
+        ),
+    }
+    ready = all(checks.values())
+    if not ready:
+        response.status_code = 503
+    return {"ok": ready, "service": "kies-drive", "checks": checks}
 
 
 def public_url(request: Request) -> str:

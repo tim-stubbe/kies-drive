@@ -9,6 +9,44 @@ from fastapi.testclient import TestClient
 import app.main as main
 
 
+def test_production_readiness_discloses_no_secrets(monkeypatch):
+    monkeypatch.delenv("KIES_DRIVE_PUBLIC_URL", raising=False)
+    monkeypatch.delenv("SMTP_HOST", raising=False)
+    monkeypatch.delenv("SMTP_FROM", raising=False)
+    client = TestClient(main.app)
+
+    missing = client.get("/readyz")
+    assert missing.status_code == 503
+    assert missing.json()["checks"] == {
+        "public_https": False,
+        "email_delivery": False,
+    }
+
+    monkeypatch.setenv("KIES_DRIVE_PUBLIC_URL", "https://drive.example.test")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_FROM", "Kies Drive <drive@example.test>")
+    monkeypatch.setenv("SMTP_PASSWORD", "must-never-be-returned")
+    ready = client.get("/readyz")
+    assert ready.status_code == 200
+    assert ready.json()["ok"] is True
+    assert "must-never-be-returned" not in ready.text
+
+
+def test_account_responses_are_not_cached_or_embedded(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "headers.db"))
+    monkeypatch.setattr(main, "send_verification_email", lambda email, token: None)
+    main.AUTH_ATTEMPTS.clear()
+    response = TestClient(main.app).post(
+        "/auth/register",
+        json={"email": "headers@example.com", "password": "a-secure-password"},
+    )
+
+    assert response.status_code == 202
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
 def test_toll_amount_parser_accepts_only_explicit_total():
     assert main.explicit_toll_amount("Mautkosten: 27,40 EUR") == 27.4
     assert main.explicit_toll_amount("27.40 € Gesamtmaut") == 27.4
