@@ -716,6 +716,16 @@ enum RouteMutationRollbackPolicy {
     }
 }
 
+/// Async guidance work belongs to both one navigation session and one work
+/// item. Stopping, arriving, or starting another drive invalidates both.
+enum NavigationAsyncWorkPolicy {
+    static func isCurrent(navigationActive: Bool,
+                          session: UUID, currentSession: UUID,
+                          work: UUID, currentWork: UUID) -> Bool {
+        navigationActive && session == currentSession && work == currentWork
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

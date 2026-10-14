@@ -904,6 +904,31 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testAsyncGuidanceWorkCannotSurviveStopOrNewSession() {
+        let session = UUID()
+        let work = UUID()
+        XCTAssertTrue(NavigationAsyncWorkPolicy.isCurrent(
+            navigationActive: true,
+            session: session, currentSession: session,
+            work: work, currentWork: work
+        ))
+        XCTAssertFalse(NavigationAsyncWorkPolicy.isCurrent(
+            navigationActive: false,
+            session: session, currentSession: session,
+            work: work, currentWork: work
+        ))
+        XCTAssertFalse(NavigationAsyncWorkPolicy.isCurrent(
+            navigationActive: true,
+            session: session, currentSession: UUID(),
+            work: work, currentWork: work
+        ))
+        XCTAssertFalse(NavigationAsyncWorkPolicy.isCurrent(
+            navigationActive: true,
+            session: session, currentSession: session,
+            work: work, currentWork: UUID()
+        ))
+    }
+
     func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
         let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         XCTAssertTrue(OfflineRouteCachePolicy.matches(

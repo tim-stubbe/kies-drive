@@ -142,6 +142,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
     private var consecutiveRerouteFailures = 0
+    private var navigationSessionGeneration = UUID()
+    private var rerouteGeneration = UUID()
     private var lastAcceptedNavigationLocation: CLLocation?
     private var lastReliableGuidanceSpeedMps: Double?
     private var lastReliableGuidanceSpeedAt: Date?
@@ -236,6 +238,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func startNavigation(voiceGuidance: Bool? = nil) {
         guard !legs.isEmpty else { return }
+        beginNavigationSession()
         let shouldSpeak = voiceGuidance ?? DriveSettings.shared.voiceGuidance
         isUsingOfflineGuidance = false
         persistActiveTrip()
@@ -252,6 +255,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func stopNavigation() {
         let wasNavigating = isNavigating
         if wasNavigating { closeOutstandingManeuverDiagnostic() }
+        invalidateNavigationAsyncWork()
         isNavigating = false
         isUsingOfflineGuidance = false
         synthesizer.stopSpeaking(at: .immediate)
@@ -1022,6 +1026,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         isUsingOfflineGuidance = true
         offlineNeedsInitialPositionMatch = true
         lastOfflineRecoveryAttempt = Date()
+        beginNavigationSession()
         isNavigating = true
         hasArrived = false
         remainingDistanceMetres = cache.legs.reduce(0) { $0 + $1.distance }
@@ -1239,6 +1244,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         arrivalStrikes = 0
         closeOutstandingManeuverDiagnostic()
+        invalidateNavigationAsyncWork()
         isNavigating = false
         isRecalculating = false
         remainingDistanceMetres = 0
@@ -1600,6 +1606,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
               ) else { return }
         resetDeviationTracking()
         lastRerouteAt = Date()
+        let sessionGeneration = navigationSessionGeneration
+        let workGeneration = UUID()
+        rerouteGeneration = workGeneration
         // Claim the reroute synchronously. Location updates can arrive faster
         // than the unstructured task below gets scheduled; setting this only
         // inside the task left a small window in which several identical
@@ -1610,7 +1619,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                         "Abweichung \(Int(nearest)) m", location: location
                                     ))
         Task {
-            defer { isRecalculating = false }
+            guard NavigationAsyncWorkPolicy.isCurrent(
+                navigationActive: isNavigating,
+                session: sessionGeneration, currentSession: navigationSessionGeneration,
+                work: workGeneration, currentWork: rerouteGeneration
+            ) else { return }
+            defer {
+                if workGeneration == rerouteGeneration { isRecalculating = false }
+            }
             if settings.voiceGuidance { speak("Die Route wird neu berechnet.", priority: .status) }
             // Keep the current route, station data and guidance visible while
             // MapKit searches in the background. The Boolean result is the
@@ -1618,6 +1634,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // leave `errorMessage` nil and must not be reported as success.
             let succeeded = await calculate(from: location.coordinate, settings: settings,
                                             showLoading: false)
+            guard NavigationAsyncWorkPolicy.isCurrent(
+                navigationActive: isNavigating,
+                session: sessionGeneration, currentSession: navigationSessionGeneration,
+                work: workGeneration, currentWork: rerouteGeneration
+            ) else { return }
             if succeeded {
                 consecutiveRerouteFailures = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
@@ -1667,6 +1688,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         offRouteSince = nil
         offRouteFixCount = 0
         previousOffRouteDistance = distance
+    }
+
+    private func beginNavigationSession() {
+        navigationSessionGeneration = UUID()
+        rerouteGeneration = UUID()
+        isRecalculating = false
+        lastRerouteAt = nil
+    }
+
+    private func invalidateNavigationAsyncWork() {
+        navigationSessionGeneration = UUID()
+        rerouteGeneration = UUID()
+        isRecalculating = false
     }
 
     /// Kleinster Abstand zu jedem echten Liniensegment. Die frühere Stichprobe
