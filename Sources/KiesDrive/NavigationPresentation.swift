@@ -333,6 +333,35 @@ enum NavigationLocationPolicy {
     }
 }
 
+/// Core Location may batch several fixes after a tunnel, a locked display or
+/// a short background interval. Guidance must consume those fixes in temporal
+/// order; using only the last value can jump across a junction and lose both
+/// the final spoken cue and the next maneuver presentation.
+enum NavigationLocationBatchPolicy {
+    static func orderedDistinct(_ locations: [CLLocation]) -> [CLLocation] {
+        locations.enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.timestamp == rhs.element.timestamp {
+                    return lhs.offset < rhs.offset
+                }
+                return lhs.element.timestamp < rhs.element.timestamp
+            }
+            .reduce(into: [CLLocation]()) { result, indexed in
+                let candidate = indexed.element
+                guard let previous = result.last else {
+                    result.append(candidate)
+                    return
+                }
+                let sameTimestamp = candidate.timestamp == previous.timestamp
+                let sameCoordinate = candidate.coordinate.latitude == previous.coordinate.latitude &&
+                    candidate.coordinate.longitude == previous.coordinate.longitude
+                if !sameTimestamp || !sameCoordinate {
+                    result.append(candidate)
+                }
+            }
+    }
+}
+
 enum NavigationLocationAuthorizationPolicy {
     /// iOS commonly answers the first "Always" request with When-In-Use.
     /// Ask for the background upgrade only when guidance actually begins, so

@@ -82,6 +82,28 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.notDetermined))
     }
 
+    func testBatchedLocationsAreProcessedChronologicallyWithoutExactDuplicates() {
+        let base = Date(timeIntervalSince1970: 1_000)
+        func location(_ seconds: TimeInterval, latitude: Double) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: latitude, longitude: 8), altitude: 0,
+                horizontalAccuracy: 5, verticalAccuracy: 5,
+                course: 0, speed: 15, timestamp: base.addingTimeInterval(seconds)
+            )
+        }
+        let oldest = location(1, latitude: 50.0)
+        let junction = location(2, latitude: 50.001)
+        let duplicate = location(2, latitude: 50.001)
+        let latest = location(3, latitude: 50.002)
+
+        let ordered = NavigationLocationBatchPolicy.orderedDistinct([
+            latest, junction, duplicate, oldest,
+        ])
+
+        XCTAssertEqual(ordered.map(\.timestamp), [oldest.timestamp, junction.timestamp, latest.timestamp])
+        XCTAssertEqual(ordered.map(\.coordinate.latitude), [50.0, 50.001, 50.002])
+    }
+
     func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
         XCTAssertEqual(NavigationMotionPolicy.reliableSpeed(
             speedMetresPerSecond: 27, speedAccuracy: 1.5, horizontalAccuracy: 12), 27)

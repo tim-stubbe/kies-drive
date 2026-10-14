@@ -75,7 +75,8 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #endif
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let latest = locations.last else { return }
+        let guidanceSamples = NavigationLocationBatchPolicy.orderedDistinct(locations)
+        guard let latest = guidanceSamples.last else { return }
         location = latest
 
         // Navigation progress must be driven by Core Location itself, not by
@@ -83,12 +84,17 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // reliable execution path while the display is locked, the app is in
         // the background, or CarPlay owns the visible navigation surface.
         // Keeping this here also guarantees exactly one progress update per
-        // delivered GPS fix across the phone, Mac and CarPlay presentations.
+        // distinct delivered GPS fix across the phone, Mac and CarPlay
+        // presentations. Core Location may deliver a batch after tunnels or
+        // background execution; processing only its last value can jump over
+        // a junction and suppress the final maneuver cue.
         let planner = RoutePlanner.shared
         // `isNavigating` also covers guidance restored from the persisted
         // offline cache, where no fresh MapKit `legs` exist yet.
         if planner.isNavigating {
-            planner.updateProgress(at: latest, settings: .shared)
+            for sample in guidanceSamples where planner.isNavigating {
+                planner.updateProgress(at: sample, settings: .shared)
+            }
         }
 
         Task {
