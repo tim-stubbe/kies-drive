@@ -848,7 +848,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     @discardableResult
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings,
-                   showLoading: Bool = true) async -> Bool {
+                   showLoading: Bool = true,
+                   navigationSession: UUID? = nil,
+                   navigationWork: UUID? = nil) async -> Bool {
         guard let destination else { return false }
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
@@ -926,7 +928,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 computedComparison = nil
             }
             guard calculationGeneration == routeCalculationGeneration,
-                  lock?.id == routeLockStore.activeLock?.id else { return false }
+                  lock?.id == routeLockStore.activeLock?.id,
+                  NavigationAsyncWorkPolicy.mayCommitCalculation(
+                    navigationActive: isNavigating,
+                    session: navigationSession,
+                    currentSession: navigationSessionGeneration,
+                    work: navigationWork,
+                    currentWork: rerouteGeneration
+                  ) else { return false }
             // Commit route and trip progress together. A superseded request
             // therefore cannot flash an old route or permanently skip a
             // mandatory waypoint merely because it finished later.
@@ -1196,10 +1205,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         if OfflineRouteRecoveryPolicy.shouldAttempt(lastAttempt: lastOfflineRecoveryAttempt) {
             lastOfflineRecoveryAttempt = Date()
+            let recoverySession = navigationSessionGeneration
             Task { [weak self] in
                 guard let self, self.isUsingOfflineGuidance, self.isNavigating else { return }
                 let succeeded = await self.calculate(
-                    from: location.coordinate, settings: settings, showLoading: false
+                    from: location.coordinate, settings: settings, showLoading: false,
+                    navigationSession: recoverySession
                 )
                 guard OfflineRouteRecoveryPolicy.acceptsOnlineResult(
                     calculationSucceeded: succeeded,
@@ -1539,7 +1550,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             current.visitedWaypointIDs = ids
         }
         activeRouteLock = routeLockStore.activeLock
-        Task { await calculate(from: location.coordinate, settings: settings) }
+        let session = navigationSessionGeneration
+        Task {
+            await calculate(from: location.coordinate, settings: settings,
+                            navigationSession: session)
+        }
     }
 
     private func persistRouteLockProgress(at location: CLLocation) {
@@ -1897,8 +1912,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // MapKit searches in the background. The Boolean result is the
             // source of truth: a superseded/empty request may intentionally
             // leave `errorMessage` nil and must not be reported as success.
-            let succeeded = await calculate(from: location.coordinate, settings: settings,
-                                            showLoading: false)
+            let succeeded = await calculate(
+                from: location.coordinate, settings: settings, showLoading: false,
+                navigationSession: sessionGeneration, navigationWork: workGeneration
+            )
             guard NavigationAsyncWorkPolicy.isCurrent(
                 navigationActive: isNavigating,
                 session: sessionGeneration, currentSession: navigationSessionGeneration,

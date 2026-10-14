@@ -913,6 +913,18 @@ enum NavigationAsyncWorkPolicy {
                           work: UUID, currentWork: UUID) -> Bool {
         navigationActive && session == currentSession && work == currentWork
     }
+
+    /// Route calculations started by guidance are allowed to publish only
+    /// while their navigation session still exists. A reroute additionally
+    /// belongs to one watchdog-controlled work item. Foreground route planning
+    /// passes no session and remains independent of navigation lifecycle.
+    static func mayCommitCalculation(navigationActive: Bool,
+                                     session: UUID?, currentSession: UUID,
+                                     work: UUID?, currentWork: UUID) -> Bool {
+        guard let session else { return true }
+        guard navigationActive, session == currentSession else { return false }
+        return work.map { $0 == currentWork } ?? true
+    }
 }
 
 enum OfflineRouteCachePolicy {

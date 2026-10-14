@@ -245,6 +245,34 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeoutNanoseconds, 45_000_000_000)
     }
 
+    func testDelayedGuidanceCalculationCannotCommitAfterStopOrWatchdog() {
+        let session = UUID()
+        let work = UUID()
+        XCTAssertTrue(NavigationAsyncWorkPolicy.mayCommitCalculation(
+            navigationActive: true, session: session, currentSession: session,
+            work: work, currentWork: work
+        ))
+        XCTAssertFalse(NavigationAsyncWorkPolicy.mayCommitCalculation(
+            navigationActive: false, session: session, currentSession: session,
+            work: work, currentWork: work
+        ), "Stopping navigation must invalidate an in-flight calculation")
+        XCTAssertFalse(NavigationAsyncWorkPolicy.mayCommitCalculation(
+            navigationActive: true, session: session, currentSession: session,
+            work: work, currentWork: UUID()
+        ), "The reroute watchdog must prevent its late MapKit result from publishing")
+        XCTAssertFalse(NavigationAsyncWorkPolicy.mayCommitCalculation(
+            navigationActive: true, session: session, currentSession: UUID(),
+            work: nil, currentWork: UUID()
+        ), "A calculation from an older drive must not replace the current route")
+    }
+
+    func testForegroundCalculationDoesNotDependOnNavigationSession() {
+        XCTAssertTrue(NavigationAsyncWorkPolicy.mayCommitCalculation(
+            navigationActive: false, session: nil, currentSession: UUID(),
+            work: nil, currentWork: UUID()
+        ))
+    }
+
     func testRemoteSyncPolicyIsFastOnlyDuringNavigationAndRejectsBadFixes() {
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: true), 5)
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: false), 15)
