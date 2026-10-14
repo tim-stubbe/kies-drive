@@ -227,6 +227,22 @@ enum NavigationSpeechPriority: Int, Equatable {
     }
 }
 
+/// Separates speech accepted by AVSpeechSynthesizer from speech that has
+/// actually started. Audio-route changes can cancel a queued utterance; that
+/// maneuver must remain eligible for the next location update.
+enum NavigationAnnouncementDeliveryPolicy {
+    static func stages(upTo stage: NavigationAnnouncementStage)
+        -> Set<NavigationAnnouncementStage> {
+        Set(NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue })
+    }
+
+    static func shouldAttempt(_ stage: NavigationAnnouncementStage,
+                              delivered: Set<NavigationAnnouncementStage>,
+                              pending: Set<NavigationAnnouncementStage>) -> Bool {
+        !delivered.contains(stage) && !pending.contains(stage)
+    }
+}
+
 enum NavigationSpeechInterruptionPolicy {
     static func shouldInterrupt(active: NavigationSpeechPriority,
                                 incoming: NavigationSpeechPriority) -> Bool {

@@ -407,6 +407,23 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testManeuverAnnouncementRemainsRetryableUntilSpeechActuallyStarts() {
+        XCTAssertTrue(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
+            .prepare, delivered: [], pending: []
+        ))
+        XCTAssertFalse(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
+            .prepare, delivered: [], pending: [.prepare]
+        ), "A queued utterance must not be enqueued repeatedly")
+        XCTAssertTrue(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
+            .prepare, delivered: [], pending: []
+        ), "A cancelled-before-start utterance must be retryable")
+        XCTAssertFalse(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
+            .prepare,
+            delivered: NavigationAnnouncementDeliveryPolicy.stages(upTo: .prepare),
+            pending: []
+        ))
+    }
+
     func testNewRouteSeedsItsOwnFirstManeuverImmediately() throws {
         let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
             (instruction: "", distance: 420),
