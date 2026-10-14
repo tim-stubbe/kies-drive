@@ -707,6 +707,15 @@ enum RouteEnrichmentPublicationPolicy {
     }
 }
 
+/// A failed route mutation may restore its snapshot only when the persisted
+/// state still equals the exact mutation that initiated the calculation.
+/// Newer stop edits or live waypoint progress must always win.
+enum RouteMutationRollbackPolicy {
+    static func shouldRollback<State: Equatable>(current: State, mutated: State) -> Bool {
+        current == mutated
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

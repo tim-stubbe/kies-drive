@@ -879,6 +879,15 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testFailedRouteMutationCannotRollbackNewerState() {
+        XCTAssertTrue(RouteMutationRollbackPolicy.shouldRollback(
+            current: ["fuel-a", "rest-b"], mutated: ["fuel-a", "rest-b"]
+        ))
+        XCTAssertFalse(RouteMutationRollbackPolicy.shouldRollback(
+            current: ["fuel-a", "rest-b", "food-c"], mutated: ["fuel-a", "rest-b"]
+        ))
+    }
+
     func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
         let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         XCTAssertTrue(OfflineRouteCachePolicy.matches(

@@ -675,10 +675,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: stopName,
                              coordinate: coordinate, knownProgress: knownProgress,
                              kind: .userStop)
+        let mutatedLock = routeLockStore.activeLock
         routeSearchResults = []
         isSearchingAlongRoute = false
         let succeeded = await calculate(from: start, settings: settings)
         guard succeeded else {
+            guard RouteMutationRollbackPolicy.shouldRollback(
+                current: routeLockStore.activeLock, mutated: mutatedLock
+            ) else { return false }
             routeLockStore.replace(with: previousLock)
             activeRouteLock = previousLock
             routeSearchQuery = previousSearchQuery
@@ -707,7 +711,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let previousLock = routeLockStore.activeLock
         routeLockStore.update { $0.removeWaypoint(id: id) }
         activeRouteLock = routeLockStore.activeLock
+        let mutatedLock = routeLockStore.activeLock
         guard await calculate(from: start, settings: settings) else {
+            guard RouteMutationRollbackPolicy.shouldRollback(
+                current: routeLockStore.activeLock, mutated: mutatedLock
+            ) else { return false }
             routeLockStore.replace(with: previousLock)
             activeRouteLock = previousLock
             return false
@@ -2099,7 +2107,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 coordinate: station.coordinate, kind: .fuelStop
             )
         }
+        let mutatedStations = viaStations
+        let mutatedLock = routeLockStore.activeLock
         guard await calculate(from: start, settings: settings) else {
+            guard RouteMutationRollbackPolicy.shouldRollback(
+                current: viaStations, mutated: mutatedStations
+            ), RouteMutationRollbackPolicy.shouldRollback(
+                current: routeLockStore.activeLock, mutated: mutatedLock
+            ) else { return false }
             viaStations = previousStations
             routeLockStore.replace(with: previousLock)
             activeRouteLock = previousLock
@@ -2125,7 +2140,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate, kind: .fuelStop
             )
+            let mutatedStations = viaStations
+            let mutatedLock = routeLockStore.activeLock
             guard await calculate(from: start, settings: settings) else {
+                guard RouteMutationRollbackPolicy.shouldRollback(
+                    current: viaStations, mutated: mutatedStations
+                ), RouteMutationRollbackPolicy.shouldRollback(
+                    current: routeLockStore.activeLock, mutated: mutatedLock
+                ) else { return }
                 viaStations = previousStations
                 routeLockStore.replace(with: previousLock)
                 activeRouteLock = previousLock
