@@ -205,7 +205,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 cacheName: cache.destinationName,
                 cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
                 destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
-                destinationCoordinate: destination?.placemark.coordinate
+                destinationCoordinate: destination?.placemark.coordinate,
+                belongsToActiveTrip: belongsToActiveTrip(cache)
               ) else { return nil }
         return cache
     }
@@ -360,7 +361,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 cacheName: $0.destinationName,
                 cacheCoordinate: $0.destinationCoordinate?.clLocationCoordinate,
                 destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
-                destinationCoordinate: destination?.placemark.coordinate
+                destinationCoordinate: destination?.placemark.coordinate,
+                belongsToActiveTrip: belongsToActiveTrip($0)
             ) && $0.legs.flatMap(\.steps).contains { ($0.coordinates?.count ?? 0) > 1 }
         } ?? false
         switch RouteRestoreModePolicy.mode(
@@ -1052,7 +1054,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 cacheName: cache.destinationName,
                 cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
                 destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
-                destinationCoordinate: destination?.placemark.coordinate
+                destinationCoordinate: destination?.placemark.coordinate,
+                belongsToActiveTrip: belongsToActiveTrip(cache)
               ),
               cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {
             return false
@@ -1077,6 +1080,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lastAnnouncement = "Offline-Route wiederhergestellt"
         DriveDiagnosticStore.append(.navigationStarted, detail: "Offline · \(cache.destinationName)")
         return true
+    }
+
+    /// Extended offline retention is granted only when the cache belongs to
+    /// the exact destination of the still-active persisted trip. A manually
+    /// selected destination with the same display state cannot accidentally
+    /// revive an unrelated old cache.
+    private func belongsToActiveTrip(_ cache: CachedRoute) -> Bool {
+        guard let lock = routeLockStore.activeLock, lock.isActive else { return false }
+        return OfflineRouteCachePolicy.matches(
+            cacheName: cache.destinationName,
+            cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
+            destinationName: lock.destinationName,
+            destinationCoordinate: lock.destination.clLocationCoordinate
+        )
     }
 
     private func updateOfflineProgress(at location: CLLocation, guidanceSpeedMps: Double,

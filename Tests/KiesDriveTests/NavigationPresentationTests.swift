@@ -1004,6 +1004,14 @@ final class NavigationPresentationTests: XCTestCase {
             savedAt: now.addingTimeInterval(-8 * 24 * 60 * 60), now: now
         ))
         XCTAssertTrue(OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: now.addingTimeInterval(-8 * 24 * 60 * 60),
+            belongsToActiveTrip: true, now: now
+        ))
+        XCTAssertFalse(OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: now.addingTimeInterval(-31 * 24 * 60 * 60),
+            belongsToActiveTrip: true, now: now
+        ))
+        XCTAssertTrue(OfflineRouteFreshnessPolicy.isUsable(
             savedAt: now.addingTimeInterval(4 * 60), now: now
         ))
         XCTAssertFalse(OfflineRouteFreshnessPolicy.isUsable(
@@ -1021,12 +1029,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(OfflineRouteAvailabilityPolicy.isUsable(
             savedAt: now, cacheName: "Altes Ziel", cacheCoordinate: cached,
             destinationName: "Neues Ziel",
-            destinationCoordinate: .init(latitude: 51, longitude: 9), now: now
+            destinationCoordinate: .init(latitude: 51, longitude: 9),
+            belongsToActiveTrip: true, now: now
         ))
         XCTAssertTrue(OfflineRouteAvailabilityPolicy.isUsable(
             savedAt: now, cacheName: "Ziel", cacheCoordinate: cached,
             destinationName: "Ziel",
             destinationCoordinate: .init(latitude: 50.001, longitude: 8), now: now
+        ))
+        XCTAssertTrue(OfflineRouteAvailabilityPolicy.isUsable(
+            savedAt: now.addingTimeInterval(-8 * 24 * 60 * 60),
+            cacheName: "Ziel", cacheCoordinate: cached,
+            destinationName: "Ziel",
+            destinationCoordinate: .init(latitude: 50.001, longitude: 8),
+            belongsToActiveTrip: true, now: now
         ))
     }
 

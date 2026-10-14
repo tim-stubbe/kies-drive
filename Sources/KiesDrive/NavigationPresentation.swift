@@ -805,11 +805,18 @@ enum OfflineRouteCachePolicy {
 /// routing data. A small future tolerance survives harmless clock correction.
 enum OfflineRouteFreshnessPolicy {
     static let maximumAge: TimeInterval = 7 * 24 * 60 * 60
+    /// A deliberately active route lock proves that the driver still intends
+    /// to finish this trip. Keep its last known turn-by-turn geometry long
+    /// enough for a multi-week holiday, while still forcing a fresh route
+    /// after a month because closures and road layouts may have changed.
+    static let activeTripMaximumAge: TimeInterval = 30 * 24 * 60 * 60
     static let futureTolerance: TimeInterval = 5 * 60
 
-    static func isUsable(savedAt: Date, now: Date = Date()) -> Bool {
+    static func isUsable(savedAt: Date, belongsToActiveTrip: Bool = false,
+                         now: Date = Date()) -> Bool {
         let age = now.timeIntervalSince(savedAt)
-        return age >= -futureTolerance && age <= maximumAge
+        let permittedAge = belongsToActiveTrip ? activeTripMaximumAge : maximumAge
+        return age >= -futureTolerance && age <= permittedAge
     }
 }
 
@@ -817,9 +824,12 @@ enum OfflineRouteAvailabilityPolicy {
     static func isUsable(savedAt: Date,
                          cacheName: String, cacheCoordinate: CLLocationCoordinate2D?,
                          destinationName: String?, destinationCoordinate: CLLocationCoordinate2D?,
+                         belongsToActiveTrip: Bool = false,
                          now: Date = Date()) -> Bool {
         guard let destinationName else { return false }
-        return OfflineRouteFreshnessPolicy.isUsable(savedAt: savedAt, now: now) &&
+        return OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: savedAt, belongsToActiveTrip: belongsToActiveTrip, now: now
+        ) &&
             OfflineRouteCachePolicy.matches(
                 cacheName: cacheName, cacheCoordinate: cacheCoordinate,
                 destinationName: destinationName, destinationCoordinate: destinationCoordinate
