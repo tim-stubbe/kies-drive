@@ -472,7 +472,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func redrawRoute() {
         guard let mapView else { return }
         mapView.removeOverlays(mapView.overlays)
-        visibleRoutePolylines.forEach { mapView.addOverlay($0, level: .aboveRoads) }
+        // Guidance geometry must win over labels and map decorations at busy
+        // interchanges. Otherwise the route can look interrupted precisely
+        // where the driver needs it most.
+        visibleRoutePolylines.forEach { mapView.addOverlay($0, level: .aboveLabels) }
         // MapKit may temporarily report `.none` after a programmatic camera
         // update. `cameraMode` is the user's actual intent and prevents a
         // route refresh/reroute from unexpectedly replacing follow mode with

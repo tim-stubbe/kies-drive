@@ -1288,8 +1288,10 @@ struct DriveContentView: View {
             if isSimulatorNavigationPreview {
                 MapPolyline(simulatorPreviewPolyline)
                     .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .mapOverlayLevel(level: .aboveLabels)
                 MapPolyline(simulatorPreviewPolyline)
                     .stroke(Color.kiesRouteBlue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    .mapOverlayLevel(level: .aboveLabels)
             }
             #else
             if planner.isNavigating, let coordinate = location.location?.coordinate {
@@ -1310,15 +1312,19 @@ struct DriveContentView: View {
             ForEach(Array(planner.legs.enumerated()), id: \.offset) { _, leg in
                 MapPolyline(leg.polyline)
                     .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .mapOverlayLevel(level: .aboveLabels)
                 MapPolyline(leg.polyline)
                     .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    .mapOverlayLevel(level: .aboveLabels)
             }
             if planner.legs.isEmpty {
                 ForEach(Array(planner.offlinePolylines.enumerated()), id: \.offset) { _, polyline in
                     MapPolyline(polyline)
                         .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                        .mapOverlayLevel(level: .aboveLabels)
                     MapPolyline(polyline)
                         .stroke(Color.kiesRouteBlue.opacity(0.8), style: StrokeStyle(lineWidth: 5, dash: [8, 5]))
+                        .mapOverlayLevel(level: .aboveLabels)
                 }
             }
             if !isShowingRouteOverview {
