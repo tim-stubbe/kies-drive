@@ -519,6 +519,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             navigationSession = mapTemplate.startNavigationSession(for: trip)
         }
         publishManeuver()
+        updateGuidanceEstimates()
     }
 
     private func publishManeuver() {
@@ -533,10 +534,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let presentation = NavigationManeuverPresentation(instruction)
             maneuver.symbolImage = UIImage(systemName: presentation.direction.symbolName)
             if index == 0 {
-                maneuver.initialTravelEstimates = CPTravelEstimates(
-                    distanceRemaining: Measurement(value: max(planner.nextManeuverDistance ?? 0, 0),
-                                                   unit: UnitLength.meters),
-                    timeRemaining: 0)
+                maneuver.initialTravelEstimates = maneuverTravelEstimates()
             }
             return maneuver
         }
