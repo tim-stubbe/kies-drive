@@ -1169,7 +1169,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         guard settings.voiceGuidance else { return }
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
-        if recordManeuverTransition(key: key, instruction: progress.instruction) {
+        if recordManeuverTransition(
+            key: key,
+            instruction: progress.instruction,
+            distance: progress.distanceToManeuver
+        ) {
+            markChainedManeuverAnnounced(
+                key: key,
+                instruction: progress.instruction,
+                distance: progress.distanceToManeuver,
+                guidanceSpeedMps: guidanceSpeedMps
+            )
             return
         }
         guard
@@ -1446,7 +1456,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func announce(_ progress: LiveNavigationProgress, guidanceSpeedMps: Double) {
         let speedKmh = guidanceSpeedMps * 3.6
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
-        if recordManeuverTransition(key: key, instruction: progress.maneuver.step.instructions) {
+        if recordManeuverTransition(
+            key: key,
+            instruction: progress.maneuver.step.instructions,
+            distance: progress.distance
+        ) {
+            markChainedManeuverAnnounced(
+                key: key,
+                instruction: progress.maneuver.step.instructions,
+                distance: progress.distance,
+                guidanceSpeedMps: guidanceSpeedMps
+            )
             return
         }
         guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
@@ -1471,10 +1491,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     /// Returns true when a final cue for the maneuver just crossed was spoken.
-    /// The new maneuver is deliberately announced on the next location update
-    /// so two critical utterances cannot immediately cut each other off.
+    /// A close following maneuver is chained into the same utterance. Waiting
+    /// for another GPS sample here can be too late at motorway interchanges.
     @discardableResult
-    private func recordManeuverTransition(key: String, instruction: String) -> Bool {
+    private func recordManeuverTransition(key: String, instruction: String,
+                                          distance: CLLocationDistance) -> Bool {
         guard diagnosticManeuverKey != key else { return false }
         let previousKey = diagnosticManeuverKey
         let previousInstruction = diagnosticManeuverInstruction
@@ -1485,7 +1506,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         var recovered = false
         if shouldRecover, let previousKey, let previousInstruction {
             recovered = speak(
-                NavigationSpeechFormatter.spokenText(previousInstruction, distance: 0),
+                NavigationSpeechFormatter.spokenText(
+                    previousInstruction,
+                    distance: 0,
+                    then: instruction,
+                    followingDistance: distance
+                ),
                 priority: .critical
             )
             if recovered {
@@ -1501,6 +1527,27 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction
         return recovered
+    }
+
+    /// When the recovery utterance already contained the close following
+    /// maneuver, remember its current stage so the next location update does
+    /// not repeat the same instruction. Distant maneuvers were not chained
+    /// and therefore remain eligible for their normal staged announcements.
+    private func markChainedManeuverAnnounced(key: String, instruction: String,
+                                              distance: CLLocationDistance,
+                                              guidanceSpeedMps: Double) {
+        guard distance <= 450,
+              let stage = NavigationAnnouncementStage.stage(
+                distance: distance, speedKmh: guidanceSpeedMps * 3.6
+              ) else { return }
+        announcedManeuverStages[key] = Set(
+            NavigationAnnouncementStage.allCases.filter { $0.rawValue <= stage.rawValue }
+        )
+        lastAnnouncement = instruction
+        DriveDiagnosticStore.append(
+            .maneuverAnnounced,
+            detail: "chained-\(stage) · \(Int(distance)) m · \(instruction)"
+        )
     }
 
     private func closeOutstandingManeuverDiagnostic() {
