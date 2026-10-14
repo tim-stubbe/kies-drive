@@ -353,6 +353,37 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 900)
     }
 
+    func testDrivingRestPolicyDoesNotTreatUnknownGapAsObservedBreak() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 25_000)
+        let existing = DrivingRestState(
+            tripID: tripID, continuousDriving: 7_000,
+            lastSampleAt: start, stationarySince: nil
+        )
+        let firstObservedStop = start.addingTimeInterval(3_600)
+
+        var state = DrivingRestPolicy.updated(
+            existing, tripID: tripID, at: firstObservedStop,
+            speedMetresPerSecond: 0
+        )
+        XCTAssertEqual(state.continuousDriving, 7_000)
+        XCTAssertEqual(state.stationarySince, firstObservedStop)
+
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID,
+            at: firstObservedStop.addingTimeInterval(20 * 60 - 1),
+            speedMetresPerSecond: 0
+        )
+        XCTAssertEqual(state.continuousDriving, 7_000)
+
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID,
+            at: firstObservedStop.addingTimeInterval(20 * 60),
+            speedMetresPerSecond: 0
+        )
+        XCTAssertEqual(state.continuousDriving, 0)
+    }
+
     func testDrivingRestStateStorePersistsWithoutLocationData() throws {
         let suite = "KiesDriveTests.DrivingRest.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

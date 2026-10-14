@@ -515,10 +515,10 @@ enum DrivingRestPolicy {
             }
         } else {
             if state.stationarySince == nil {
-                // A large gap followed by a stationary fix is useful evidence
-                // of a real stop. A short gap may still contain the final
-                // metres of driving, so the pause starts at the current fix.
-                state.stationarySince = interval > maximumCountedSampleGap ? priorSample : date
+                // Missing samples are not proof of a break: the driver may
+                // have travelled throughout the gap and stopped only for this
+                // fix. Count rest only from the first observed stationary fix.
+                state.stationarySince = date
             }
             if let stationarySince = state.stationarySince,
                date.timeIntervalSince(stationarySince) >= restResetDuration {
