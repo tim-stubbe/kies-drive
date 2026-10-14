@@ -119,6 +119,8 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
 
     response = client.get("/auth/verify-email", params={"token": sent["token"]})
     assert response.status_code == 200
+    assert "meldet dich automatisch an" in response.text
+    assert 'href="kiesdrive://auth-complete"' in response.text
     response = client.get("/auth/verify-email", params={"token": sent["token"]})
     assert response.status_code == 400
 

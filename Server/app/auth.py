@@ -330,7 +330,7 @@ def consume_recovery_code(conn: sqlite3.Connection, user_id: int, supplied: str)
 
 def verification_html(ok: bool) -> str:
     title = "E-Mail bestätigt" if ok else "Link ungültig oder abgelaufen"
-    detail = "Du kannst jetzt zu Kies Drive zurückkehren und dich anmelden." if ok else "Fordere in Kies Drive eine neue Bestätigungs-E-Mail an."
+    detail = "Öffne jetzt Kies Drive. Die App schließt deine Registrierung ab und meldet dich automatisch an." if ok else "Fordere in Kies Drive eine neue Bestätigungs-E-Mail an."
     return f"""<!doctype html><html lang=\"de\"><meta name=\"viewport\" content=\"width=device-width\"><title>{escape(title)}</title>
     <body style=\"margin:0;background:#f5f0e2;color:#123d32;font:18px -apple-system;padding:48px\"><main style=\"max-width:520px;margin:auto\">
     <h1>{escape(title)}</h1><p>{escape(detail)}</p><a href=\"kiesdrive://auth-complete\">Kies Drive öffnen</a></main></body></html>"""

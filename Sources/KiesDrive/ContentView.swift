@@ -2136,7 +2136,7 @@ private struct AccountWelcomeView: View {
                             }
 
                             if mode == .register {
-                                Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Danach kannst du dich anmelden.")
+                                Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Öffne ihn auf diesem Gerät – Kies Drive übernimmt den bestätigten Account automatisch.")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -2184,7 +2184,7 @@ private struct AccountWelcomeView: View {
             Image(systemName: "envelope.badge.shield.half.filled")
                 .font(.system(size: 42)).foregroundStyle(Color.kiesBrass)
             Text("Bestätige deine E-Mail").font(.title3.bold())
-            Text("Wir haben einen sicheren Bestätigungslink an **\(email)** gesendet. Öffne ihn und kehre danach hierher zurück.")
+            Text("Wir haben einen sicheren Bestätigungslink an **\(email)** gesendet. Öffne ihn auf diesem Gerät; Kies Drive meldet dich danach automatisch an.")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             statusMessage
             Button("Bestätigung prüfen und anmelden") { completeVerification() }
