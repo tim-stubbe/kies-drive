@@ -153,7 +153,11 @@ enum DriveAPI {
     static func register(email: String, password: String) async throws -> String? {
         let body = try JSONEncoder().encode(AccountCredentials(email: email, password: password))
         let data = try await authData(for: authRequest(path: "/auth/register", body: body))
-        return try JSONDecoder().decode(AccountRegistrationResponse.self, from: data).verificationTicket
+        let ticket = try JSONDecoder().decode(AccountRegistrationResponse.self, from: data).verificationTicket
+        if let ticket {
+            AccountSessionStore.shared.beginRegistration(ticket: ticket, email: email)
+        }
+        return ticket
     }
 
     static func completeRegistration(ticket: String) async throws -> AccountLoginResponse {

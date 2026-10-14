@@ -2011,6 +2011,7 @@ private struct AccountWelcomeView: View {
         var id: String { rawValue }
     }
 
+    @ObservedObject private var account = AccountSessionStore.shared
     @State private var mode: Mode = .register
     @State private var email = ""
     @State private var password = ""
@@ -2116,9 +2117,16 @@ private struct AccountWelcomeView: View {
             }
         }
         .interactiveDismissDisabled()
+        .onAppear {
+            guard registrationTicket == nil,
+                  let pendingTicket = account.pendingRegistrationTicket else { return }
+            registrationTicket = pendingTicket
+            email = account.pendingRegistrationEmail ?? email
+            awaitingVerification = true
+        }
         .onOpenURL { url in
             guard url.scheme == "kiesdrive", url.host == "auth-complete",
-                  awaitingVerification else { return }
+                  registrationTicket != nil else { return }
             completeVerification()
         }
     }
@@ -2148,6 +2156,7 @@ private struct AccountWelcomeView: View {
             Button("Andere E-Mail-Adresse verwenden") {
                 awaitingVerification = false
                 registrationTicket = nil
+                account.clearPendingRegistration()
                 mode = .register
                 password = ""
                 message = nil

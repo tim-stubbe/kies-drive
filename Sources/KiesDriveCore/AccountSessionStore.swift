@@ -8,14 +8,20 @@ public final class AccountSessionStore: ObservableObject {
     public static let shared = AccountSessionStore()
     @Published public private(set) var session: String?
     @Published public private(set) var email: String?
+    @Published public private(set) var pendingRegistrationTicket: String?
+    @Published public private(set) var pendingRegistrationEmail: String?
 
     private let service = "app.kies.drive.account-session"
     private let sessionAccount = "session"
     private let emailAccount = "email"
+    private let pendingRegistrationTicketAccount = "pending-registration-ticket"
+    private let pendingRegistrationEmailAccount = "pending-registration-email"
 
     private init() {
         session = Self.load(account: sessionAccount, service: service)
         email = Self.load(account: emailAccount, service: service)
+        pendingRegistrationTicket = Self.load(account: pendingRegistrationTicketAccount, service: service)
+        pendingRegistrationEmail = Self.load(account: pendingRegistrationEmailAccount, service: service)
         // Remove the retired manually provisioned device credential.
         Self.delete(account: "active-device-token", service: "app.kies.drive.device-token")
         UserDefaults.standard.removeObject(forKey: "drive.account.guestMode")
@@ -26,6 +32,21 @@ public final class AccountSessionStore: ObservableObject {
         Self.save(email, account: emailAccount, service: service)
         self.session = session
         self.email = email
+        clearPendingRegistration()
+    }
+
+    public func beginRegistration(ticket: String, email: String) {
+        Self.save(ticket, account: pendingRegistrationTicketAccount, service: service)
+        Self.save(email, account: pendingRegistrationEmailAccount, service: service)
+        pendingRegistrationTicket = ticket
+        pendingRegistrationEmail = email
+    }
+
+    public func clearPendingRegistration() {
+        Self.delete(account: pendingRegistrationTicketAccount, service: service)
+        Self.delete(account: pendingRegistrationEmailAccount, service: service)
+        pendingRegistrationTicket = nil
+        pendingRegistrationEmail = nil
     }
 
     public func signOut() {
