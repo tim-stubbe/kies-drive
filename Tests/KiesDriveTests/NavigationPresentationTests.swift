@@ -862,6 +862,23 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRouteEnrichmentRequiresMatchingRouteAndRequest() {
+        let route = UUID()
+        let request = UUID()
+        XCTAssertTrue(RouteEnrichmentPublicationPolicy.isCurrent(
+            route: route, currentRoute: route,
+            request: request, currentRequest: request
+        ))
+        XCTAssertFalse(RouteEnrichmentPublicationPolicy.isCurrent(
+            route: route, currentRoute: UUID(),
+            request: request, currentRequest: request
+        ))
+        XCTAssertFalse(RouteEnrichmentPublicationPolicy.isCurrent(
+            route: route, currentRoute: route,
+            request: request, currentRequest: UUID()
+        ))
+    }
+
     func testOfflineCacheRequiresSameDestinationWhenCoordinatesAreAvailable() {
         let cached = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         XCTAssertTrue(OfflineRouteCachePolicy.matches(

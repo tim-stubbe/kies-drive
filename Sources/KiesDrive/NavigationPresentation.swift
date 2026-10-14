@@ -698,6 +698,15 @@ enum DestinationActivationRollbackPolicy {
     }
 }
 
+/// Slow route enrichment (fuel, amenities, speed limits and tolls) may only
+/// publish while both its route and its own request are still current.
+enum RouteEnrichmentPublicationPolicy {
+    static func isCurrent(route: UUID, currentRoute: UUID,
+                          request: UUID, currentRequest: UUID) -> Bool {
+        route == currentRoute && request == currentRequest
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

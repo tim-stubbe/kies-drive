@@ -1721,11 +1721,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// überlasteter Overpass-Dienst nicht die restliche Routenplanung blockiert.
     func loadSpeedLimits() async {
         guard !legs.isEmpty else { speedLimitPoints = []; speedLimits = []; return }
+        let routeGeneration = routeCalculationGeneration
         let generation = UUID()
         speedLimitLoadGeneration = generation
         let points = legs.flatMap { sample($0.polyline, maximum: 80) }
         let limits = (try? await DriveAPI.speedLimits(along: points)) ?? []
-        guard generation == speedLimitLoadGeneration else { return }
+        guard RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: generation, currentRequest: speedLimitLoadGeneration
+        ) else { return }
         speedLimitPoints = points
         speedLimits = limits
     }
@@ -1823,6 +1827,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func loadTollCost(from start: CLLocationCoordinate2D) async {
         guard let destination else { return }
+        let routeGeneration = routeCalculationGeneration
         let destinationName = destination.placemark.title ?? destination.name ?? destinationText
         let lock = routeLockStore.activeLock
         let visited = Set(lock?.visitedWaypointIDs ?? [])
@@ -1848,13 +1853,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     origin: origin, destination: destinationName, via: via,
                     avoidTolls: avoidTolls
                 )
-                guard generation == tollLoadGeneration else { return }
+                guard RouteEnrichmentPublicationPolicy.isCurrent(
+                    route: routeGeneration, currentRoute: routeCalculationGeneration,
+                    request: generation, currentRequest: tollLoadGeneration
+                ) else { return }
                 setResearchedToll(toll, avoidTolls: avoidTolls)
                 tollLookupSnapshots[avoidTolls] = .init(
                     routeIdentity: routeIdentity, origin: start, cost: toll, loadedAt: Date()
                 )
             } catch {
-                guard generation == tollLoadGeneration else { return }
+                guard RouteEnrichmentPublicationPolicy.isCurrent(
+                    route: routeGeneration, currentRoute: routeCalculationGeneration,
+                    request: generation, currentRequest: tollLoadGeneration
+                ) else { return }
                 setResearchedToll(
                     .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)"),
                     avoidTolls: avoidTolls
@@ -1933,6 +1944,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// most twelve directions requests (out and back), independent of the
     /// number of stations returned by providers.
     private func measureBreakCandidateDetours() async {
+        let routeGeneration = routeCalculationGeneration
         let generation = breakCandidateLoadGeneration
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         let candidates = breakCandidates(along: legs, useMeasuredDetours: false)
@@ -1952,7 +1964,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 if let distance, distance <= 20_000 { measurements[id] = distance }
             }
         }
-        guard generation == breakCandidateLoadGeneration else { return }
+        guard RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: generation, currentRequest: breakCandidateLoadGeneration
+        ) else { return }
         measuredBreakDetours = measurements
     }
 
@@ -1960,6 +1975,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// break planning is not limited to petrol stations.
     private func loadBreakAmenities() async {
         guard !legs.isEmpty else { amenityBreakCandidates = []; return }
+        let routeGeneration = routeCalculationGeneration
         let generation = UUID()
         breakCandidateLoadGeneration = generation
         activeAmenitySearches.forEach { $0.cancel() }
@@ -1990,7 +2006,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 }
             }
         }
-        guard generation == breakCandidateLoadGeneration else { return }
+        guard RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: generation, currentRequest: breakCandidateLoadGeneration
+        ) else { return }
         activeAmenitySearches = []
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
@@ -2017,6 +2036,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func loadStations(fuel: FuelKind) async {
         guard !legs.isEmpty else { return }
+        let routeGeneration = routeCalculationGeneration
         let generation = UUID()
         stationLoadGeneration = generation
         // A handful of evenly distributed requests is sufficient. The old
@@ -2027,7 +2047,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             for point in points { group.addTask { (try? await DriveAPI.stations(near: point, fuel: fuel, radiusKm: 8)) ?? [] } }
             for await batch in group { for station in batch { unique[station.id] = station } }
         }
-        guard generation == stationLoadGeneration else { return }
+        guard RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: generation, currentRequest: stationLoadGeneration
+        ) else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
