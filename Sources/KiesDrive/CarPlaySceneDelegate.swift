@@ -20,6 +20,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var lastReliableCourse: CLLocationDirection?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
     private var carPlaySearchGeneration = UUID()
+    private var activeCarPlaySearch: MKLocalSearch?
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -82,6 +83,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         navigationSession = nil
         activeTrip = nil
         cancellables.removeAll()
+        activeCarPlaySearch?.cancel()
+        activeCarPlaySearch = nil
         carPlaySearchResults = [:]
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
@@ -295,6 +298,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.count >= 2 else {
             carPlaySearchGeneration = UUID()
+            activeCarPlaySearch?.cancel()
+            activeCarPlaySearch = nil
             carPlaySearchResults = [:]
             completionHandler([])
             return
@@ -307,9 +312,23 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             request.region = .init(center: coordinate, latitudinalMeters: 300_000,
                                    longitudinalMeters: 300_000)
         }
+        activeCarPlaySearch?.cancel()
+        let search = MKLocalSearch(request: request)
+        activeCarPlaySearch = search
         Task { [weak self] in
-            let response = try? await MKLocalSearch(request: request).start()
-            guard let self, generation == self.carPlaySearchGeneration else { return }
+            let response = try? await search.start()
+            guard let self else {
+                completionHandler([])
+                return
+            }
+            // CarPlay requires every search update to complete. Returning an
+            // empty result for a superseded query prevents an old spinner
+            // from surviving while the driver is already typing a new query.
+            guard generation == self.carPlaySearchGeneration else {
+                completionHandler([])
+                return
+            }
+            self.activeCarPlaySearch = nil
             var mapped: [ObjectIdentifier: MKMapItem] = [:]
             let items = (response?.mapItems ?? []).prefix(8).map { mapItem in
                 let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
@@ -396,7 +415,6 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func showSearchResults(title: String) {
         let planner = RoutePlanner.shared
-        let start = LocationService.shared.location?.coordinate
         let items = planner.routeSearchResults.prefix(10).map { result in
             let mapItem = result.mapItem
             let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
@@ -408,7 +426,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                                                      result.detourMetres / 1_000))
             item.handler = { _, completion in
                 Task {
-                    guard let start else {
+                    // The list can remain open while the car moves. Always
+                    // route from the newest fix at selection time, not the
+                    // coordinate captured when the list was first shown.
+                    guard let start = LocationService.shared.location?.coordinate else {
                         completion()
                         self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                         return
