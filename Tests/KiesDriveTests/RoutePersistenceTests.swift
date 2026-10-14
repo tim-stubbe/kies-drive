@@ -185,6 +185,32 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
     }
 
+    func testRestoreDoesNotSkipWaypointAtAmbiguousRouteCrossing() {
+        let now = Date(timeIntervalSince1970: 1)
+        let crossingRoute = [
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0100),
+            DriveCoordinate(latitude: 50.0100, longitude: 8.0100),
+            DriveCoordinate(latitude: 50.0100, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 7.9900),
+        ]
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Crossing", destinationName: "Home",
+            destination: .init(latitude: 50, longitude: 7.99),
+            waypoints: [.init(id: "required", name: "Required",
+                              coordinate: crossingRoute[2], required: true, optionsAfter: nil)],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 2_000, corridorPoints: crossingRoute,
+            visitedWaypointIDs: [], status: .active, createdAt: now, updatedAt: now
+        )
+
+        XCTAssertTrue(lock.passedWaypointIDs(at: crossingRoute[0]).isEmpty)
+        XCTAssertEqual(RouteCorridorRestorePolicy.earliestNearBestMatch(
+            for: crossingRoute[0], in: crossingRoute
+        )?.index, 0)
+    }
+
     func testCommittedWaypointProgressIsStableAndDeduplicated() {
         XCTAssertEqual(
             RouteWaypointProgressPolicy.merging(

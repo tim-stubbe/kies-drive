@@ -65,6 +65,27 @@ enum RouteCorridorPolicy {
     }
 }
 
+enum RouteCorridorRestorePolicy {
+    /// At a crossing several corridor samples can be virtually equally close.
+    /// Choosing the absolute nearest one is unstable with metre-level GPS
+    /// noise, so restoration deliberately chooses the earliest near-best
+    /// match and never skips a locked section on ambiguous evidence.
+    static func earliestNearBestMatch(for coordinate: DriveCoordinate,
+                                      in corridor: [DriveCoordinate],
+                                      toleranceMetres: CLLocationDistance = 75)
+        -> (index: Int, distance: CLLocationDistance)? {
+        guard !corridor.isEmpty else { return nil }
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let distances = corridor.map {
+            location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
+        }
+        guard let minimum = distances.min(), minimum.isFinite,
+              let index = distances.firstIndex(where: { $0 <= minimum + max(0, toleranceMetres) })
+        else { return nil }
+        return (index, minimum)
+    }
+}
+
 struct LockedRouteOptions: Codable, Equatable, Sendable {
     var avoidTolls: Bool
     var avoidHighways: Bool
@@ -132,24 +153,17 @@ extension ActiveRouteLock {
     /// empty when the current position is not plausibly inside the corridor.
     func passedWaypointIDs(at current: DriveCoordinate) -> [String] {
         guard let corridorPoints, corridorPoints.count > 2 else { return [] }
-        let currentLocation = CLLocation(latitude: current.latitude, longitude: current.longitude)
-        guard let currentMatch = corridorPoints.enumerated().min(by: {
-            currentLocation.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
-            currentLocation.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
-        }) else { return [] }
-        let corridorDistance = currentLocation.distance(from: CLLocation(
-            latitude: currentMatch.element.latitude, longitude: currentMatch.element.longitude))
-        guard corridorDistance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
+        guard let currentMatch = RouteCorridorRestorePolicy.earliestNearBestMatch(
+            for: current, in: corridorPoints
+        ), currentMatch.distance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
 
         return waypoints.compactMap { waypoint in
-            let point = CLLocation(latitude: waypoint.coordinate.latitude, longitude: waypoint.coordinate.longitude)
-            guard let match = corridorPoints.enumerated().min(by: {
-                point.distance(from: CLLocation(latitude: $0.element.latitude, longitude: $0.element.longitude)) <
-                point.distance(from: CLLocation(latitude: $1.element.latitude, longitude: $1.element.longitude))
-            }) else { return nil }
+            guard let match = RouteCorridorRestorePolicy.earliestNearBestMatch(
+                for: waypoint.coordinate, in: corridorPoints
+            ) else { return nil }
             // Keep the next corridor point active. A small index margin avoids
             // skipping a mandatory pass when GPS lies just beyond its sample.
-            return match.offset < currentMatch.offset ? waypoint.id : nil
+            return match.index < currentMatch.index ? waypoint.id : nil
         }
     }
 
