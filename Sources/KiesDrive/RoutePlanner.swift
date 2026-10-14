@@ -1656,8 +1656,11 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let coordinates = UnsafeMutablePointer<CLLocationCoordinate2D>.allocate(capacity: polyline.pointCount)
         defer { coordinates.deallocate() }
         polyline.getCoordinates(coordinates, range: NSRange(location: 0, length: polyline.pointCount))
-        let stride = max(1, polyline.pointCount / maximum)
-        return Swift.stride(from: 0, to: polyline.pointCount, by: stride).map { coordinates[$0] }
+        let allPoints = Array(UnsafeBufferPointer(start: coordinates, count: polyline.pointCount))
+        // Index strides over-sample dense junction geometry and can omit the
+        // final route coordinate. Distance-based sampling covers the complete
+        // journey and always preserves both origin and destination.
+        return RouteGeometryProgress.evenlySpaced(allPoints, maximum: maximum)
     }
 
     private func evenlySpaced(_ points: [CLLocationCoordinate2D], maximum: Int) -> [CLLocationCoordinate2D] {
