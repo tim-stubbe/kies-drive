@@ -133,6 +133,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var remainingDistanceMetres: CLLocationDistance = 0
     @Published var remainingTravelTime: TimeInterval = 0
     @Published var hasArrived = false
+    @Published private(set) var usageStatistics = DriveUsageStatisticsStore.load()
     @Published private(set) var isUsingOfflineGuidance = false
     private var comparisonRoute: MKRoute?
     private var researchedStandardToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
@@ -167,6 +168,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var navigationSessionGeneration = UUID()
     private var rerouteGeneration = UUID()
     private var lastAcceptedNavigationLocation: CLLocation?
+    private var usageSessionDistanceMetres: CLLocationDistance = 0
+    private var usageSessionMovingTime: TimeInterval = 0
+    private var usageSessionLastLocation: CLLocation?
     private var lastReliableGuidanceSpeedMps: Double?
     private var lastReliableGuidanceSpeedAt: Date?
     private var lastLocationRejectionLoggedAt: Date?
@@ -291,6 +295,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func stopNavigation() {
         let wasNavigating = isNavigating
         if wasNavigating { closeOutstandingManeuverDiagnostic(reason: .userStopped) }
+        if wasNavigating { finishUsageSession() }
         invalidateNavigationAsyncWork()
         isNavigating = false
         isUsingOfflineGuidance = false
@@ -1072,6 +1077,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             return
         }
+        updateUsageSession(at: location)
         lastAcceptedNavigationLocation = location
         let currentSpeed = NavigationMotionPolicy.reliableSpeed(for: location)
         let guidanceSpeed = NavigationGuidanceSpeedPolicy.effective(
@@ -1404,6 +1410,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         arrivalStrikes = 0
         closeOutstandingManeuverDiagnostic(reason: .arrival)
+        finishUsageSession()
         invalidateNavigationAsyncWork()
         isNavigating = false
         isRecalculating = false
@@ -1977,6 +1984,35 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         rerouteGeneration = UUID()
         isRecalculating = false
         lastRerouteAt = nil
+        usageSessionDistanceMetres = 0
+        usageSessionMovingTime = 0
+        usageSessionLastLocation = nil
+    }
+
+    private func updateUsageSession(at location: CLLocation) {
+        if let segment = DriveUsageSegmentPolicy.segment(
+            previous: usageSessionLastLocation, current: location
+        ) {
+            usageSessionDistanceMetres += segment.distanceMetres
+            usageSessionMovingTime += segment.movingTime
+        }
+        usageSessionLastLocation = location
+    }
+
+    private func finishUsageSession() {
+        usageStatistics.recordTrip(
+            distanceMetres: usageSessionDistanceMetres,
+            movingTime: usageSessionMovingTime
+        )
+        DriveUsageStatisticsStore.save(usageStatistics)
+        usageSessionDistanceMetres = 0
+        usageSessionMovingTime = 0
+        usageSessionLastLocation = nil
+    }
+
+    func clearUsageStatistics() {
+        usageStatistics = .init()
+        DriveUsageStatisticsStore.clear()
     }
 
     private func invalidateNavigationAsyncWork() {

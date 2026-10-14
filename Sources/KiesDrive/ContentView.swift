@@ -1802,6 +1802,21 @@ struct DriveSettingsView: View {
                     Text("Kies Drive lädt nicht ungefragt massenhaft Kartenkacheln. Pakete stammen aus einer von dir kontrollierten Quelle, zum Beispiel einem Export auf deinem TrueNAS, und müssen die Lizenz/Attribution nennen.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Section("Fahrstatistik") {
+                    LabeledContent("Gefahren", value: usageDistance(planner.usageStatistics.totalDistanceMetres))
+                    LabeledContent("In Bewegung", value: usageDuration(planner.usageStatistics.totalMovingTime))
+                    LabeledContent("Navigationsfahrten", value: "\(planner.usageStatistics.completedNavigations)")
+                    if let endedAt = planner.usageStatistics.lastTripEndedAt {
+                        LabeledContent("Letzte Fahrt", value: endedAt.formatted(date: .abbreviated, time: .shortened))
+                        LabeledContent("Letzte Strecke", value: usageDistance(planner.usageStatistics.lastTripDistanceMetres))
+                    }
+                    Text("Gezählt wird ausschließlich plausible Bewegung während einer aktiven Kies-Drive-Navigation. Ein Standortverlauf wird nicht gespeichert.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Fahrstatistik zurücksetzen", role: .destructive) {
+                        planner.clearUsageStatistics()
+                    }
+                    .disabled(planner.usageStatistics.completedNavigations == 0)
+                }
                 Section("Navigationsqualität") {
                     let latestSummary = DriveDiagnosticSummary.latestSession(in: diagnosticEvents)
                     let reroutes = diagnosticEvents.filter { $0.kind == .rerouteRequested }.count
@@ -1903,6 +1918,17 @@ struct DriveSettingsView: View {
         guard !planner.legs.isEmpty,
               let current = LocationService.shared.location?.coordinate else { return }
         Task { await planner.calculate(from: current, settings: settings) }
+    }
+
+    private func usageDistance(_ metres: CLLocationDistance) -> String {
+        String(format: "%.1f km", metres / 1_000)
+    }
+
+    private func usageDuration(_ interval: TimeInterval) -> String {
+        let minutes = Int(interval / 60)
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        return hours > 0 ? "\(hours) Std. \(remainder) Min." : "\(minutes) Min."
     }
 }
 

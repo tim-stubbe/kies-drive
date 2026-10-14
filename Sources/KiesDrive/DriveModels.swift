@@ -139,6 +139,67 @@ enum DriveFavoriteStore {
     }
 }
 
+struct DriveUsageStatistics: Codable, Equatable {
+    var totalDistanceMetres: CLLocationDistance = 0
+    var totalMovingTime: TimeInterval = 0
+    var completedNavigations = 0
+    var lastTripDistanceMetres: CLLocationDistance = 0
+    var lastTripMovingTime: TimeInterval = 0
+    var lastTripEndedAt: Date?
+
+    mutating func recordTrip(distanceMetres: CLLocationDistance,
+                             movingTime: TimeInterval,
+                             endedAt: Date = Date()) {
+        guard distanceMetres > 0 || movingTime > 0 else { return }
+        totalDistanceMetres += max(0, distanceMetres)
+        totalMovingTime += max(0, movingTime)
+        completedNavigations += 1
+        lastTripDistanceMetres = max(0, distanceMetres)
+        lastTripMovingTime = max(0, movingTime)
+        lastTripEndedAt = endedAt
+    }
+}
+
+enum DriveUsageStatisticsStore {
+    private static let key = "drive.usageStatistics.v1"
+
+    static func load(defaults: UserDefaults = .standard) -> DriveUsageStatistics {
+        guard let data = defaults.data(forKey: key) else { return .init() }
+        return (try? JSONDecoder().decode(DriveUsageStatistics.self, from: data)) ?? .init()
+    }
+
+    static func save(_ statistics: DriveUsageStatistics, defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(statistics) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    static func clear(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: key)
+    }
+}
+
+/// Counts only plausible movement samples received while guidance is active.
+/// Coordinates are deliberately never persisted.
+enum DriveUsageSegmentPolicy {
+    static func segment(previous: CLLocation?, current: CLLocation) ->
+        (distanceMetres: CLLocationDistance, movingTime: TimeInterval)? {
+        guard let previous else { return nil }
+        let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
+        guard elapsed > 0, elapsed <= 120 else { return nil }
+
+        let distance = current.distance(from: previous)
+        let inferredSpeed = distance / elapsed
+        let measuredSpeed = [previous.speed, current.speed]
+            .filter { $0.isFinite && $0 >= 0 }
+            .max() ?? -1
+        guard max(inferredSpeed, measuredSpeed) >= 1.5 else { return nil }
+
+        let accuracyAllowance = max(0, previous.horizontalAccuracy) + max(0, current.horizontalAccuracy)
+        guard distance <= max(350, elapsed * 80 + accuracyAllowance) else { return nil }
+        return (distance, elapsed)
+    }
+}
+
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed

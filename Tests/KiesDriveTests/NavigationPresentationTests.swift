@@ -1427,4 +1427,42 @@ final class NavigationPresentationTests: XCTestCase {
             query: "Essen", currentQuery: "Essen"
         ), .superseded)
     }
+
+    func testDriveUsageCountsPlausibleMovement() throws {
+        let start = CLLocation(coordinate: .init(latitude: 49.8, longitude: 8.3),
+                               altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+                               course: 0, speed: 14, timestamp: Date(timeIntervalSince1970: 1_000))
+        let end = CLLocation(coordinate: .init(latitude: 49.801, longitude: 8.3),
+                             altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+                             course: 0, speed: 14, timestamp: Date(timeIntervalSince1970: 1_010))
+        let segment = try XCTUnwrap(DriveUsageSegmentPolicy.segment(previous: start, current: end))
+        XCTAssertGreaterThan(segment.distanceMetres, 100)
+        XCTAssertEqual(segment.movingTime, 10)
+    }
+
+    func testDriveUsageRejectsStationaryJitterAndLongGaps() {
+        let start = CLLocation(coordinate: .init(latitude: 49.8, longitude: 8.3),
+                               altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+                               course: 0, speed: 0, timestamp: Date(timeIntervalSince1970: 1_000))
+        let jitter = CLLocation(coordinate: .init(latitude: 49.800001, longitude: 8.3),
+                                altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+                                course: 0, speed: 0, timestamp: Date(timeIntervalSince1970: 1_010))
+        let late = CLLocation(coordinate: .init(latitude: 49.9, longitude: 8.3),
+                              altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+                              course: 0, speed: 20, timestamp: Date(timeIntervalSince1970: 1_500))
+        XCTAssertNil(DriveUsageSegmentPolicy.segment(previous: start, current: jitter))
+        XCTAssertNil(DriveUsageSegmentPolicy.segment(previous: start, current: late))
+    }
+
+    func testDriveUsageStatisticsAccumulateTrips() {
+        var statistics = DriveUsageStatistics()
+        statistics.recordTrip(distanceMetres: 12_500, movingTime: 3_600,
+                              endedAt: Date(timeIntervalSince1970: 2_000))
+        statistics.recordTrip(distanceMetres: 7_500, movingTime: 1_800,
+                              endedAt: Date(timeIntervalSince1970: 3_000))
+        XCTAssertEqual(statistics.totalDistanceMetres, 20_000)
+        XCTAssertEqual(statistics.totalMovingTime, 5_400)
+        XCTAssertEqual(statistics.completedNavigations, 2)
+        XCTAssertEqual(statistics.lastTripDistanceMetres, 7_500)
+    }
 }
