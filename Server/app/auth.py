@@ -62,6 +62,12 @@ def initialise_auth_schema(conn: sqlite3.Connection) -> None:
         used_at TEXT,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS registration_completions (
+        user_id INTEGER PRIMARY KEY,
+        ticket_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
       CREATE TABLE IF NOT EXISTS sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -129,6 +135,36 @@ def create_verification(conn: sqlite3.Connection, user_id: int) -> str:
         (user_id, token_hash(raw), (now + timedelta(hours=VERIFY_HOURS)).isoformat()),
     )
     return raw
+
+
+def create_registration_ticket(conn: sqlite3.Connection, user_id: int) -> str:
+    """Create an app-only proof that can finish sign-in after verification.
+
+    This is deliberately different from the emailed verification secret: the
+    app can check completion, but it cannot verify the email address itself.
+    """
+    raw = secrets.token_urlsafe(32)
+    conn.execute(
+        "INSERT OR REPLACE INTO registration_completions(user_id,ticket_hash,expires_at) VALUES(?,?,?)",
+        (user_id, token_hash(raw), (utcnow() + timedelta(hours=VERIFY_HOURS)).isoformat()),
+    )
+    return raw
+
+
+def complete_registration(conn: sqlite3.Connection, raw_ticket: str) -> tuple[str, str, str] | None:
+    row = conn.execute(
+        """SELECT users.id,users.email,users.email_verified_at
+           FROM registration_completions
+           JOIN users ON users.id=registration_completions.user_id
+           WHERE registration_completions.ticket_hash=?
+             AND registration_completions.expires_at>?""",
+        (token_hash(raw_ticket), utcnow().isoformat()),
+    ).fetchone()
+    if not row or not row["email_verified_at"]:
+        return None
+    conn.execute("DELETE FROM registration_completions WHERE user_id=?", (row["id"],))
+    session, expires_at = create_session(conn, row["id"])
+    return session, expires_at, row["email"]
 
 
 def send_verification_email(email: str, raw_token: str) -> None:

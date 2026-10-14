@@ -20,8 +20,10 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
-from .auth import (PASSWORD_HASHER, authenticated_user, consume_password_reset, create_password_reset,
+from .auth import (PASSWORD_HASHER, authenticated_user, complete_registration,
+                   consume_password_reset, create_password_reset,
                    consume_recovery_code, create_recovery_codes, create_session, create_verification,
+                   create_registration_ticket,
                    initialise_auth_schema, normalise_email, send_verification_email,
                    password_reset_html, send_password_reset_email,
                    token_hash, totp_matches, utcnow, validate_password, verification_html,
@@ -77,6 +79,10 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
+
+
+class RegistrationCompletionRequest(BaseModel):
+    ticket: str
 
 
 AUTH_ATTEMPTS: dict[str, list[float]] = {}
@@ -259,7 +265,8 @@ def register(payload: RegisterRequest, request: Request):
     with db() as conn:
         existing = conn.execute("SELECT id,email_verified_at FROM users WHERE email=?", (email,)).fetchone()
         if existing and existing["email_verified_at"]:
-            return {"ok": True, "message": "Falls möglich, wurde eine E-Mail versendet."}
+            return {"ok": True, "message": "Falls möglich, wurde eine E-Mail versendet.",
+                    "verification_ticket": None}
         if existing:
             user_id = existing["id"]
             conn.execute("UPDATE users SET password_hash=? WHERE id=?", (PASSWORD_HASHER.hash(payload.password), user_id))
@@ -270,11 +277,13 @@ def register(payload: RegisterRequest, request: Request):
             )
             user_id = cursor.lastrowid
         raw = create_verification(conn, user_id)
+        ticket = create_registration_ticket(conn, user_id)
     try:
         send_verification_email(email, raw)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"ok": True, "message": "Bitte bestätige deine E-Mail-Adresse."}
+    return {"ok": True, "message": "Bitte bestätige deine E-Mail-Adresse.",
+            "verification_ticket": ticket}
 
 
 @app.get("/auth/verify-email", response_class=HTMLResponse)
@@ -301,6 +310,20 @@ def resend_verification(payload: PasswordResetRequest, request: Request):
             raise HTTPException(503, str(exc)) from exc
     # Do not disclose whether the address has an account or is already verified.
     return {"ok": True, "message": "Falls nötig, wurde eine E-Mail versendet."}
+
+
+@app.post("/auth/verification/complete")
+def finish_registration(payload: RegistrationCompletionRequest, response: Response, request: Request):
+    rate_limit(f"registration-complete:{request.client.host if request.client else 'unknown'}",
+               maximum=20, window=3600)
+    with db() as conn:
+        result = complete_registration(conn, payload.ticket)
+    if not result:
+        raise HTTPException(409, "Die E-Mail-Adresse ist noch nicht bestätigt oder die Registrierung ist abgelaufen.")
+    session, expires_at, email = result
+    response.headers["Cache-Control"] = "no-store"
+    return {"session": session, "expires_at": expires_at, "email": email,
+            "two_factor_enabled": False}
 
 
 @app.post("/auth/login")
@@ -381,6 +404,7 @@ def delete_account(authorization: str | None = Header(None)):
         conn.execute("DELETE FROM user_commands WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM user_state WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM email_verifications WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM registration_completions WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM password_resets WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM two_factor_recovery_codes WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
@@ -407,6 +431,13 @@ def enable_2fa(payload: TOTPRequest, authorization: str | None = Header(None)):
     with db() as conn:
         conn.execute("UPDATE users SET totp_secret=?,totp_pending_secret=NULL WHERE id=?", (pending, user["id"]))
         recovery_codes = create_recovery_codes(conn, user["id"])
+        # Enabling a second factor is a security boundary. Keep the device
+        # performing the setup signed in, but revoke every older session so a
+        # previously copied session cannot bypass the newly enabled factor.
+        conn.execute(
+            "UPDATE sessions SET revoked_at=? WHERE user_id=? AND id<>? AND revoked_at IS NULL",
+            (utcnow().isoformat(), user["id"], user["session_id"]),
+        )
     return {"ok": True, "recovery_codes": recovery_codes}
 
 

@@ -148,9 +148,18 @@ enum DriveAPI {
         return data
     }
 
-    static func register(email: String, password: String) async throws {
+    static func register(email: String, password: String) async throws -> String? {
         let body = try JSONEncoder().encode(AccountCredentials(email: email, password: password))
-        _ = try await authData(for: authRequest(path: "/auth/register", body: body))
+        let data = try await authData(for: authRequest(path: "/auth/register", body: body))
+        return try JSONDecoder().decode(AccountRegistrationResponse.self, from: data).verificationTicket
+    }
+
+    static func completeRegistration(ticket: String) async throws -> AccountLoginResponse {
+        let body = try JSONEncoder().encode(AccountRegistrationCompletion(ticket: ticket))
+        let data = try await authData(for: authRequest(path: "/auth/verification/complete", body: body))
+        let response = try JSONDecoder().decode(AccountLoginResponse.self, from: data)
+        AccountSessionStore.shared.signIn(session: response.session, email: response.email)
+        return response
     }
 
     static func requestPasswordReset(email: String) async throws {
@@ -296,6 +305,11 @@ private extension String {
 }
 
 private struct AccountCredentials: Encodable { let email: String; let password: String }
+private struct AccountRegistrationCompletion: Encodable { let ticket: String }
+private struct AccountRegistrationResponse: Decodable {
+    let verificationTicket: String?
+    enum CodingKeys: String, CodingKey { case verificationTicket = "verification_ticket" }
+}
 private struct AccountLoginRequest: Encodable {
     let email: String
     let password: String

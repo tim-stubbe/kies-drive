@@ -59,11 +59,23 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
     response = client.post("/auth/register", json={"email": email, "password": password})
     assert response.status_code == 202
     assert sent["email"] == email
+    ticket = response.json()["verification_ticket"]
+    assert ticket
+    assert client.post("/auth/verification/complete", json={"ticket": ticket}).status_code == 409
 
     response = client.get("/auth/verify-email", params={"token": sent["token"]})
     assert response.status_code == 200
     response = client.get("/auth/verify-email", params={"token": sent["token"]})
     assert response.status_code == 400
+
+    completed = client.post("/auth/verification/complete", json={"ticket": ticket})
+    assert completed.status_code == 200
+    assert completed.headers["cache-control"] == "no-store"
+    assert completed.json()["email"] == email
+    assert client.get("/auth/me", headers={
+        "Authorization": f"Bearer {completed.json()['session']}"
+    }).status_code == 200
+    assert client.post("/auth/verification/complete", json={"ticket": ticket}).status_code == 409
 
     response = client.post("/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
@@ -73,6 +85,9 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
     assert profile.status_code == 200
     assert profile.json()["email_verified"] is True
 
+    older_login = client.post("/auth/login", json={"email": email, "password": password})
+    older_headers = {"Authorization": f"Bearer {older_login.json()['session']}"}
+
     setup = client.post("/auth/2fa/setup", headers=headers)
     assert setup.status_code == 200
     secret = setup.json()["secret"]
@@ -81,6 +96,8 @@ def test_registration_verification_login_and_totp(tmp_path, monkeypatch):
     assert enabled.status_code == 200
     recovery_codes = enabled.json()["recovery_codes"]
     assert len(recovery_codes) == 8
+    assert client.get("/auth/me", headers=headers).status_code == 200
+    assert client.get("/auth/me", headers=older_headers).status_code == 401
 
     two_factor_prompt = client.post("/auth/login", json={"email": email, "password": password})
     assert two_factor_prompt.status_code == 428

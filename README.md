@@ -26,7 +26,10 @@ install before that approval.
 - Öffentliche Konten: Registrierung, E-Mail-Bestätigung, Argon2id-Passwortschutz
   und optionale Authenticator-2FA mit einmaligen Wiederherstellungscodes.
   Sitzungen werden in der App automatisch im Apple-Schlüsselbund verwaltet;
-  Nutzer müssen keine Geräte-Tokens eingeben.
+  Nutzer müssen keine Geräte-Tokens eingeben. Der Bestätigungslink kehrt über
+  `kiesdrive://auth-complete` direkt in den geöffneten Registrierungsablauf
+  zurück und meldet das bestätigte Konto an. Beim Aktivieren von 2FA werden
+  ältere Sitzungen automatisch widerrufen.
 - E-Mail: `KIES_DRIVE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_FROM` sowie je nach
   Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
   `KIES_DRIVE_PUBLIC_URL` muss die öffentliche HTTPS-Adresse des gesamten

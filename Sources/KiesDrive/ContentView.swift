@@ -1895,6 +1895,7 @@ private struct AccountWelcomeView: View {
     @State private var message: String?
     @State private var isError = false
     @State private var awaitingVerification = false
+    @State private var registrationTicket: String?
 
     var body: some View {
         ZStack {
@@ -1990,6 +1991,11 @@ private struct AccountWelcomeView: View {
             }
         }
         .interactiveDismissDisabled()
+        .onOpenURL { url in
+            guard url.scheme == "kiesdrive", url.host == "auth-complete",
+                  awaitingVerification else { return }
+            completeVerification()
+        }
     }
 
     @ViewBuilder private var statusMessage: some View {
@@ -2008,17 +2014,15 @@ private struct AccountWelcomeView: View {
             Text("Wir haben einen sicheren Bestätigungslink an **\(email)** gesendet. Öffne ihn und kehre danach hierher zurück.")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             statusMessage
-            Button("Ich habe die E-Mail bestätigt") {
-                awaitingVerification = false
-                mode = .login
-                message = nil
-            }
+            Button("Bestätigung prüfen und anmelden") { completeVerification() }
             .buttonStyle(.borderedProminent).tint(Color.kiesForest)
+            .disabled(isWorking)
             Button("E-Mail erneut senden") { resendVerification() }
                 .buttonStyle(.plain).font(.footnote.weight(.semibold))
                 .disabled(isWorking)
             Button("Andere E-Mail-Adresse verwenden") {
                 awaitingVerification = false
+                registrationTicket = nil
                 mode = .register
                 password = ""
                 message = nil
@@ -2033,11 +2037,16 @@ private struct AccountWelcomeView: View {
         Task {
             do {
                 if mode == .register {
-                    try await DriveAPI.register(email: email, password: password)
-                    message = nil
-                    isError = false
-                    awaitingVerification = true
+                    registrationTicket = try await DriveAPI.register(email: email, password: password)
                     password = ""
+                    isError = false
+                    if registrationTicket != nil {
+                        message = nil
+                        awaitingVerification = true
+                    } else {
+                        mode = .login
+                        message = "Falls diese Adresse bereits registriert ist, kannst du dich jetzt anmelden."
+                    }
                 } else {
                     _ = try await DriveAPI.login(email: email, password: password, totpCode: totpCode)
                 }
@@ -2045,6 +2054,21 @@ private struct AccountWelcomeView: View {
                 needsTwoFactor = true
                 message = "Dein Konto ist geschützt. Gib den Code aus deiner Authenticator-App ein."
                 isError = false
+            } catch {
+                message = error.localizedDescription
+                isError = true
+            }
+            isWorking = false
+        }
+    }
+
+    private func completeVerification() {
+        guard !isWorking, let registrationTicket else { return }
+        isWorking = true
+        message = nil
+        Task {
+            do {
+                _ = try await DriveAPI.completeRegistration(ticket: registrationTicket)
             } catch {
                 message = error.localizedDescription
                 isError = true
