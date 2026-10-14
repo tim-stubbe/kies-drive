@@ -103,18 +103,17 @@ struct DriveContentView: View {
         #endif
     }
 
-    private var accountOnboardingPresented: Binding<Bool> {
-        Binding(get: {
-            isSimulatorAccountPreview || (account.session == nil && !bypassesAccountForSimulatorPreview)
-        }, set: { _ in })
-    }
-
+    @ViewBuilder
     var body: some View {
-        #if os(iOS)
-        mobileBody
-        #else
-        desktopBody
-        #endif
+        if isSimulatorAccountPreview || (account.session == nil && !bypassesAccountForSimulatorPreview) {
+            AccountWelcomeView()
+        } else {
+            #if os(iOS)
+            mobileBody
+            #else
+            desktopBody
+            #endif
+        }
     }
 
     private var desktopBody: some View {
@@ -133,9 +132,6 @@ struct DriveContentView: View {
         }
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
-        .sheet(isPresented: accountOnboardingPresented) {
-            AccountWelcomeView().frame(minWidth: 520, minHeight: 680)
-        }
     }
 
     #if os(iOS)
@@ -227,7 +223,6 @@ struct DriveContentView: View {
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
         .sheet(isPresented: $showFavorites) { favoritesSheet }
         .sheet(item: $selectedStation) { station in stationDetailSheet(station) }
-        .fullScreenCover(isPresented: accountOnboardingPresented) { AccountWelcomeView() }
         .sheet(isPresented: $showRouteDetails) {
             NavigationStack {
                 mobileRouteDetails
@@ -1949,7 +1944,7 @@ private struct AccountWelcomeView: View {
         var id: String { rawValue }
     }
 
-    @State private var mode: Mode = .login
+    @State private var mode: Mode = .register
     @State private var email = ""
     @State private var password = ""
     @State private var totpCode = ""

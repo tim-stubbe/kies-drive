@@ -15,4 +15,6 @@ COPY Server/app ./app
 COPY Server/entrypoint.sh /usr/local/bin/kies-drive-entrypoint
 VOLUME ["/data"]
 EXPOSE 8080 18181
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl --fail --silent --show-error http://127.0.0.1:8080/healthz >/dev/null || exit 1
 ENTRYPOINT ["/usr/local/bin/kies-drive-entrypoint"]
