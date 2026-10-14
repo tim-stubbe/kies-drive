@@ -355,8 +355,17 @@ enum NavigationLocationBatchPolicy {
                 let sameTimestamp = candidate.timestamp == previous.timestamp
                 let sameCoordinate = candidate.coordinate.latitude == previous.coordinate.latitude &&
                     candidate.coordinate.longitude == previous.coordinate.longitude
-                if !sameTimestamp || !sameCoordinate {
+                guard sameTimestamp && sameCoordinate else {
                     result.append(candidate)
+                    return
+                }
+                // Some providers refine the final fix in place. Keep the
+                // version with useful, tighter horizontal accuracy instead
+                // of whichever duplicate happened to be delivered first.
+                if candidate.horizontalAccuracy >= 0 &&
+                    (previous.horizontalAccuracy < 0 ||
+                     candidate.horizontalAccuracy < previous.horizontalAccuracy) {
+                    result[result.count - 1] = candidate
                 }
             }
     }
