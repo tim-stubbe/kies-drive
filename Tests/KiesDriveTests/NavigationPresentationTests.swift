@@ -640,6 +640,26 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(remaining.last?.longitude, route.last?.longitude)
     }
 
+    func testRouteSearchRadiusScalesWithoutFloodingLocalSearch() {
+        let short = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50.1, longitude: 8),
+        ]
+        let long = [
+            CLLocationCoordinate2D(latitude: 45, longitude: 8),
+            CLLocationCoordinate2D(latitude: 55, longitude: 8),
+        ]
+        XCTAssertEqual(RouteSearchPolicy.searchRadiusMetres(
+            routeCoordinates: short, searchPointCount: 5
+        ), 15_000, accuracy: 1)
+        XCTAssertGreaterThan(RouteSearchPolicy.searchRadiusMetres(
+            routeCoordinates: long, searchPointCount: 5
+        ), 100_000)
+        XCTAssertLessThanOrEqual(RouteSearchPolicy.searchRadiusMetres(
+            routeCoordinates: long, searchPointCount: 5
+        ), 150_000)
+    }
+
     func testRouteSearchRejectsExcessiveOrInvalidDrivingDetours() {
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(4_500))
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(20_000))

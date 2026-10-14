@@ -543,6 +543,20 @@ enum RouteSearchPolicy {
         return Array(coordinates[first...])
     }
 
+    /// Uses compact regions for local trips while retaining enough overlap to
+    /// cover a long motorway journey with a small, bounded number of calls.
+    static func searchRadiusMetres(routeCoordinates: [CLLocationCoordinate2D],
+                                   searchPointCount: Int) -> CLLocationDistance {
+        guard routeCoordinates.count > 1, searchPointCount > 0 else { return 15_000 }
+        let distance = zip(routeCoordinates, routeCoordinates.dropFirst()).reduce(0.0) {
+            $0 + CLLocation(latitude: $1.0.latitude, longitude: $1.0.longitude)
+                .distance(from: CLLocation(latitude: $1.1.latitude, longitude: $1.1.longitude))
+        }
+        let intervals = max(1, searchPointCount - 1)
+        let overlappingHalfSpacing = distance / Double(intervals) * 0.6
+        return min(150_000, max(15_000, overlappingHalfSpacing))
+    }
+
     /// A stop that needs more than 20 km of additional driving is not an
     /// "along the route" result, even if it looks close across a river,
     /// motorway barrier or mountain in straight-line geometry.

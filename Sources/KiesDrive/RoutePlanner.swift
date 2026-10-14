@@ -497,13 +497,17 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             routeCoordinates, currentProgress: currentRouteProgress
         )
         let searchPoints = evenlySpaced(remainingCoordinates, maximum: 5)
+        let searchRadius = RouteSearchPolicy.searchRadiusMetres(
+            routeCoordinates: remainingCoordinates, searchPointCount: searchPoints.count
+        )
         var matches: [String: MKMapItem] = [:]
         await withTaskGroup(of: [MKMapItem].self) { group in
             for point in searchPoints {
                 group.addTask {
                     let request = MKLocalSearch.Request()
                     request.naturalLanguageQuery = cleanQuery
-                    request.region = .init(center: point, latitudinalMeters: 120_000, longitudinalMeters: 120_000)
+                    request.region = .init(center: point, latitudinalMeters: searchRadius,
+                                           longitudinalMeters: searchRadius)
                     return (try? await MKLocalSearch(request: request).start().mapItems) ?? []
                 }
             }
