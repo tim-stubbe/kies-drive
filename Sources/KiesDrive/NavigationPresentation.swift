@@ -201,10 +201,12 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
         guard distance.isFinite, distance >= 0 else { return nil }
         let speedMetresPerSecond = max(0, speedKmh) / 3.6
-        // Time-based horizons keep exits safe at motorway speeds. Four seconds
-        // for the final cue leaves enough time even when Core Location skips a
-        // sample, while the caps keep city guidance from becoming premature.
-        let nowDistance = min(260, max(40, speedMetresPerSecond * 4))
+        // Time-based horizons keep exits safe at motorway speeds. Six seconds
+        // for the final cue survives a delayed Core Location sample and still
+        // leaves reaction time for an exit lane change. The floor keeps urban
+        // turns audible before the junction; the cap avoids a premature
+        // "Jetzt" at extreme or briefly noisy speed readings.
+        let nowDistance = min(350, max(60, speedMetresPerSecond * 6))
         if distance <= nowDistance { return .now }
         let prepareDistance = min(1_100, max(220, speedMetresPerSecond * 15))
         if distance <= prepareDistance { return .prepare }
