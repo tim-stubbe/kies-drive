@@ -182,6 +182,10 @@ def test_password_and_authentication_guards(tmp_path, monkeypatch):
     assert client.post("/auth/register", json={"email": "ok@example.com", "password": "short"}).status_code == 422
     assert client.get("/auth/me").status_code == 401
     assert client.put("/api/navigation/remote/state", json={}).status_code == 401
+    assert client.post("/mcp", json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "set_destination", "arguments": {"query": "Hochheim"}},
+    }).status_code == 401
 
 
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):

@@ -238,7 +238,6 @@ struct DriveContentView: View {
             location.setNavigationActive(navigating)
             if navigating { followCurrentLocation() }
         }
-        .onOpenURL(perform: handleProvisioningURL)
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
         .sheet(isPresented: $showFavorites) { favoritesSheet }
@@ -515,27 +514,6 @@ struct DriveContentView: View {
                 .environment(\.colorScheme, .light)
         }
         .shadow(color: .black.opacity(0.16), radius: 14, y: 6)
-    }
-
-    private func handleProvisioningURL(_ url: URL) {
-        guard url.scheme == "kiesdrive", url.host == "provision",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-        let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name, $0) }
-        })
-        if values["trip"] == "croatia-split" {
-            planner.installCroatiaSplitTripLock()
-            showSettings = false
-            if let current = location.location?.coordinate {
-                Task { await planner.restoreActiveTrip(from: current, settings: settings) }
-            }
-        } else if values["trip"] == "hochheim-wurzenpass" {
-            planner.installHochheimViaWurzenpassTripLock()
-            showSettings = false
-            if let current = location.location?.coordinate {
-                Task { await planner.restoreActiveTrip(from: current, settings: settings) }
-            }
-        }
     }
 
     private func followCurrentLocation(using currentLocation: CLLocation? = nil) {
