@@ -388,6 +388,24 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare, .now]))
     }
 
+    func testManeuverTransitionRecoversFinalCueOnlyOnceWhenGPSCrossesJunction() {
+        XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
+            stages: [.early, .prepare]
+        ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
+            stages: [.early, .prepare, .now]
+        ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:1:Rechts abbiegen",
+            stages: [.early, .prepare]
+        ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: nil, nextKey: "0:1:Rechts abbiegen", stages: []
+        ))
+    }
+
     func testRecentDestinationsDeduplicateAndKeepLatestFirst() {
         let suite = "DriveHistoryTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

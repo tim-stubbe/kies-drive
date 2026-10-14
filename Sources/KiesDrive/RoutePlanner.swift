@@ -1114,7 +1114,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         guard settings.voiceGuidance else { return }
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
-        recordManeuverTransition(key: key, instruction: progress.instruction)
+        if recordManeuverTransition(key: key, instruction: progress.instruction) {
+            return
+        }
         guard
               let stage = NavigationAnnouncementStage.stage(
                 distance: progress.distanceToManeuver,
@@ -1388,7 +1390,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func announce(_ progress: LiveNavigationProgress, guidanceSpeedMps: Double) {
         let speedKmh = guidanceSpeedMps * 3.6
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
-        recordManeuverTransition(key: key, instruction: progress.maneuver.step.instructions)
+        if recordManeuverTransition(key: key, instruction: progress.maneuver.step.instructions) {
+            return
+        }
         guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard !completed.contains(stage) else { return }
@@ -1410,11 +1414,37 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                     detail: "\(stage) · \(Int(progress.distance)) m · \(progress.maneuver.step.instructions)")
     }
 
-    private func recordManeuverTransition(key: String, instruction: String) {
-        guard diagnosticManeuverKey != key else { return }
+    /// Returns true when a final cue for the maneuver just crossed was spoken.
+    /// The new maneuver is deliberately announced on the next location update
+    /// so two critical utterances cannot immediately cut each other off.
+    @discardableResult
+    private func recordManeuverTransition(key: String, instruction: String) -> Bool {
+        guard diagnosticManeuverKey != key else { return false }
+        let previousKey = diagnosticManeuverKey
+        let previousInstruction = diagnosticManeuverInstruction
+        let shouldRecover = ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: previousKey, nextKey: key,
+            stages: previousKey.map { announcedManeuverStages[$0] ?? [] } ?? []
+        )
+        var recovered = false
+        if shouldRecover, let previousKey, let previousInstruction {
+            recovered = speak(
+                NavigationSpeechFormatter.spokenText(previousInstruction, distance: 0),
+                priority: .critical
+            )
+            if recovered {
+                announcedManeuverStages[previousKey] = Set(NavigationAnnouncementStage.allCases)
+                lastAnnouncement = previousInstruction
+                DriveDiagnosticStore.append(
+                    .maneuverAnnounced,
+                    detail: "recovered-now · \(previousInstruction)"
+                )
+            }
+        }
         closeOutstandingManeuverDiagnostic()
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction
+        return recovered
     }
 
     private func closeOutstandingManeuverDiagnostic() {

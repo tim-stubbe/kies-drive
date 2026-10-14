@@ -274,6 +274,17 @@ enum ManeuverDiagnosticPolicy {
     static func missedFinalCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
         !stages.contains(.now)
     }
+
+    /// A sparse location update can move directly from the road before a
+    /// junction onto the road after it. In that case the final cue must be
+    /// recovered once instead of silently disappearing with the old step.
+    /// Route replacements clear the previous key before publishing their new
+    /// steps, so this applies only to a genuine in-route maneuver transition.
+    static func shouldRecoverFinalCue(previousKey: String?, nextKey: String,
+                                      stages: Set<NavigationAnnouncementStage>) -> Bool {
+        guard let previousKey, previousKey != nextKey else { return false }
+        return missedFinalCue(stages: stages)
+    }
 }
 
 /// Conservative acceptance rules for live navigation fixes. Core Location can
