@@ -1401,6 +1401,12 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 consecutiveRerouteFailures += 1
                 DriveDiagnosticStore.append(.rerouteFailed,
                                             detail: errorMessage ?? "Keine nutzbare neue Route")
+                if settings.voiceGuidance {
+                    _ = speak(
+                        "Die Route konnte gerade nicht neu berechnet werden. Die bisherige Route bleibt aktiv.",
+                        priority: .status
+                    )
+                }
             }
         }
     }
