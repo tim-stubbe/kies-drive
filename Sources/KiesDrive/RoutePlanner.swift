@@ -42,6 +42,44 @@ struct CachedRoute: Codable {
     let savedAt: Date
 }
 
+struct OfflineRouteCacheStore {
+    let fileURL: URL
+
+    static func live(fileManager: FileManager = .default) -> Self {
+        let base = fileManager.urls(for: .applicationSupportDirectory,
+                                    in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        return .init(fileURL: base.appendingPathComponent("KiesDrive", isDirectory: true)
+            .appendingPathComponent("offline-route.json"))
+    }
+
+    func load() -> CachedRoute? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? JSONDecoder().decode(CachedRoute.self, from: data)
+    }
+
+    @discardableResult
+    func save(_ route: CachedRoute, fileManager: FileManager = .default) -> Bool {
+        do {
+            try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(route)
+            // The app sandbox protects the file. Atomic replacement prevents a
+            // crash or full disk from leaving a half-written route that cannot
+            // be restored on the next launch.
+            try data.write(to: fileURL, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func clear(fileManager: FileManager = .default) {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try? fileManager.removeItem(at: fileURL)
+    }
+}
+
 struct RouteSearchResult: Identifiable {
     let id: String
     let mapItem: MKMapItem
@@ -119,6 +157,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private var automaticRestoreInProgress = false
     private var lastAutomaticRestoreAttempt: Date?
     private static let cacheKey = "drive.offlineRoute"
+    private static let offlineCacheStore = OfflineRouteCacheStore.live()
     private static let forcedHomeTripKey = "drive.forcedHomeTrip.austrianMountainPasses.v2"
     private let routeLockStore = RouteLockStore.shared
 
@@ -784,17 +823,26 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             savedAt: Date()
         )
         offlineRoute = cached
-        if let data = try? JSONEncoder().encode(cached) { UserDefaults.standard.set(data, forKey: Self.cacheKey) }
+        if Self.offlineCacheStore.save(cached) {
+            UserDefaults.standard.removeObject(forKey: Self.cacheKey)
+        }
     }
 
     private static func loadCache() -> CachedRoute? {
-        guard let data = UserDefaults.standard.data(forKey: Self.cacheKey) else { return nil }
-        return try? JSONDecoder().decode(CachedRoute.self, from: data)
+        if let route = offlineCacheStore.load() { return route }
+        // One-time migration from the legacy large UserDefaults value.
+        guard let data = UserDefaults.standard.data(forKey: Self.cacheKey),
+              let route = try? JSONDecoder().decode(CachedRoute.self, from: data) else { return nil }
+        if offlineCacheStore.save(route) {
+            UserDefaults.standard.removeObject(forKey: Self.cacheKey)
+        }
+        return route
     }
 
     /// Löscht die zwischengespeicherte Offline-Route (z.B. wenn sie veraltet ist).
     func clearOfflineCache() {
         offlineRoute = nil
+        Self.offlineCacheStore.clear()
         UserDefaults.standard.removeObject(forKey: Self.cacheKey)
     }
 

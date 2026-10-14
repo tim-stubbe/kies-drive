@@ -4,6 +4,32 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testOfflineRouteFileStoreRoundTripsAndClearsAtomically() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiesDriveOfflineCacheTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = OfflineRouteCacheStore(fileURL: directory.appendingPathComponent("route.json"))
+        let route = CachedRoute(
+            destinationName: "Hochheim",
+            destinationCoordinate: .init(latitude: 50.01, longitude: 8.35),
+            legs: [.init(
+                distance: 12_000, travelTime: 900,
+                steps: [.init(instructions: "Rechts abbiegen", distance: 300,
+                              coordinates: [.init(latitude: 50, longitude: 8),
+                                            .init(latitude: 50.01, longitude: 8.1)])],
+                coordinates: [.init(latitude: 50, longitude: 8),
+                              .init(latitude: 50.01, longitude: 8.1)]
+            )],
+            stations: [], savedAt: Date(timeIntervalSince1970: 1_000)
+        )
+
+        XCTAssertTrue(store.save(route))
+        XCTAssertEqual(store.load()?.destinationName, "Hochheim")
+        XCTAssertEqual(store.load()?.legs.first?.steps.first?.instructions, "Rechts abbiegen")
+        store.clear()
+        XCTAssertNil(store.load())
+    }
+
     func testRouteLockTransactionCanRestoreEmptySnapshot() {
         let suite = "RouteLockTransaction-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
