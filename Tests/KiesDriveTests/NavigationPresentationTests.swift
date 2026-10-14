@@ -210,6 +210,27 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 120, speedKmh: 200), .now)
     }
 
+    func testNewRouteSeedsItsOwnFirstManeuverImmediately() throws {
+        let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
+            (instruction: "", distance: 420),
+            (instruction: "Rechts auf die A 66 fahren", distance: 1_200),
+            (instruction: "Links halten Richtung Wiesbaden", distance: 800),
+        ]))
+        XCTAssertEqual(seed.instruction, "Rechts auf die A 66 fahren")
+        XCTAssertEqual(seed.distance, 420)
+        XCTAssertEqual(seed.upcomingInstructions, [
+            "Rechts auf die A 66 fahren", "Links halten Richtung Wiesbaden"
+        ])
+        XCTAssertEqual(seed.followingManeuverDistance, 1_200)
+    }
+
+    func testNewRouteWithoutManeuverDoesNotReuseOldInstruction() {
+        XCTAssertNil(NavigationInitialManeuverPolicy.seed(steps: [
+            (instruction: "", distance: 200),
+            (instruction: "   ", distance: 300),
+        ]))
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 210, speedKmh: 200), .now)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 250, speedKmh: 200), .prepare)

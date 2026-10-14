@@ -168,6 +168,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         guard alternatives.indices.contains(index), !isNavigating else { return }
         legs = [alternatives[index]]
         resetLiveNavigationProgress()
+        seedInitialNavigationPresentation()
         remainingDistanceMetres = totalDistance
         remainingTravelTime = totalTravelTime
         stations = []
@@ -622,6 +623,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
             resetLiveNavigationProgress()
+            seedInitialNavigationPresentation()
             isUsingOfflineGuidance = false
             lastOfflineRecoveryAttempt = nil
             remainingDistanceMetres = totalDistance
@@ -854,6 +856,25 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         lastReliableGuidanceSpeedMps = nil
         lastReliableGuidanceSpeedAt = nil
         offlineNeedsInitialPositionMatch = false
+    }
+
+    /// Publishes a maneuver belonging to the newly installed route before the
+    /// next Core Location fix arrives. Phone, speech, MCP and CarPlay all read
+    /// these same fields, so none of them can retain guidance from a previous
+    /// destination during the route transition.
+    private func seedInitialNavigationPresentation() {
+        let values = legs.flatMap(\.steps).map {
+            (instruction: $0.instructions, distance: $0.distance)
+        }
+        guard let seed = NavigationInitialManeuverPolicy.seed(steps: values) else {
+            nextManeuverInstruction = legs.isEmpty ? nil : "Dem Straßenverlauf bis zum Ziel folgen"
+            nextManeuverDistance = legs.isEmpty ? nil : totalDistance
+            upcomingManeuverInstructions = nextManeuverInstruction.map { [$0] } ?? []
+            return
+        }
+        nextManeuverInstruction = seed.instruction
+        nextManeuverDistance = seed.distance
+        upcomingManeuverInstructions = seed.upcomingInstructions
     }
 
     @discardableResult

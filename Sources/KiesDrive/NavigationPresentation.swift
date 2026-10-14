@@ -181,6 +181,43 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     }
 }
 
+struct NavigationInitialManeuver: Equatable {
+    let instruction: String
+    let distance: CLLocationDistance
+    let upcomingInstructions: [String]
+    let followingManeuverDistance: CLLocationDistance?
+}
+
+/// Builds the first guidance card directly from a newly committed route.
+/// This is deliberately independent of the previous GPS cursor so changing a
+/// destination or completing a reroute can never briefly publish or speak an
+/// instruction belonging to the old route.
+enum NavigationInitialManeuverPolicy {
+    static func seed(steps: [(instruction: String, distance: CLLocationDistance)])
+        -> NavigationInitialManeuver? {
+        guard let maneuverIndex = steps.indices.first(where: {
+            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else { return nil }
+        let distance = steps[..<maneuverIndex].reduce(0) { $0 + max(0, $1.distance) }
+        let upcoming = steps[maneuverIndex...].compactMap { step -> String? in
+            let value = step.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
+        let followingIndex = steps.indices.dropFirst(maneuverIndex + 1).first(where: {
+            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })
+        let followingDistance = followingIndex.map { index in
+            steps[maneuverIndex..<index].reduce(0) { $0 + max(0, $1.distance) }
+        }
+        return .init(
+            instruction: steps[maneuverIndex].instruction,
+            distance: distance,
+            upcomingInstructions: Array(upcoming.prefix(5)),
+            followingManeuverDistance: followingDistance
+        )
+    }
+}
+
 enum ManeuverDiagnosticPolicy {
     static func missedFinalCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
         !stages.contains(.now)
