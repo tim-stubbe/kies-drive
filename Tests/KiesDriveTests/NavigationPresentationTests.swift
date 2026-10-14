@@ -954,6 +954,22 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineGuidanceRejectsExpiredAndInvalidFutureCaches() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        XCTAssertTrue(OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: now.addingTimeInterval(-6 * 24 * 60 * 60), now: now
+        ))
+        XCTAssertFalse(OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: now.addingTimeInterval(-8 * 24 * 60 * 60), now: now
+        ))
+        XCTAssertTrue(OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: now.addingTimeInterval(4 * 60), now: now
+        ))
+        XCTAssertFalse(OfflineRouteFreshnessPolicy.isUsable(
+            savedAt: now.addingTimeInterval(10 * 60), now: now
+        ))
+    }
+
     func testRouteSearchNeverSuggestsMateriallyPassedStops() {
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateIndex: 20, currentIndex: 60,
                                                  routePointCount: 100))

@@ -744,6 +744,19 @@ enum OfflineRouteCachePolicy {
     }
 }
 
+/// Cached turn-by-turn geometry is a short-lived safety net for tunnels,
+/// roaming gaps and multi-day journeys, not a permanent substitute for fresh
+/// routing data. A small future tolerance survives harmless clock correction.
+enum OfflineRouteFreshnessPolicy {
+    static let maximumAge: TimeInterval = 7 * 24 * 60 * 60
+    static let futureTolerance: TimeInterval = 5 * 60
+
+    static func isUsable(savedAt: Date, now: Date = Date()) -> Bool {
+        let age = now.timeIntervalSince(savedAt)
+        return age >= -futureTolerance && age <= maximumAge
+    }
+}
+
 enum RouteSearchPolicy {
     /// Keeps a tiny tolerance for GPS jitter around the current route point,
     /// but never sends the driver materially backwards for an added stop.

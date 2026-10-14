@@ -344,6 +344,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         destination = item
         let onlineCalculationSucceeded = await calculate(from: current, settings: settings)
         let hasMatchingOfflineRoute = offlineRoute.map {
+            OfflineRouteFreshnessPolicy.isUsable(savedAt: $0.savedAt) &&
             OfflineRouteCachePolicy.matches(
                 cacheName: $0.destinationName,
                 cacheCoordinate: $0.destinationCoordinate?.clLocationCoordinate,
@@ -1007,6 +1008,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     private func startOfflineGuidanceIfAvailable(replacingLiveRoute: Bool = false) -> Bool {
         guard (legs.isEmpty || replacingLiveRoute), let cache = offlineRoute,
+              OfflineRouteFreshnessPolicy.isUsable(savedAt: cache.savedAt),
               OfflineRouteCachePolicy.matches(
                 cacheName: cache.destinationName,
                 cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
