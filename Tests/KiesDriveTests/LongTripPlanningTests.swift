@@ -106,6 +106,21 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollComparisonPublishesOnlyCompleteVariantPair() {
+        let standard = TollLookupBatchItem(
+            avoidTolls: false, routeIdentity: "route|standard",
+            cost: .known(amount: 24, currency: "EUR", source: "Provider"), fetched: true
+        )
+        let avoiding = TollLookupBatchItem(
+            avoidTolls: true, routeIdentity: "route|avoid",
+            cost: .unknown(reason: "Noch nicht eindeutig"), fetched: true
+        )
+
+        XCTAssertFalse(TollLookupBatchPolicy.complete([standard]))
+        XCTAssertFalse(TollLookupBatchPolicy.complete([standard, standard]))
+        XCTAssertTrue(TollLookupBatchPolicy.complete([avoiding, standard]))
+    }
+
     func testRouteProjectionMeasuresBetweenSparseGeometryPoints() throws {
         let route = [
             CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0),

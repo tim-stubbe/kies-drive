@@ -2169,35 +2169,54 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let generation = UUID()
         tollLoadGeneration = generation
         let origin = String(format: "%.4f, %.4f", start.latitude, start.longitude)
+        var results: [TollLookupBatchItem] = []
+        var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
         for avoidTolls in [false, true] {
             let routeIdentity = baseRouteIdentity + (avoidTolls ? "|avoid" : "|standard")
             if let cached = TollLookupCachePolicy.reusable(
                 tollLookupSnapshots[avoidTolls], routeIdentity: routeIdentity, origin: start
             ) {
-                setResearchedToll(cached, avoidTolls: avoidTolls)
-                continue
+                results.append(.init(avoidTolls: avoidTolls, routeIdentity: routeIdentity,
+                                     cost: cached, fetched: false))
+            } else {
+                requests.append((avoidTolls, routeIdentity))
             }
-            do {
-                let toll = try await DriveAPI.tollCost(
-                    origin: origin, destination: destinationName, via: via,
-                    avoidTolls: avoidTolls
-                )
-                guard RouteEnrichmentPublicationPolicy.isCurrent(
-                    route: routeGeneration, currentRoute: routeCalculationGeneration,
-                    request: generation, currentRequest: tollLoadGeneration
-                ) else { return }
-                setResearchedToll(toll, avoidTolls: avoidTolls)
-                tollLookupSnapshots[avoidTolls] = .init(
-                    routeIdentity: routeIdentity, origin: start, cost: toll, loadedAt: Date()
-                )
-            } catch {
-                guard RouteEnrichmentPublicationPolicy.isCurrent(
-                    route: routeGeneration, currentRoute: routeCalculationGeneration,
-                    request: generation, currentRequest: tollLoadGeneration
-                ) else { return }
-                setResearchedToll(
-                    .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)"),
-                    avoidTolls: avoidTolls
+        }
+        await withTaskGroup(of: TollLookupBatchItem.self) { group in
+            for request in requests {
+                group.addTask {
+                    do {
+                        let cost = try await DriveAPI.tollCost(
+                            origin: origin, destination: destinationName, via: via,
+                            avoidTolls: request.avoidTolls
+                        )
+                        return .init(avoidTolls: request.avoidTolls,
+                                     routeIdentity: request.routeIdentity,
+                                     cost: cost, fetched: true)
+                    } catch {
+                        return .init(
+                            avoidTolls: request.avoidTolls,
+                            routeIdentity: request.routeIdentity,
+                            cost: .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)"),
+                            fetched: true
+                        )
+                    }
+                }
+            }
+            for await result in group { results.append(result) }
+        }
+        guard TollLookupBatchPolicy.complete(results),
+              RouteEnrichmentPublicationPolicy.isCurrent(
+                route: routeGeneration, currentRoute: routeCalculationGeneration,
+                request: generation, currentRequest: tollLoadGeneration
+              ) else { return }
+        let loadedAt = Date()
+        for result in results {
+            setResearchedToll(result.cost, avoidTolls: result.avoidTolls)
+            if result.fetched {
+                tollLookupSnapshots[result.avoidTolls] = .init(
+                    routeIdentity: result.routeIdentity, origin: start,
+                    cost: result.cost, loadedAt: loadedAt
                 )
             }
         }

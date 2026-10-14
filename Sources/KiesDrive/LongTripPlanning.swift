@@ -24,7 +24,7 @@ struct SpeedScenario: Codable, Identifiable, Equatable {
     }
 }
 
-enum TollCost: Codable, Equatable {
+enum TollCost: Codable, Equatable, Sendable {
     case known(amount: Decimal, currency: String, source: String)
     case noToll(source: String)
     case unknown(reason: String)
@@ -33,6 +33,22 @@ enum TollCost: Codable, Equatable {
         if case .known(let amount, _, _) = self { return amount }
         if case .noToll = self { return 0 }
         return nil
+    }
+}
+
+struct TollLookupBatchItem: Sendable {
+    let avoidTolls: Bool
+    let routeIdentity: String
+    let cost: TollCost
+    let fetched: Bool
+}
+
+enum TollLookupBatchPolicy {
+    /// Both route variants form one comparison. Do not publish either result
+    /// until the requested pair is complete, otherwise the UI can briefly
+    /// compare fresh provider data with an unrelated previous journey.
+    static func complete(_ items: [TollLookupBatchItem]) -> Bool {
+        Set(items.map(\.avoidTolls)) == Set([false, true])
     }
 }
 
