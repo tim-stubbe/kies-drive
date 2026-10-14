@@ -248,6 +248,15 @@ enum NavigationSpeechInterruptionPolicy {
                                 incoming: NavigationSpeechPriority) -> Bool {
         incoming.rawValue >= active.rawValue
     }
+
+    /// Once a replacement route is committed, every queued or audible
+    /// maneuver belongs to geometry that is no longer authoritative. Even a
+    /// critical final cue must be cancelled instead of directing the driver
+    /// onto the superseded route.
+    static func shouldCancelForRouteReplacement(navigationActive: Bool,
+                                                hasSpeechWork: Bool) -> Bool {
+        navigationActive && hasSpeechWork
+    }
 }
 
 struct NavigationInitialManeuver: Equatable {

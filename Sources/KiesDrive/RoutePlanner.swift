@@ -914,6 +914,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 }
                 activeRouteLock = routeLockStore.activeLock
             }
+            cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
@@ -1657,6 +1658,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func pendingStages(for key: String) -> Set<NavigationAnnouncementStage> {
         Set(pendingManeuverSpeech.values.lazy.filter { $0.key == key }.map(\.stage))
+    }
+
+    /// Route calculation is intentionally non-destructive until its complete
+    /// result is ready. At that exact commit boundary, however, spoken work
+    /// from the old route becomes unsafe and must not finish over the new map.
+    private func cancelSpeechForRouteReplacementIfNeeded() {
+        let hasSpeechWork = synthesizer.isSpeaking || activeUtterance != nil ||
+            !pendingManeuverSpeech.isEmpty
+        guard NavigationSpeechInterruptionPolicy.shouldCancelForRouteReplacement(
+            navigationActive: isNavigating, hasSpeechWork: hasSpeechWork
+        ) else { return }
+
+        let replacedUtterance = activeUtterance
+        synthesizer.stopSpeaking(at: .immediate)
+        pendingManeuverSpeech = [:]
+        if let replacedUtterance {
+            finishAudioSession(for: replacedUtterance)
+        } else {
+            activeSpeechPriority = nil
+        }
     }
 
     @discardableResult

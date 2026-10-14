@@ -407,6 +407,18 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testCommittedReplacementRouteCancelsEveryOldSpokenManeuver() {
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldCancelForRouteReplacement(
+            navigationActive: true, hasSpeechWork: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldCancelForRouteReplacement(
+            navigationActive: false, hasSpeechWork: true
+        ), "Route preview changes must not cancel unrelated speech")
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldCancelForRouteReplacement(
+            navigationActive: true, hasSpeechWork: false
+        ))
+    }
+
     func testManeuverAnnouncementRemainsRetryableUntilSpeechActuallyStarts() {
         XCTAssertTrue(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
             .prepare, delivered: [], pending: []
