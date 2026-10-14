@@ -1472,10 +1472,7 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     }
 
     private func evenlySpaced(_ points: [CLLocationCoordinate2D], maximum: Int) -> [CLLocationCoordinate2D] {
-        guard points.count > maximum, maximum > 1 else { return points }
-        return (0..<maximum).map { index in
-            points[index * (points.count - 1) / (maximum - 1)]
-        }
+        RouteGeometryProgress.evenlySpaced(points, maximum: maximum)
     }
 
     private func routeInsideLockedCorridor(_ route: MKRoute, points: [DriveCoordinate], width: Double) -> Bool {

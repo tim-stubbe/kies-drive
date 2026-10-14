@@ -127,6 +127,26 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
     }
 
+    func testBreakPlannerDoesNotChooseAnUnhelpfullyEarlyStop() {
+        let tooEarly = BreakCandidate(id: "early", name: "Zu früh", coordinate: .init(),
+                                      progress: 0.2, detourMetres: 20, isOpen: true)
+        let breaks = BreakPlanner().plan(drivingTime: 5 * 3600, candidates: [tooEarly])
+        XCTAssertNil(breaks.first?.candidate)
+        XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
+    }
+
+    func testRouteSearchSamplesByDistanceInsteadOfPointDensity() {
+        let clustered = (0...8).map {
+            CLLocationCoordinate2D(latitude: 0, longitude: Double($0) * 0.001)
+        } + [CLLocationCoordinate2D(latitude: 0, longitude: 10)]
+        let samples = RouteGeometryProgress.evenlySpaced(clustered, maximum: 3)
+
+        XCTAssertEqual(samples.count, 3)
+        XCTAssertEqual(samples[0].longitude, 0, accuracy: 0.001)
+        XCTAssertEqual(samples[1].longitude, 5, accuracy: 0.05)
+        XCTAssertEqual(samples[2].longitude, 10, accuracy: 0.001)
+    }
+
     func testBreakPlannerResetsLimitAtActualEarlyStop() {
         let candidates = [
             BreakCandidate(id: "early", name: "Früher Halt", coordinate: .init(),

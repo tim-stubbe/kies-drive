@@ -217,6 +217,32 @@ enum RouteGeometryProgress {
         }
         return best
     }
+
+    /// Returns points distributed by travelled distance, not by polyline point
+    /// count. MapKit creates dense geometry around junctions and sparse points
+    /// on long motorways; index-based sampling would otherwise waste multiple
+    /// searches around one interchange and leave large route sections unseen.
+    static func evenlySpaced(_ coordinates: [CLLocationCoordinate2D], maximum: Int)
+        -> [CLLocationCoordinate2D] {
+        guard coordinates.count > maximum, maximum > 1 else { return coordinates }
+        let fractions = cumulativeFractions(coordinates)
+        return (0..<maximum).map { sampleIndex in
+            let target = Double(sampleIndex) / Double(maximum - 1)
+            guard let upper = fractions.indices.first(where: { fractions[$0] >= target }) else {
+                return coordinates[coordinates.count - 1]
+            }
+            guard upper > 0 else { return coordinates[0] }
+            let lower = upper - 1
+            let span = fractions[upper] - fractions[lower]
+            let interpolation = span > 0 ? (target - fractions[lower]) / span : 0
+            return .init(
+                latitude: coordinates[lower].latitude +
+                    (coordinates[upper].latitude - coordinates[lower].latitude) * interpolation,
+                longitude: coordinates[lower].longitude +
+                    (coordinates[upper].longitude - coordinates[lower].longitude) * interpolation
+            )
+        }
+    }
 }
 
 struct PlannedBreak: Identifiable, Equatable {
@@ -288,6 +314,7 @@ struct FuelStopPlanner {
 struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
+    var earliestStopTolerance: TimeInterval = 20 * 60
     var latestStopTolerance: TimeInterval = 10 * 60
 
     func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
@@ -300,10 +327,12 @@ struct BreakPlanner {
             let index = result.count + 1
             let idealDrivingTime = lastBreakDrivingTime + maximumContinuousDriving
             let idealProgress = min(0.95, idealDrivingTime / drivingTime)
+            let earliestDrivingTime = max(lastBreakDrivingTime,
+                                          idealDrivingTime - earliestStopTolerance)
             let latestDrivingTime = min(drivingTime, idealDrivingTime + latestStopTolerance)
             let candidatesAhead = remaining.filter {
                 let candidateTime = $0.progress * drivingTime
-                return candidateTime > lastBreakDrivingTime + drivingTime * 0.03 &&
+                return candidateTime >= earliestDrivingTime &&
                     candidateTime <= latestDrivingTime
             }
             let candidatesInWindow = candidatesAhead.filter { abs($0.progress - idealProgress) <= 0.12 }
