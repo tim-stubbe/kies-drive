@@ -453,7 +453,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         let currentRouteProgress: Double = {
             guard let location = LocationService.shared.location,
                   let projection = RouteGeometryProgress.nearestProgress(
-                    of: location.coordinate, on: routeCoordinates
+                    of: location.coordinate, on: routeCoordinates,
+                    progressRange: currentRouteProgressSearchRange
                   ), projection.distance <= 5_000 else { return 0 }
             return projection.progress
         }()
@@ -461,7 +462,8 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             item -> (item: MKMapItem, progress: Double, airDistance: Double,
                      routeCoordinate: CLLocationCoordinate2D)? in
             guard let projection = RouteGeometryProgress.nearestProgress(
-                of: item.placemark.coordinate, on: routeCoordinates
+                of: item.placemark.coordinate, on: routeCoordinates,
+                progressRange: max(0, currentRouteProgress - 0.02)...1
             ) else { return nil }
             guard projection.distance <= 5_000,
                   RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
@@ -507,6 +509,16 @@ final class RoutePlanner: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
                 : $0.routeProgress < $1.routeProgress
         }
         isSearchingAlongRoute = false
+    }
+
+    /// Constrains current-position matching around route progress already known
+    /// from navigation. At a bridge, cloverleaf or route loop, pure geometric
+    /// proximity can otherwise snap the driver to a much earlier/later visit of
+    /// the same coordinate and hide useful stops that are still ahead.
+    private var currentRouteProgressSearchRange: ClosedRange<Double>? {
+        guard isNavigating, totalDistance > 0, remainingDistanceMetres > 0 else { return nil }
+        let expected = min(1, max(0, 1 - remainingDistanceMetres / totalDistance))
+        return max(0, expected - 0.08)...min(1, expected + 0.12)
     }
 
     private func drivingDetour(between routeCoordinate: CLLocationCoordinate2D,

@@ -70,6 +70,29 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertLessThan(projection.distance, 1_200)
     }
 
+    func testRouteProjectionRangeDisambiguatesRepeatedCrossing() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0),
+            CLLocationCoordinate2D(latitude: 50.0, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50.1, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50.0, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50.0, longitude: 8.2)
+        ]
+        let coordinate = CLLocationCoordinate2D(latitude: 50.0, longitude: 8.1)
+
+        let early = try XCTUnwrap(RouteGeometryProgress.nearestProgress(
+            of: coordinate, on: route, progressRange: 0...0.4
+        ))
+        let late = try XCTUnwrap(RouteGeometryProgress.nearestProgress(
+            of: coordinate, on: route, progressRange: 0.6...1
+        ))
+
+        XCTAssertLessThan(early.progress, 0.4)
+        XCTAssertGreaterThan(late.progress, 0.6)
+        XCTAssertLessThan(early.distance, 1)
+        XCTAssertLessThan(late.distance, 1)
+    }
+
     func testHigherTargetSpeedOnlyChangesUnlimitedShareAndUsesMoreFuel() {
         let route = RoutePlanningInput(
             id: "holiday", title: "Route", distanceMetres: 600_000,
