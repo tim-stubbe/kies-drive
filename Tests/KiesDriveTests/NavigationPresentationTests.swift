@@ -1238,6 +1238,35 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(anchors.baselineMetres, 2_000, accuracy: 5)
     }
 
+    func testRouteSearchShortlistSpreadsDrivingChecksAcrossRouteSections() {
+        let candidates = [
+            (name: "Early far", progress: 0.10, distance: 900.0),
+            (name: "Early best", progress: 0.105, distance: 120.0),
+            (name: "Early duplicate", progress: 0.11, distance: 300.0),
+            (name: "Middle", progress: 0.35, distance: 250.0),
+            (name: "Later", progress: 0.70, distance: 180.0),
+        ]
+
+        let shortlist = RouteSearchPolicy.diverseShortlist(
+            candidates, maximum: 3,
+            progress: { $0.progress }, airDistance: { $0.distance }
+        )
+
+        XCTAssertEqual(shortlist.map(\.name), ["Early best", "Middle", "Later"])
+    }
+
+    func testRouteSearchShortlistHonoursRequestLimitAndEmptyLimit() {
+        let candidates = (0..<10).map { (progress: Double($0) / 10, distance: Double($0)) }
+        XCTAssertEqual(RouteSearchPolicy.diverseShortlist(
+            candidates, maximum: 4,
+            progress: { $0.progress }, airDistance: { $0.distance }
+        ).count, 4)
+        XCTAssertTrue(RouteSearchPolicy.diverseShortlist(
+            candidates, maximum: 0,
+            progress: { $0.progress }, airDistance: { $0.distance }
+        ).isEmpty)
+    }
+
     func testRouteSearchSubtractsDistanceDrivenAnywayFromDetour() throws {
         XCTAssertEqual(try XCTUnwrap(RouteSearchPolicy.additionalDistance(
             viaDistance: 2_750, baselineDistance: 2_000

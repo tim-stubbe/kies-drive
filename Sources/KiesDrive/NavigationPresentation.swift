@@ -1017,6 +1017,40 @@ enum RouteSearchPolicy {
         return max(0, viaDistance - baselineDistance)
     }
 
+    /// Provider results commonly contain many branches of the same chain in
+    /// one town. Spending every directions request there makes a long-route
+    /// search look empty farther ahead. Cluster nearby route progress and
+    /// retain the geometrically closest candidate from each section before
+    /// applying the strict request limit.
+    static func diverseShortlist<C>(_ candidates: [C], maximum: Int,
+                                    minimumProgressSeparation: Double = 0.015,
+                                    progress: (C) -> Double,
+                                    airDistance: (C) -> CLLocationDistance) -> [C] {
+        guard maximum > 0 else { return [] }
+        let separation = max(0, minimumProgressSeparation)
+        let sorted = candidates.sorted {
+            let lhsProgress = progress($0)
+            let rhsProgress = progress($1)
+            return lhsProgress == rhsProgress
+                ? airDistance($0) < airDistance($1)
+                : lhsProgress < rhsProgress
+        }
+        var clusters: [[C]] = []
+        for candidate in sorted {
+            if let first = clusters.last?.first,
+               progress(candidate) - progress(first) < separation {
+                clusters[clusters.count - 1].append(candidate)
+            } else {
+                clusters.append([candidate])
+            }
+        }
+        return clusters.compactMap { cluster in
+            cluster.min { airDistance($0) < airDistance($1) }
+        }
+        .prefix(maximum)
+        .map { $0 }
+    }
+
     private static func coordinate(at progress: Double,
                                    coordinates: [CLLocationCoordinate2D],
                                    fractions: [Double]) -> CLLocationCoordinate2D? {

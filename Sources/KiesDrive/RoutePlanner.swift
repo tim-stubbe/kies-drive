@@ -624,7 +624,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // Route only a small shortlist. This is a user-triggered search, but
         // dozens of MKDirections requests would still make the screen lag and
         // can trigger provider throttling.
-        let shortlist = Array(candidates.prefix(6))
+        let shortlist = RouteSearchPolicy.diverseShortlist(
+            candidates, maximum: 6,
+            progress: { $0.progress }, airDistance: { $0.airDistance }
+        )
         var routed: [RouteSearchResult] = []
         await withTaskGroup(of: RouteSearchResult?.self) { group in
             for candidate in shortlist {
