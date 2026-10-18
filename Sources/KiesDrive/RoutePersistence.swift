@@ -201,6 +201,31 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var isActive: Bool { status == .active }
 }
 
+enum ActiveRouteLockValidationPolicy {
+    static func isValid(_ lock: ActiveRouteLock) -> Bool {
+        guard isValid(lock.destination),
+              lock.corridorWidthMetres.isFinite, lock.corridorWidthMetres > 0,
+              lock.createdAt.timeIntervalSinceReferenceDate.isFinite,
+              lock.updatedAt.timeIntervalSinceReferenceDate.isFinite,
+              lock.lastRouteProgress.map({ $0.isFinite && (0...1).contains($0) }) ?? true
+        else { return false }
+
+        let waypointIDs = lock.waypoints.map(\.id)
+        guard waypointIDs.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              Set(waypointIDs).count == waypointIDs.count,
+              lock.waypoints.allSatisfy({ isValid($0.coordinate) }),
+              lock.corridorPoints?.allSatisfy(isValid) ?? true
+        else { return false }
+        return true
+    }
+
+    private static func isValid(_ coordinate: DriveCoordinate) -> Bool {
+        coordinate.latitude.isFinite && coordinate.longitude.isFinite
+            && (-90...90).contains(coordinate.latitude)
+            && (-180...180).contains(coordinate.longitude)
+    }
+}
+
 /// Identity of the route constraints used by one asynchronous MapKit request.
 /// Live corridor progress and timestamps are intentionally excluded: they can
 /// change on every GPS checkpoint without changing the route to calculate.
@@ -423,7 +448,9 @@ final class RouteLockStore: ObservableObject {
 
     private static func decodeAny(_ data: Data?) -> ActiveRouteLock? {
         guard let data else { return nil }
-        return try? JSONDecoder().decode(ActiveRouteLock.self, from: data)
+        guard let lock = try? JSONDecoder().decode(ActiveRouteLock.self, from: data),
+              ActiveRouteLockValidationPolicy.isValid(lock) else { return nil }
+        return lock
     }
 
     private static func decodeActive(_ data: Data?) -> ActiveRouteLock? {

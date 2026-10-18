@@ -522,6 +522,40 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(recovered?.waypoints.count, 2)
     }
 
+    func testSemanticallyInvalidPrimaryRecoversValidCheckpoint() throws {
+        let suite = "RoutePersistenceSemanticRecovery.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RouteLockStore(defaults: defaults)
+        var lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        store.save(lock)
+        lock.title = "Valid checkpoint"
+        store.save(lock)
+        lock.destination = .init(latitude: 143, longitude: 16.44)
+        defaults.set(try JSONEncoder().encode(lock), forKey: "drive.activeRouteLock.v1")
+
+        let recovered = RouteLockStore(defaults: defaults).activeLock
+
+        XCTAssertEqual(recovered?.id, lock.id)
+        XCTAssertEqual(try XCTUnwrap(recovered?.destination.latitude), 43.5081, accuracy: 0.0001)
+    }
+
+    func testRouteLockValidationRejectsAmbiguousWaypointIdentityAndProgress() {
+        var lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        XCTAssertTrue(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.waypoints[1] = LockedWaypoint(
+            id: lock.waypoints[0].id, name: "Duplikat",
+            coordinate: lock.waypoints[1].coordinate, required: true,
+            optionsAfter: nil, kind: .routeConstraint
+        )
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        lock.lastRouteProgress = 1.1
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+    }
+
     func testCompletedTripNeverFallsBackToActiveCheckpoint() throws {
         let suite = "RoutePersistenceCompletedRecovery.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
