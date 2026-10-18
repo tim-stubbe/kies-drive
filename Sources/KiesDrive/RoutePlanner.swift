@@ -701,7 +701,34 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeDestinationSearch = nil
         switch outcome {
         case .results(let items):
-            suggestions = items
+            let origin = coordinate.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+            let ordered = items.sorted { lhs, rhs in
+                let lhsRelevance = DestinationSearchRankingPolicy.relevanceScore(
+                    query: query, name: lhs.name, title: lhs.placemark.title
+                )
+                let rhsRelevance = DestinationSearchRankingPolicy.relevanceScore(
+                    query: query, name: rhs.name, title: rhs.placemark.title
+                )
+                if lhsRelevance != rhsRelevance { return lhsRelevance < rhsRelevance }
+                guard let origin else { return (lhs.name ?? "") < (rhs.name ?? "") }
+                return origin.distance(from: CLLocation(
+                    latitude: lhs.placemark.coordinate.latitude,
+                    longitude: lhs.placemark.coordinate.longitude
+                )) < origin.distance(from: CLLocation(
+                    latitude: rhs.placemark.coordinate.latitude,
+                    longitude: rhs.placemark.coordinate.longitude
+                ))
+            }
+            suggestions = ordered.reduce(into: [MKMapItem]()) { result, item in
+                guard result.count < 12,
+                      !result.contains(where: {
+                          DestinationSearchRankingPolicy.isDuplicate(
+                            name: item.name, coordinate: item.placemark.coordinate,
+                            existingName: $0.name, existingCoordinate: $0.placemark.coordinate
+                          )
+                      }) else { return }
+                result.append(item)
+            }
         case .failed(let detail):
             errorMessage = "Zielsuche fehlgeschlagen: \(detail)"
         case .timedOut:

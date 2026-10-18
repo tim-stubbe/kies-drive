@@ -5,6 +5,7 @@ import KiesDriveCore
 import UniformTypeIdentifiers
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import Contacts
 #if os(iOS)
 import UIKit
 #endif
@@ -607,7 +608,15 @@ struct DriveContentView: View {
                             Image(systemName: "mappin.circle.fill").font(.title2).foregroundStyle(.blue)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.name ?? "Ziel").fontWeight(.semibold).foregroundStyle(.primary)
-                                Text(item.placemark.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(DestinationSubtitlePolicy.subtitle(
+                                    name: item.name,
+                                    lockedRouteTitle: nil,
+                                    locality: item.placemark.locality,
+                                    administrativeArea: item.placemark.administrativeArea,
+                                    country: item.placemark.country,
+                                    fallbackTitle: item.placemark.title
+                                ))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
                         }
@@ -840,7 +849,13 @@ struct DriveContentView: View {
             ("Café Prego", .init(latitude: 50.014, longitude: 8.430)),
         ]
         planner.suggestions = previews.map { name, coordinate in
-            let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+            let address = CNMutablePostalAddress()
+            address.city = "Wiesbaden"
+            address.state = "Hessen"
+            address.country = "Deutschland"
+            let item = MKMapItem(placemark: MKPlacemark(
+                coordinate: coordinate, postalAddress: address
+            ))
             item.name = name
             return item
         }

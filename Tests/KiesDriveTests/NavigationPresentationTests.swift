@@ -51,6 +51,39 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
+        XCTAssertLessThan(
+            DestinationSearchRankingPolicy.relevanceScore(
+                query: "Hochheim am Main", name: "Hochheim am Main", title: "Hessen"
+            ),
+            DestinationSearchRankingPolicy.relevanceScore(
+                query: "Hochheim am Main", name: "Hochheim", title: "Erfurt"
+            )
+        )
+        XCTAssertLessThan(
+            DestinationSearchRankingPolicy.relevanceScore(
+                query: "Raiffeisenstraße 10", name: nil,
+                title: "Raiffeisenstraße 10, 55270 Schwabsburg"
+            ),
+            DestinationSearchRankingPolicy.relevanceScore(
+                query: "Raiffeisenstraße 10", name: "Raiffeisenmarkt", title: "Mainz"
+            )
+        )
+    }
+
+    func testDestinationSearchDeduplicatesOnlySameNearbyPlace() {
+        let first = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let nearby = CLLocationCoordinate2D(latitude: 50.0001, longitude: 8)
+        XCTAssertTrue(DestinationSearchRankingPolicy.isDuplicate(
+            name: "McDonald’s", coordinate: first,
+            existingName: "McDonald's", existingCoordinate: nearby
+        ))
+        XCTAssertFalse(DestinationSearchRankingPolicy.isDuplicate(
+            name: "McDonald’s", coordinate: first,
+            existingName: "Burger King", existingCoordinate: nearby
+        ))
+    }
+
 
     func testRemainingTimePreservesPerLegTravelCharacteristics() throws {
         let estimate = try XCTUnwrap(RouteRemainingTimePolicy.estimate(
@@ -1227,6 +1260,17 @@ final class NavigationPresentationTests: XCTestCase {
             country: "Deutschland",
             fallbackTitle: "Café, Mainz"
         ), "Mainz · Rheinland-Pfalz · Deutschland")
+    }
+
+    func testDestinationSubtitleRejectsUnverifiedCountryOnlyPlacemark() {
+        XCTAssertEqual(DestinationSubtitlePolicy.subtitle(
+            name: "Café Maldaner",
+            lockedRouteTitle: nil,
+            locality: "Schweiz",
+            administrativeArea: nil,
+            country: "Schweiz",
+            fallbackTitle: "Schweiz"
+        ), "Ausgewähltes Ziel")
     }
 
     func testStepSelectionDoesNotJumpToNearbyFutureRamp() {

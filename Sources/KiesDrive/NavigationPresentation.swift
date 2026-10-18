@@ -32,6 +32,44 @@ enum DestinationSearchCompletionPolicy {
     }
 }
 
+enum DestinationSearchRankingPolicy {
+    static func relevanceScore(query: String, name: String?, title: String?) -> Double {
+        let query = normalised(query)
+        guard !query.isEmpty else { return 10 }
+        let values = [name, title].compactMap { value -> String? in
+            let value = normalised(value ?? "")
+            return value.isEmpty ? nil : value
+        }
+        if values.contains(query) { return 0 }
+        if values.contains(where: { $0.hasPrefix(query) || query.hasPrefix($0) }) { return 1 }
+        if values.contains(where: { $0.contains(query) }) { return 2 }
+        let queryTokens = Set(query.split(separator: " ").map(String.init))
+        let overlap = values.map { value -> Double in
+            let tokens = Set(value.split(separator: " ").map(String.init))
+            guard !queryTokens.isEmpty else { return 0 }
+            return Double(queryTokens.intersection(tokens).count) / Double(queryTokens.count)
+        }.max() ?? 0
+        return overlap > 0 ? 4 - overlap : 10
+    }
+
+    static func isDuplicate(name: String?, coordinate: CLLocationCoordinate2D,
+                            existingName: String?, existingCoordinate: CLLocationCoordinate2D,
+                            toleranceMetres: CLLocationDistance = 40) -> Bool {
+        guard normalised(name ?? "") == normalised(existingName ?? "") else { return false }
+        return CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude).distance(
+            from: CLLocation(latitude: existingCoordinate.latitude,
+                             longitude: existingCoordinate.longitude)
+        ) <= toleranceMetres
+    }
+
+    private static func normalised(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"[^\p{L}\p{N}]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 enum RouteComparisonPublicationPolicy {
     static func mayPublish(requestRoute: UUID, currentRoute: UUID,
                            stillEligible: Bool) -> Bool {
@@ -1195,16 +1233,27 @@ enum DestinationSubtitlePolicy {
            locked.caseInsensitiveCompare(cleanedName ?? "") != .orderedSame {
             return locked
         }
+        let cleanedCountry = cleaned(country)
         var seen = Set<String>()
-        let components = [locality, administrativeArea, country].compactMap { value -> String? in
+        var components = [locality, administrativeArea].compactMap { value -> String? in
             guard let value = cleaned(value),
+                  value.caseInsensitiveCompare(cleanedCountry ?? "") != .orderedSame,
                   value.caseInsensitiveCompare(cleanedName ?? "") != .orderedSame else { return nil }
             let key = value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             guard seen.insert(key).inserted else { return nil }
             return value
         }
+        // A country by itself is neither useful disambiguation nor reliable
+        // for coordinate-only MKPlacemark values (MapKit can retain stale
+        // simulator geocoder metadata). Include it only behind a real place
+        // hierarchy such as city or region.
+        if !components.isEmpty, let country = cleanedCountry {
+            let key = country.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            if seen.insert(key).inserted { components.append(country) }
+        }
         if !components.isEmpty { return components.joined(separator: " · ") }
         if let fallback = cleaned(fallbackTitle),
+           fallback.caseInsensitiveCompare(cleanedCountry ?? "") != .orderedSame,
            fallback.caseInsensitiveCompare(cleanedName ?? "") != .orderedSame {
             return fallback
         }
