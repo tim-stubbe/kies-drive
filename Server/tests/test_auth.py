@@ -11,6 +11,10 @@ import app.main as main
 
 
 def test_production_readiness_discloses_no_secrets(monkeypatch):
+    async def search_is_ready(_url):
+        return _url is not None
+
+    monkeypatch.setattr(main, "searxng_is_ready", search_is_ready)
     monkeypatch.delenv("KIES_DRIVE_PUBLIC_URL", raising=False)
     monkeypatch.delenv("SMTP_HOST", raising=False)
     monkeypatch.delenv("SMTP_FROM", raising=False)
@@ -34,6 +38,22 @@ def test_production_readiness_discloses_no_secrets(monkeypatch):
     assert ready.status_code == 200
     assert ready.json()["ok"] is True
     assert "must-never-be-returned" not in ready.text
+
+
+def test_production_readiness_fails_when_toll_search_is_offline(monkeypatch):
+    async def search_is_offline(_url):
+        return False
+
+    monkeypatch.setattr(main, "searxng_is_ready", search_is_offline)
+    monkeypatch.setenv("KIES_DRIVE_PUBLIC_URL", "https://drive.example.test")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_FROM", "Kies Drive <drive@example.test>")
+    monkeypatch.setenv("SEARXNG_URL", "http://searxng:8080")
+
+    response = TestClient(main.app).get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["toll_research"] is False
 
 
 def test_searxng_configuration_accepts_only_http_urls(monkeypatch):

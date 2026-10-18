@@ -127,8 +127,25 @@ def configured_searxng_url() -> str | None:
     return value if value.startswith(("http://", "https://")) else None
 
 
+async def searxng_is_ready(base_url: str | None) -> bool:
+    """Verify the JSON search API used by toll research, not only its URL."""
+    if base_url is None:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            response = await client.get(f"{base_url}/search", params={
+                "q": "Kies Drive readiness", "format": "json",
+                "language": "de-DE", "safesearch": 1,
+            })
+            response.raise_for_status()
+            payload = response.json()
+        return isinstance(payload, dict) and isinstance(payload.get("results"), list)
+    except (httpx.HTTPError, ValueError, TypeError):
+        return False
+
+
 @app.get("/readyz")
-def readyz(response: Response):
+async def readyz(response: Response):
     """Report production onboarding readiness without exposing any secret."""
     public_url = os.getenv("KIES_DRIVE_PUBLIC_URL", "").strip()
     checks = {
@@ -137,7 +154,7 @@ def readyz(response: Response):
             os.getenv("SMTP_HOST", "").strip()
             and os.getenv("SMTP_FROM", "").strip()
         ),
-        "toll_research": configured_searxng_url() is not None,
+        "toll_research": await searxng_is_ready(configured_searxng_url()),
     }
     ready = all(checks.values())
     if not ready:
