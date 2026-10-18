@@ -57,8 +57,11 @@ def test_toll_amount_parser_accepts_only_explicit_total():
 
 def test_no_toll_parser_requires_complete_route_statement():
     assert main.explicit_no_toll("Die gesamte Route ist mautfrei")
+    assert main.explicit_no_toll("Die Strecke ist vollständig ohne Maut befahrbar")
     assert main.explicit_no_toll("Gesamtmaut: 0,00 EUR")
     assert not main.explicit_no_toll("Dieser kurze Abschnitt ist mautfrei")
+    assert not main.explicit_no_toll("Ein Abschnitt der Strecke ist mautfrei")
+    assert not main.explicit_no_toll("Auf dieser Route ist ein Teilstück ohne Maut")
 
 
 def test_toll_source_must_match_destination_or_required_via_point():

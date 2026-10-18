@@ -491,8 +491,9 @@ def explicit_no_toll(text: str) -> bool:
     """Accept only an explicit statement that the complete route is toll-free."""
     lowered = text.lower()
     patterns = (
-        r"(?:gesamte route|strecke|route).{0,40}(?:mautfrei|ohne maut|keine maut)",
-        r"(?:mautfrei|ohne maut|keine maut).{0,40}(?:gesamte route|strecke|route)",
+        r"(?:gesamte|komplette|vollständige)[ \t]+(?:route|strecke).{0,40}(?:mautfrei|ohne maut|keine maut)",
+        r"(?:route|strecke).{0,40}(?:vollständig|komplett|insgesamt).{0,20}(?:mautfrei|ohne maut|keine maut)",
+        r"(?:mautfrei|ohne maut|keine maut).{0,40}(?:gesamte|komplette|vollständige)[ \t]+(?:route|strecke)",
         r"(?:gesamtmaut|mautkosten)\s*(?::|-)?\s*0(?:[.,]00)?\s*(?:€|eur)",
     )
     return any(re.search(pattern, lowered) for pattern in patterns)
