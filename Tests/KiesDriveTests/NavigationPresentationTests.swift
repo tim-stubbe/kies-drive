@@ -1345,6 +1345,25 @@ final class NavigationPresentationTests: XCTestCase {
         ), "The immediate cue must still overtake an old distance cue")
     }
 
+    func testOnlyUnexpectedManeuverCancellationRetriesImmediately() {
+        XCTAssertTrue(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
+            hadManeuverClaim: true, navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+        XCTAssertFalse(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
+            hadManeuverClaim: false, navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ), "An app-initiated stop clears ownership and must remain silent")
+        XCTAssertFalse(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
+            hadManeuverClaim: true, navigationActive: true, voiceGuidance: true,
+            guidanceReliable: false, hasUsableLocation: true
+        ), "A cancelled instruction from a departed route must never be repeated")
+        XCTAssertFalse(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
+            hadManeuverClaim: true, navigationActive: true, voiceGuidance: false,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+    }
+
     func testFinishedSpeechCommitsQueuedClaimWhenStartCallbackWasLost() {
         XCTAssertEqual(
             NavigationAnnouncementDeliveryPolicy.completedClaims(

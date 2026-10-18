@@ -721,6 +721,28 @@ enum NavigationSpeechInterruptionPolicy {
     }
 }
 
+enum NavigationSpeechCancellationPolicy {
+    /// AVSpeechSynthesizer can cancel an utterance when Bluetooth or the audio
+    /// route changes without delivering a matching interruption notification.
+    /// Retry only an actual maneuver claim; app-initiated cancellation clears
+    /// its claims before stopping the synthesizer and therefore stays silent.
+    static func shouldRetryUnexpectedCancellation(
+        hadManeuverClaim: Bool,
+        navigationActive: Bool,
+        voiceGuidance: Bool,
+        guidanceReliable: Bool,
+        hasUsableLocation: Bool
+    ) -> Bool {
+        hadManeuverClaim && NavigationSpeechInterruptionPolicy
+            .shouldRetryManeuverAfterInterruption(
+                navigationActive: navigationActive,
+                voiceGuidance: voiceGuidance,
+                guidanceReliable: guidanceReliable,
+                hasUsableLocation: hasUsableLocation
+            )
+    }
+}
+
 struct NavigationInitialManeuver: Equatable {
     let instruction: String
     let distance: CLLocationDistance

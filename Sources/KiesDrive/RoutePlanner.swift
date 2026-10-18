@@ -3170,13 +3170,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func cancelCurrentSpeechWork() {
         let replacedUtterance = activeUtterance
-        synthesizer.stopSpeaking(at: .immediate)
+        // Remove ownership before asking AVSpeechSynthesizer to stop. Its
+        // delegate callback is normally asynchronous, but treating that as a
+        // guarantee could make a synchronous callback look like an unexpected
+        // Bluetooth failure and immediately speak the cancelled turn again.
         pendingManeuverSpeech = [:]
         activeManeuverSpeech = [:]
         pendingBreakReminderSpeech = [:]
         activeBreakReminderSpeech = [:]
         pendingFuelReminderSpeech = [:]
         activeFuelReminderSpeech = [:]
+        synthesizer.stopSpeaking(at: .immediate)
         if let replacedUtterance {
             finishAudioSession(for: replacedUtterance)
         } else {
@@ -3379,9 +3383,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didCancel utterance: AVSpeechUtterance) {
-        // Whether cancelled before or after `didStart`, do not claim delivery:
-        // the next accepted location fix may safely retry this stage.
         let identifier = ObjectIdentifier(utterance)
+        let cancelledManeuverClaim = activeManeuverSpeech[identifier]?.first ??
+            pendingManeuverSpeech[identifier]?.first
+        let hadManeuverClaim = cancelledManeuverClaim != nil
         pendingManeuverSpeech.removeValue(forKey: identifier)
         activeManeuverSpeech.removeValue(forKey: identifier)
         pendingBreakReminderSpeech.removeValue(forKey: identifier)
@@ -3389,6 +3394,28 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         pendingFuelReminderSpeech.removeValue(forKey: identifier)
         activeFuelReminderSpeech.removeValue(forKey: identifier)
         finishAudioSession(for: utterance)
+        guard NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
+            hadManeuverClaim: hadManeuverClaim,
+            navigationActive: isNavigating,
+            voiceGuidance: DriveSettings.shared.voiceGuidance,
+            guidanceReliable: isManeuverGuidanceReliable,
+            hasUsableLocation: lastAcceptedNavigationLocation != nil
+        ) else { return }
+        DriveDiagnosticStore.append(
+            .speechDeliveryFailed,
+            detail: DriveDiagnosticDetail.navigationSample(
+                cancelledManeuverClaim.map {
+                    "\($0.stage) · \($0.instruction)"
+                } ?? "Fahransage unerwartet vom Audiosystem abgebrochen",
+                location: lastAcceptedNavigationLocation
+            )
+        )
+        // Let AVSpeechSynthesizer finish its cancellation callback before a
+        // fresh utterance is submitted to the possibly just-changed route.
+        Task { [weak self] in
+            await Task.yield()
+            self?.retryCurrentManeuverAfterAudioInterruption()
+        }
     }
 
     private func finishAudioSession(for utterance: AVSpeechUtterance) {
