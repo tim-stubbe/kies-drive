@@ -1483,11 +1483,19 @@ enum RouteSearchPolicy {
     /// Filtering only after the provider request wastes calls on towns behind
     /// the vehicle and can crowd useful future results out of the response.
     static func remainingRouteCoordinates(_ coordinates: [CLLocationCoordinate2D],
-                                          currentProgress: Double)
+                                          currentProgress: Double,
+                                          maximumBackwardToleranceMetres: CLLocationDistance = 2_000)
         -> [CLLocationCoordinate2D] {
         guard coordinates.count > 1 else { return coordinates }
         let progress = RouteGeometryProgress.cumulativeFractions(coordinates)
-        let lowerBound = max(0, min(1, currentProgress) - 0.02)
+        let totalDistance = zip(coordinates, coordinates.dropFirst()).reduce(0.0) {
+            $0 + CLLocation(latitude: $1.0.latitude, longitude: $1.0.longitude)
+                .distance(from: CLLocation(latitude: $1.1.latitude, longitude: $1.1.longitude))
+        }
+        let tolerance = totalDistance > 0
+            ? min(0.02, max(0, maximumBackwardToleranceMetres) / totalDistance)
+            : 0
+        let lowerBound = max(0, min(1, currentProgress) - tolerance)
         let first = progress.firstIndex(where: { $0 >= lowerBound }) ?? (coordinates.count - 1)
         return Array(coordinates[first...])
     }

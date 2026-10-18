@@ -1945,6 +1945,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(remaining.last?.longitude, route.last?.longitude)
     }
 
+    func testLongRouteSearchDoesNotQueryManyKilometresBehindVehicle() throws {
+        let route = (0...100).map {
+            CLLocationCoordinate2D(latitude: 45 + Double($0) / 10, longitude: 8)
+        }
+        let remaining = RouteSearchPolicy.remainingRouteCoordinates(
+            route, currentProgress: 0.5
+        )
+        let first = try XCTUnwrap(remaining.first)
+        let firstProgress = try XCTUnwrap(
+            RouteGeometryProgress.nearestProgress(of: first, on: route)
+        ).progress
+        XCTAssertGreaterThanOrEqual(firstProgress, 0.49)
+    }
+
     func testRouteSearchRadiusScalesWithoutFloodingLocalSearch() {
         let short = [
             CLLocationCoordinate2D(latitude: 50, longitude: 8),
