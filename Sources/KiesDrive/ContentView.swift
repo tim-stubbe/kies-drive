@@ -1986,15 +1986,20 @@ struct DriveContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(routeOptions[0].routeTitle) → \(routeOptions[1].routeTitle)").font(.headline)
                 Text("\(signedTime(delta.timeDifference)) · \(signed(delta.distanceDifferenceMetres / 1_000, unit: "km")) · \(signed(delta.fuelCostDifference, unit: "€ Kraftstoff"))")
-                if let savings = delta.tollSavings {
-                    let currency = delta.tollCurrency ?? "EUR"
+                switch RouteTollComparisonPresentation.value(for: delta) {
+                case .savings(let savings, let currency, let total):
                     Text("Mautersparnis der Alternative: \(NSDecimalNumber(decimal: savings).doubleValue, format: .currency(code: currency))")
-                    if let total = delta.totalCostDifference {
+                    if let total {
                         Text("Gesamtkosten der Alternative: \(signed(total, unit: "€"))")
                             .fontWeight(.semibold)
                     }
-                } else {
-                    Text("Maut- und Gesamtersparnis nicht berechenbar: keine verifizierten Preise.").font(.caption).foregroundStyle(.secondary)
+                case .bothTollFree(let total):
+                    Text("Beide Routen sind laut verifizierter Quelle mautfrei.")
+                    Text("Kostenunterschied der Alternative (nur Kraftstoff): \(signed(total, unit: "€"))")
+                        .fontWeight(.semibold)
+                case .unavailable:
+                    Text("Maut- und Gesamtersparnis nicht berechenbar: keine verifizierten Preise.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

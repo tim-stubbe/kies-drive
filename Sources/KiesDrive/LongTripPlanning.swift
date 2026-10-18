@@ -1695,6 +1695,28 @@ struct RouteComparisonDelta: Equatable {
     }
 }
 
+enum RouteTollComparisonPresentation: Equatable {
+    case savings(amount: Decimal, currency: String, totalCostDifferenceEUR: Double?)
+    case bothTollFree(totalCostDifferenceEUR: Double)
+    case unavailable
+
+    static func value(for delta: RouteComparisonDelta) -> Self {
+        if let amount = delta.tollSavings, let currency = delta.tollCurrency {
+            return .savings(
+                amount: amount,
+                currency: currency,
+                totalCostDifferenceEUR: delta.totalCostDifference
+            )
+        }
+        if let total = delta.totalCostDifference {
+            // The delta exposes a total without a toll currency only when both
+            // provider results explicitly confirm that their routes are free.
+            return .bothTollFree(totalCostDifferenceEUR: total)
+        }
+        return .unavailable
+    }
+}
+
 struct RoutePlanningInput {
     let id: String
     let title: String

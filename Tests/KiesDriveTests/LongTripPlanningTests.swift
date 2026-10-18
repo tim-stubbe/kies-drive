@@ -1995,6 +1995,46 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertNil(delta.tollSavings)
         XCTAssertNil(delta.tollCurrency)
         XCTAssertEqual(try XCTUnwrap(delta.totalCostDifference), 2.5, accuracy: 0.001)
+        XCTAssertEqual(
+            RouteTollComparisonPresentation.value(for: delta),
+            .bothTollFree(totalCostDifferenceEUR: 2.5)
+        )
+    }
+
+    func testTollComparisonPresentationKeepsUnknownAndKnownEvidenceDistinct() {
+        let scenario = SpeedScenario.target(150)
+        let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)
+        let known = RouteScenarioResult(
+            id: "known", routeTitle: "Maut", scenario: scenario,
+            distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
+            toll: .known(amount: 24, currency: "EUR", source: "Provider", sourceURL: nil),
+            breaks: [], fuelStops: [], unlimitedFraction: 0
+        )
+        let free = RouteScenarioResult(
+            id: "free", routeTitle: "Mautfrei", scenario: scenario,
+            distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
+            toll: .noToll(source: "Provider", sourceURL: nil),
+            breaks: [], fuelStops: [], unlimitedFraction: 0
+        )
+        let unknown = RouteScenarioResult(
+            id: "unknown", routeTitle: "Unbekannt", scenario: scenario,
+            distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
+            toll: .unknown(reason: "Keine Quelle"),
+            breaks: [], fuelStops: [], unlimitedFraction: 0
+        )
+
+        XCTAssertEqual(
+            RouteTollComparisonPresentation.value(
+                for: RouteComparisonDelta(from: known, to: free)
+            ),
+            .savings(amount: 24, currency: "EUR", totalCostDifferenceEUR: -24)
+        )
+        XCTAssertEqual(
+            RouteTollComparisonPresentation.value(
+                for: RouteComparisonDelta(from: known, to: unknown)
+            ),
+            .unavailable
+        )
     }
 
     func testComparisonNeverCombinesDifferentTollCurrencies() {
