@@ -992,7 +992,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     func mapTemplate(_ mapTemplate: CPMapTemplate, selectedPreviewFor trip: CPTrip, using routeChoice: CPRouteChoice) {}
     func mapTemplate(_ mapTemplate: CPMapTemplate, startedTrip trip: CPTrip, using routeChoice: CPRouteChoice) {
-        RoutePlanner.shared.startNavigation()
+        let planner = RoutePlanner.shared
+        if CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: planner.isNavigating) {
+            planner.startNavigation()
+        }
         synchroniseNavigationSession()
     }
     func mapTemplateDidCancelNavigation(_ mapTemplate: CPMapTemplate) {

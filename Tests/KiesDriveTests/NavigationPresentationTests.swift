@@ -139,6 +139,11 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(baseline, .init(avoidTolls: true, avoidHighways: false))
     }
 
+    func testCarPlayTripCallbackDoesNotRestartActiveGuidance() {
+        XCTAssertTrue(CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: false))
+        XCTAssertFalse(CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: true))
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(

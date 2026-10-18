@@ -713,6 +713,15 @@ enum CarPlayGuidancePresentationPolicy {
     }
 }
 
+enum CarPlayTripStartPolicy {
+    /// `activateDestination` can already have started local guidance before
+    /// CarPlay delivers its `startedTrip` delegate callback. Starting again
+    /// would reset maneuver delivery, diagnostics and the navigation session.
+    static func shouldStartNavigation(isNavigating: Bool) -> Bool {
+        !isNavigating
+    }
+}
+
 /// Builds the first guidance card directly from a newly committed route.
 /// This is deliberately independent of the previous GPS cursor so changing a
 /// destination or completing a reroute can never briefly publish or speak an
