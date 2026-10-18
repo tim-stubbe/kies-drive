@@ -1603,8 +1603,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
-        let previousLock = routeLockStore.activeLock
-        let previousStations = viaStations
+        let mutationGeneration = UUID()
+        routeStopMutationGeneration = mutationGeneration
+        let rollback = RouteMutationBaselinePolicy.choose(
+            existing: routeStopMutationSnapshot,
+            current: RouteStopMutationSnapshot(
+                lock: routeLockStore.activeLock,
+                stations: viaStations,
+                searchResults: routeSearchResults,
+                searchQuery: routeSearchQuery
+            )
+        )
+        routeStopMutationSnapshot = rollback
+        defer {
+            if mutationGeneration == routeStopMutationGeneration {
+                routeStopMutationSnapshot = nil
+            }
+        }
         routeLockStore.update { $0.removeWaypoint(id: id) }
         viaStations.removeAll { $0.id == id }
         activeRouteLock = routeLockStore.activeLock
@@ -1614,14 +1629,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             from: start, settings: settings,
             navigationSession: navigationSession
         ) else {
+            guard mutationGeneration == routeStopMutationGeneration else { return false }
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
             ), RouteMutationRollbackPolicy.shouldRollback(
                 current: viaStations, mutated: mutatedStations
             ) else { return false }
-            routeLockStore.replace(with: previousLock)
-            viaStations = previousStations
-            activeRouteLock = previousLock
+            routeLockStore.replace(with: rollback.lock)
+            viaStations = rollback.stations
+            activeRouteLock = rollback.lock
+            routeSearchResults = rollback.searchResults
+            routeSearchQuery = rollback.searchQuery
+            isSearchingAlongRoute = false
             return false
         }
         return true
@@ -4112,21 +4131,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D,
                         settings: DriveSettings) async -> Bool {
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
-        let previousStations = viaStations
-        let previousLock = routeLockStore.activeLock
         let wasSelected = RouteStopSelectionPolicy.contains(
             stopID: station.id,
             transientStationIDs: viaStations.map(\.id),
-            lockedWaypoints: previousLock?.waypoints ?? []
+            lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
         )
+        let knownProgress: Double?
         if wasSelected {
-            viaStations.removeAll { $0.id == station.id }
-            routeLockStore.update { lock in
-                lock.removeWaypoint(id: station.id)
-            }
-            activeRouteLock = routeLockStore.activeLock
+            knownProgress = nil
         } else {
-            let knownProgress = breakCandidates(along: legs)
+            knownProgress = breakCandidates(along: legs)
                 .first(where: { $0.id == station.id })?.progress
             if isNavigating {
                 guard let knownProgress, RouteSearchPolicy.isAhead(
@@ -4138,6 +4152,31 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     return false
                 }
             }
+        }
+        let mutationGeneration = UUID()
+        routeStopMutationGeneration = mutationGeneration
+        let rollback = RouteMutationBaselinePolicy.choose(
+            existing: routeStopMutationSnapshot,
+            current: RouteStopMutationSnapshot(
+                lock: routeLockStore.activeLock,
+                stations: viaStations,
+                searchResults: routeSearchResults,
+                searchQuery: routeSearchQuery
+            )
+        )
+        routeStopMutationSnapshot = rollback
+        defer {
+            if mutationGeneration == routeStopMutationGeneration {
+                routeStopMutationSnapshot = nil
+            }
+        }
+        if wasSelected {
+            viaStations.removeAll { $0.id == station.id }
+            routeLockStore.update { lock in
+                lock.removeWaypoint(id: station.id)
+            }
+            activeRouteLock = routeLockStore.activeLock
+        } else {
             viaStations.append(station)
             if routeLockStore.activeLock == nil { persistActiveTrip() }
             insertLockedWaypoint(
@@ -4152,14 +4191,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             from: start, settings: settings,
             navigationSession: navigationSession
         ) else {
+            guard mutationGeneration == routeStopMutationGeneration else { return false }
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: viaStations, mutated: mutatedStations
             ), RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
             ) else { return false }
-            viaStations = previousStations
-            routeLockStore.replace(with: previousLock)
-            activeRouteLock = previousLock
+            viaStations = rollback.stations
+            routeLockStore.replace(with: rollback.lock)
+            activeRouteLock = rollback.lock
+            routeSearchResults = rollback.searchResults
+            routeSearchQuery = rollback.searchQuery
+            isSearchingAlongRoute = false
             return false
         }
         return true
