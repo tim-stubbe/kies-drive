@@ -192,7 +192,10 @@ struct DriveContentView: View {
                 .environment(\.colorScheme, .light)
         }
         .onAppear {
-            UIApplication.shared.isIdleTimerDisabled = true
+            UIApplication.shared.isIdleTimerDisabled = NavigationIdleTimerPolicy.shouldDisable(
+                navigationActive: planner.isNavigating,
+                sceneActive: scenePhase == .active
+            )
             location.setNavigationActive(planner.isNavigating)
             location.start()
             #if targetEnvironment(simulator)
@@ -225,9 +228,10 @@ struct DriveContentView: View {
             #endif
         }
         .onChange(of: scenePhase) { _, phase in
-            // Keep the screen awake only while Kies Drive is actually visible.
-            // Backgrounding the app restores the user's normal lock timeout.
-            UIApplication.shared.isIdleTimerDisabled = phase == .active
+            UIApplication.shared.isIdleTimerDisabled = NavigationIdleTimerPolicy.shouldDisable(
+                navigationActive: planner.isNavigating,
+                sceneActive: phase == .active
+            )
             if phase != .active {
                 planner.checkpointNavigationState()
             }
@@ -246,6 +250,10 @@ struct DriveContentView: View {
             }
         }
         .onChange(of: planner.isNavigating) { _, navigating in
+            UIApplication.shared.isIdleTimerDisabled = NavigationIdleTimerPolicy.shouldDisable(
+                navigationActive: navigating,
+                sceneActive: scenePhase == .active
+            )
             location.setNavigationActive(navigating)
             if navigating { followCurrentLocation() }
         }

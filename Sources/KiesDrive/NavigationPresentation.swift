@@ -2,6 +2,15 @@ import Foundation
 import CoreLocation
 import MapKit
 
+enum NavigationIdleTimerPolicy {
+    /// Navigation may keep the display awake only while guidance is running
+    /// and the app is actually in the foreground. Browsing the map must keep
+    /// the user's normal Auto-Lock setting intact.
+    static func shouldDisable(navigationActive: Bool, sceneActive: Bool) -> Bool {
+        navigationActive && sceneActive
+    }
+}
+
 final class NavigationSearchCompletionGate<Value> {
     private(set) var didComplete = false
 

@@ -4,6 +4,21 @@ import MapKit
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testIdleTimerIsDisabledOnlyForForegroundNavigation() {
+        XCTAssertTrue(NavigationIdleTimerPolicy.shouldDisable(
+            navigationActive: true, sceneActive: true
+        ))
+        XCTAssertFalse(NavigationIdleTimerPolicy.shouldDisable(
+            navigationActive: false, sceneActive: true
+        ))
+        XCTAssertFalse(NavigationIdleTimerPolicy.shouldDisable(
+            navigationActive: true, sceneActive: false
+        ))
+        XCTAssertFalse(NavigationIdleTimerPolicy.shouldDisable(
+            navigationActive: false, sceneActive: false
+        ))
+    }
+
     func testRoundaboutPresentationKeepsOrdinalExitVisible() {
         let german = NavigationManeuverPresentation(
             "Im Kreisverkehr die zweite Ausfahrt Richtung Mainz nehmen"
