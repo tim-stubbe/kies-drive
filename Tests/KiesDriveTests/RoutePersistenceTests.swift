@@ -337,6 +337,33 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
     }
 
+    func testRestoreNeverAutoCompletesRealStopsAlreadyBehindCurrentPosition() {
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
+            destination: .init(latitude: 5, longitude: 0),
+            waypoints: [
+                .init(id: "constraint", name: "Passstraße",
+                      coordinate: .init(latitude: 1, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .routeConstraint),
+                .init(id: "food", name: "Restaurant",
+                      coordinate: .init(latitude: 1.2, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .userStop),
+                .init(id: "fuel", name: "Tankstelle",
+                      coordinate: .init(latitude: 1.4, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .fuelStop),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: (0...5).map { .init(latitude: Double($0), longitude: 0) },
+            visitedWaypointIDs: [], status: .active, createdAt: Date(), updatedAt: Date()
+        )
+
+        XCTAssertEqual(
+            lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 0)),
+            ["constraint"]
+        )
+    }
+
     func testRestoreDoesNotSkipWaypointAtAmbiguousRouteCrossing() {
         let now = Date(timeIntervalSince1970: 1)
         let crossingRoute = [

@@ -136,6 +136,15 @@ struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
     var kind: Kind? = nil
 
     var isTollEvidenceAnchor: Bool {
+        mayAutoCompleteWhenPassed
+    }
+
+    /// Historic waypoints and explicit route constraints describe a road the
+    /// driver must use, so a trustworthy forward corridor match may complete
+    /// them after an app restart. Real user, food and fuel stops must instead
+    /// be reached locally and can never disappear merely because the driver is
+    /// already farther along the route.
+    var mayAutoCompleteWhenPassed: Bool {
         kind == nil || kind == .routeConstraint
     }
 }
@@ -220,6 +229,7 @@ extension ActiveRouteLock {
         ), currentMatch.distance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
 
         return waypoints.compactMap { waypoint in
+            guard waypoint.mayAutoCompleteWhenPassed else { return nil }
             guard let match = RouteCorridorRestorePolicy.earliestNearBestMatch(
                 for: waypoint.coordinate, in: corridorPoints
             ) else { return nil }
