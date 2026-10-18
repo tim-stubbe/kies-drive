@@ -1864,8 +1864,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                         evaluationDate: Date = Date(),
                         maximumLocationAge: TimeInterval = NavigationLocationPolicy.maximumLiveAge) {
         guard isNavigating, !legs.isEmpty || isUsingOfflineGuidance else { return }
+        let previousNavigationLocation = lastAcceptedNavigationLocation
         if let rejection = NavigationLocationPolicy.rejectionReason(
-            for: location, after: lastAcceptedNavigationLocation, now: evaluationDate,
+            for: location, after: previousNavigationLocation, now: evaluationDate,
             maximumAge: maximumLocationAge
         ) {
             if NavigationLocationDiagnosticPolicy.shouldLog(
@@ -1882,6 +1883,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         updateUsageSession(at: location)
         lastAcceptedNavigationLocation = location
+        let allowsFullLiveRecovery = NavigationLiveRecoveryPolicy.allowsFullRouteMatch(
+            previous: previousNavigationLocation, current: location
+        )
         expireStaleManeuverSpeech(now: evaluationDate)
         let currentSpeed = NavigationMotionPolicy.reliableSpeed(for: location)
         let guidanceSpeed = NavigationGuidanceSpeedPolicy.effective(
@@ -1923,7 +1927,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         if isUsingOfflineGuidance {
             updateOfflineProgress(at: location, guidanceSpeedMps: guidanceSpeed, settings: settings)
-        } else if let progress = liveNavigationProgress(at: location) {
+        } else if let progress = liveNavigationProgress(
+            at: location, allowsFullRecovery: allowsFullLiveRecovery
+        ) {
             updateNextManeuver(using: progress)
             if settings.voiceGuidance,
                NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
@@ -2378,7 +2384,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
     }
 
-    private func liveNavigationProgress(at location: CLLocation) -> LiveNavigationProgress? {
+    private func liveNavigationProgress(at location: CLLocation,
+                                        allowsFullRecovery: Bool = false)
+        -> LiveNavigationProgress? {
         let steps = routeSteps()
         guard !steps.isEmpty else { return nil }
 
@@ -2390,9 +2398,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 stepDistance: $0.step.distance
             )
         }
-        let evaluationIndices = NavigationStepSelectionPolicy.metricEvaluationIndices(
-            current: cursor, stepCount: steps.count
-        )
+        let evaluationIndices: any Sequence<Int> = allowsFullRecovery
+            ? AnySequence(steps.indices)
+            : AnySequence(NavigationStepSelectionPolicy.metricEvaluationIndices(
+                current: cursor, stepCount: steps.count
+            ))
         let vehicleCourse = NavigationMotionPolicy.reliableCourse(for: location)
         for index in evaluationIndices {
             metrics[index] = Self.navigationMetric(
@@ -2404,7 +2414,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let transitionRadius = max(8, location.horizontalAccuracy * 1.5)
         navigationStepCursor = NavigationStepSelectionPolicy.selectedIndex(
             current: cursor, metrics: metrics,
-            transitionRadius: transitionRadius
+            transitionRadius: transitionRadius,
+            allowsFullRecovery: allowsFullRecovery
         )
         let currentIndex = navigationStepCursor
 

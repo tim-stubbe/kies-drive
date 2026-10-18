@@ -1905,6 +1905,35 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testLiveFullRecoveryRequiresBothLongGapAndMeaningfulDisplacement() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let previous = CLLocation(
+            coordinate: .init(latitude: 50.0, longitude: 8.0),
+            altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+            timestamp: start
+        )
+        func location(latitude: Double, after seconds: TimeInterval) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: latitude, longitude: 8.0),
+                altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(seconds)
+            )
+        }
+
+        XCTAssertFalse(NavigationLiveRecoveryPolicy.allowsFullRouteMatch(
+            previous: previous, current: location(latitude: 50.03, after: 30)
+        ), "A normal live update must keep the bounded fast path")
+        XCTAssertFalse(NavigationLiveRecoveryPolicy.allowsFullRouteMatch(
+            previous: previous, current: location(latitude: 50.001, after: 180)
+        ), "A stationary pause must not scan the complete route")
+        XCTAssertTrue(NavigationLiveRecoveryPolicy.allowsFullRouteMatch(
+            previous: previous, current: location(latitude: 50.03, after: 180)
+        ), "A long moving GPS gap must be able to recover beyond the bounded step window")
+        XCTAssertFalse(NavigationLiveRecoveryPolicy.allowsFullRouteMatch(
+            previous: nil, current: location(latitude: 50.03, after: 180)
+        ))
+    }
+
     func testNavigationPersistenceUsesShortCrashSafeCheckpoints() {
         let start = Date(timeIntervalSince1970: 1_000)
         XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(

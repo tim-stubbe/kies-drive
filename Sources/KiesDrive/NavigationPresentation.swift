@@ -771,6 +771,23 @@ enum NavigationLocationDiagnosticPolicy {
     }
 }
 
+/// A long background/tunnel gap can move the car farther than the bounded
+/// live step window. Permit one full forward match only when both time and
+/// displacement prove that ordinary sequential advancement cannot catch up.
+/// The step selector still requires plausible route course and never moves
+/// backwards, so a nearby crossing cannot rewind the trip.
+enum NavigationLiveRecoveryPolicy {
+    static let minimumGap: TimeInterval = 90
+    static let minimumDisplacement: CLLocationDistance = 2_000
+
+    static func allowsFullRouteMatch(previous: CLLocation?, current: CLLocation) -> Bool {
+        guard let previous else { return false }
+        let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
+        guard elapsed >= minimumGap else { return false }
+        return current.distance(from: previous) >= minimumDisplacement
+    }
+}
+
 /// Live navigation state changes on every accepted GPS fix, but encoding and
 /// writing several UserDefaults payloads at that same cadence can stall map
 /// rendering on long drives. A short checkpoint interval retains useful crash
