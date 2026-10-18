@@ -3439,6 +3439,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testFinalDestinationCannotBecomeDuplicateIntermediateStop() {
+        let destination = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
+        XCTAssertFalse(RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: .init(latitude: 50.0005, longitude: 8.0000),
+            destination: destination
+        ))
+        XCTAssertTrue(RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: .init(latitude: 50.0020, longitude: 8.0000),
+            destination: destination
+        ))
+        XCTAssertTrue(RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: destination, destination: nil
+        ))
+    }
+
     func testRouteSearchCompletionFinishesSpinnerWhenOwnedSearchBecomesStale() {
         let request = UUID()
         XCTAssertEqual(RouteSearchCompletionPolicy.disposition(

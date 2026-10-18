@@ -2244,6 +2244,25 @@ enum RouteSearchPolicy {
     }
 }
 
+enum RouteStopEndpointPolicy {
+    /// A POI at the final destination is not an intermediate stop. Treating it
+    /// as mandatory creates a duplicate final leg and can send the driver
+    /// around a block after already arriving. The tolerance absorbs ordinary
+    /// MapKit coordinate drift between an address and a venue entrance.
+    static func isDistinctFromDestination(
+        stop: CLLocationCoordinate2D,
+        destination: CLLocationCoordinate2D?,
+        toleranceMetres: CLLocationDistance = 100
+    ) -> Bool {
+        guard let destination,
+              stop.latitude.isFinite, stop.longitude.isFinite,
+              destination.latitude.isFinite, destination.longitude.isFinite else { return true }
+        return CLLocation(latitude: stop.latitude, longitude: stop.longitude).distance(
+            from: CLLocation(latitude: destination.latitude, longitude: destination.longitude)
+        ) > max(0, toleranceMetres)
+    }
+}
+
 enum SpeedLimitSelectionPolicy {
     /// Selects the closest sampled speed-limit point near the current route
     /// progress. Pure geometric proximity can pick a later visit of the same

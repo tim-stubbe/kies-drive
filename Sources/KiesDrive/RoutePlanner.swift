@@ -1572,6 +1572,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         let coordinate = item.placemark.coordinate
         let stopName = item.name ?? "Zwischenstopp"
+        guard mayInsertRouteStop(at: coordinate) else { return false }
         if routeLockStore.activeLock?.containsEquivalentStop(
             name: stopName, coordinate: coordinate
         ) == true {
@@ -4473,6 +4474,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if wasSelected {
             knownProgress = nil
         } else {
+            guard mayInsertRouteStop(at: station.coordinate) else { return false }
             knownProgress = breakCandidates(along: legs)
                 .first(where: { $0.id == station.id })?.progress
             if isNavigating {
@@ -4548,6 +4550,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             errorMessage = "Für diesen geplanten Stopp ist kein Ort verfügbar."
             return false
         }
+        guard mayInsertRouteStop(at: candidate.coordinate) else { return false }
         if isNavigating, !RouteSearchPolicy.isAhead(
             candidateProgress: plannedBreak.insertionRouteProgress,
             currentProgress: currentInstalledRouteProgress(from: start),
@@ -4634,6 +4637,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // final route coordinate. Distance-based sampling covers the complete
         // journey and always preserves both origin and destination.
         return RouteGeometryProgress.evenlySpaced(allPoints, maximum: maximum)
+    }
+
+    private func mayInsertRouteStop(at coordinate: CLLocationCoordinate2D) -> Bool {
+        guard RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: coordinate,
+            destination: destination?.placemark.coordinate
+        ) else {
+            errorMessage = "Dieser Ort ist bereits dein Ziel und muss nicht zusätzlich angefahren werden."
+            return false
+        }
+        return true
     }
 
     private func evenlySpaced(_ points: [CLLocationCoordinate2D], maximum: Int) -> [CLLocationCoordinate2D] {
