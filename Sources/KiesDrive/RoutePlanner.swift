@@ -3934,7 +3934,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             item.name = candidate.name
             return await addRouteStop(
                 item, from: start, settings: settings,
-                knownRouteProgress: plannedBreak.routeProgress
+                knownRouteProgress: plannedBreak.insertionRouteProgress
             )
         }
     }

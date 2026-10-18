@@ -1076,6 +1076,12 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(remaining.count, 1)
         XCTAssertEqual(remaining[0].progress, 5.0 / 12.0, accuracy: 0.001)
         XCTAssertEqual(remaining[0].timeProgress ?? -1, 5.0 / 12.0, accuracy: 0.001)
+        let planned = PlannedBreak(
+            id: "break", candidate: remaining[0], afterDriving: 1_000,
+            duration: 900, routeProgress: remaining[0].progress,
+            explanation: "Rastplatz"
+        )
+        XCTAssertEqual(planned.insertionRouteProgress, 0.65, accuracy: 0.001)
     }
 
     func testRemainingRoutePlanningStillDropsPhysicallyPassedStopDespiteEtaDrift() {
