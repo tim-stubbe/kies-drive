@@ -197,7 +197,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
     private var lastLongTripPlanRefreshAt: Date?
-    private var deliveredBreakReminderStages: Set<NavigationBreakReminderPolicy.Stage> = []
+    private var deliveredBreakReminderStages: Set<NavigationBreakReminderPolicy.Stage> {
+        get {
+            Set(drivingRestState.deliveredReminderRawValues.compactMap(
+                NavigationBreakReminderPolicy.Stage.init(rawValue:)
+            ))
+        }
+        set {
+            drivingRestState.deliveredReminderRawValues = Set(newValue.map(\.rawValue))
+            drivingRestStore.save(drivingRestState)
+        }
+    }
 
     private enum DestinationSearchOutcome {
         case results([MKMapItem])

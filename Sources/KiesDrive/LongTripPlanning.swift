@@ -501,6 +501,33 @@ struct DrivingRestState: Codable, Equatable {
     var continuousDriving: TimeInterval = 0
     var lastSampleAt: Date?
     var stationarySince: Date?
+    var deliveredReminderRawValues: Set<Int> = []
+
+    init(tripID: UUID? = nil, continuousDriving: TimeInterval = 0,
+         lastSampleAt: Date? = nil, stationarySince: Date? = nil,
+         deliveredReminderRawValues: Set<Int> = []) {
+        self.tripID = tripID
+        self.continuousDriving = continuousDriving
+        self.lastSampleAt = lastSampleAt
+        self.stationarySince = stationarySince
+        self.deliveredReminderRawValues = deliveredReminderRawValues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tripID, continuousDriving, lastSampleAt, stationarySince
+        case deliveredReminderRawValues
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        tripID = try values.decodeIfPresent(UUID.self, forKey: .tripID)
+        continuousDriving = try values.decodeIfPresent(TimeInterval.self, forKey: .continuousDriving) ?? 0
+        lastSampleAt = try values.decodeIfPresent(Date.self, forKey: .lastSampleAt)
+        stationarySince = try values.decodeIfPresent(Date.self, forKey: .stationarySince)
+        deliveredReminderRawValues = try values.decodeIfPresent(
+            Set<Int>.self, forKey: .deliveredReminderRawValues
+        ) ?? []
+    }
 }
 
 enum DrivingRestPolicy {

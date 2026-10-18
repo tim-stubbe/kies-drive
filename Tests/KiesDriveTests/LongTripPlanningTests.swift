@@ -440,6 +440,27 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(store.load(), DrivingRestState())
     }
 
+    func testDrivingRestStateRestoresDeliveredReminderStagesAndLegacyData() throws {
+        let suite = "KiesDriveTests.DrivingRest.Reminders.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DrivingRestStateStore(defaults: defaults)
+        let expected = DrivingRestState(
+            tripID: UUID(), continuousDriving: 7_200,
+            deliveredReminderRawValues: [
+                NavigationBreakReminderPolicy.Stage.plan.rawValue,
+                NavigationBreakReminderPolicy.Stage.soon.rawValue
+            ]
+        )
+        store.save(expected)
+        XCTAssertEqual(store.load(), expected)
+
+        let legacy = "{\"continuousDriving\":5400}".data(using: .utf8)
+        defaults.set(legacy, forKey: store.key)
+        XCTAssertEqual(store.load().continuousDriving, 5_400)
+        XCTAssertEqual(store.load().deliveredReminderRawValues, [])
+    }
+
     func testDrivingFuelPolicyTracksDistanceAfterConfirmedTankLevel() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 40_000)
