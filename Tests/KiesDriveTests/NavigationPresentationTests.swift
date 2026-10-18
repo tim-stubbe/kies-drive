@@ -2051,6 +2051,32 @@ final class NavigationPresentationTests: XCTestCase {
         ), ["Ausfahrt 4 nehmen", "Links halten"])
     }
 
+    func testGuidanceTreatsMapKitRoadSpacingAndPunctuationAsSameManeuver() {
+        XCTAssertEqual(
+            NavigationInstructionSequencePolicy.removingConsecutiveDuplicates([
+                "Ausfahrt 4 auf die A66 nehmen",
+                " AUSFAHRT 4 auf die A 66 nehmen. ",
+                "Links halten Richtung Köln",
+            ]),
+            ["Ausfahrt 4 auf die A66 nehmen", "Links halten Richtung Köln"]
+        )
+        XCTAssertEqual(
+            NavigationInstructionSequencePolicy.firstDistinctInstructionIndex(
+                in: [
+                    "Rechts auf die B40 abbiegen",
+                    "Rechts auf die B 40 abbiegen.",
+                    "Geradeaus fahren",
+                ],
+                after: 0
+            ),
+            2
+        )
+        XCTAssertEqual(
+            NavigationInstructionSequencePolicy.identity("Richtung MÜNCHEN-Süd"),
+            NavigationInstructionSequencePolicy.identity("Richtung Munchen Sud")
+        )
+    }
+
     func testDuplicateBoundaryInstructionDoesNotBorrowWrongFollowingDistance() throws {
         let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
             (instruction: "Ausfahrt 4 nehmen", distance: 80),

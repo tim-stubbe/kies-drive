@@ -1012,19 +1012,32 @@ enum NavigationInstructionSequencePolicy {
         instructions.reduce(into: []) { result, instruction in
             let cleaned = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty else { return }
-            guard result.last?.caseInsensitiveCompare(cleaned) != .orderedSame else { return }
+            guard result.last.map(identity) != identity(cleaned) else { return }
             result.append(cleaned)
         }
     }
 
     static func firstDistinctInstructionIndex(in instructions: [String], after index: Int) -> Int? {
         guard instructions.indices.contains(index) else { return nil }
-        let current = instructions[index].trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = identity(instructions[index])
         return instructions.indices.dropFirst(index + 1).first { candidateIndex in
             let candidate = instructions[candidateIndex]
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return !candidate.isEmpty && candidate.caseInsensitiveCompare(current) != .orderedSame
+            return !candidate.isEmpty && identity(candidate) != current
         }
+    }
+
+    /// MapKit can spell the same road differently at a leg boundary (for
+    /// example "A66", "A 66" or a trailing full stop). Compare semantic
+    /// letters/numbers while retaining the original sentence for display and
+    /// speech.
+    static func identity(_ instruction: String) -> String {
+        let folded = instruction.folding(
+            options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+        )
+        return String(folded.unicodeScalars.filter {
+            CharacterSet.alphanumerics.contains($0)
+        })
     }
 }
 
