@@ -1238,7 +1238,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeAmenitySearches = []
         routeSearchResults = []
         isSearchingAlongRoute = false
-        if showLoading { isLoading = true; stations = [] }
+        // Keep the currently usable route enrichment visible until a complete
+        // replacement route commits. In particular, a failed attempt to add
+        // or remove a stop must not erase the fuel stations belonging to the
+        // still-active route. The successful commit below clears every stale
+        // enrichment atomically before loading data for the new geometry.
+        if showLoading { isLoading = true }
         errorMessage = nil
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
