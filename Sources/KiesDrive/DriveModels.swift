@@ -364,6 +364,41 @@ struct DriveDiagnosticSummary: Equatable {
         return maximum
     }
 
+    private static func speechInstruction(in event: DriveDiagnosticEvent) -> String? {
+        let parts = event.detail.split(separator: "·").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let value: String?
+        switch event.kind {
+        case .speechDeliveryFailed:
+            value = parts.indices.contains(1) ? parts[1] : parts.first
+        case .maneuverAnnounced:
+            value = parts.indices.contains(2) ? parts[2] : parts.last
+        default:
+            value = nil
+        }
+        guard let value, !value.isEmpty else { return nil }
+        return value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+        )
+    }
+
+    private static func unresolvedSpeechFailures(
+        in session: ArraySlice<DriveDiagnosticEvent>
+    ) -> Int {
+        let indexed = Array(session)
+        return indexed.indices.filter { index in
+            let failure = indexed[index]
+            guard failure.kind == .speechDeliveryFailed else { return false }
+            guard let instruction = speechInstruction(in: failure) else { return true }
+            return !indexed.indices.dropFirst(index + 1).contains { laterIndex in
+                let later = indexed[laterIndex]
+                return later.kind == .maneuverAnnounced &&
+                    speechInstruction(in: later) == instruction
+            }
+        }.count
+    }
+
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
         guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
         let afterStart = events.index(after: start)..<events.endIndex
@@ -392,12 +427,8 @@ struct DriveDiagnosticSummary: Equatable {
         let rejected = session.filter { $0.kind == .locationRejected }.count
         let rejectedBurst = maximumBurst(of: .locationRejected, in: session)
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
-        let lastSpeechRecovery = session.lastIndex(where: { $0.kind == .maneuverAnnounced })
-        let unresolvedSpeech = lastSpeechRecovery.map {
-            session[session.index(after: $0)...]
-        } ?? session[session.startIndex...]
         let totalSpeechFailures = session.filter { $0.kind == .speechDeliveryFailed }.count
-        let speechFailures = unresolvedSpeech.filter { $0.kind == .speechDeliveryFailed }.count
+        let speechFailures = unresolvedSpeechFailures(in: session)
         let offlineDepartures = unresolvedOffline.filter { $0.kind == .offlineRouteDeparture }.count
         let resolved = max(0, totalFailures - failures) +
             max(0, totalOfflineDepartures - offlineDepartures) +

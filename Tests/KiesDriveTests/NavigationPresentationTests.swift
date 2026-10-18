@@ -1467,6 +1467,43 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
+    func testDifferentLaterManeuverDoesNotHideSpeechFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "now · Ausfahrt rechts nehmen · GPS ±8 m · 100 km/h"
+            ),
+            DriveDiagnosticEvent(
+                kind: .maneuverAnnounced,
+                detail: "prepare · 300 m · Links abbiegen"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.speechDeliveryFailures, 1)
+    }
+
+    func testMatchingRetriedManeuverClearsOnlyItsSpeechFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "now · Ausfahrt rechts nehmen · GPS ±8 m · 100 km/h"
+            ),
+            DriveDiagnosticEvent(
+                kind: .maneuverAnnounced,
+                detail: "now · 20 m · Ausfahrt rechts nehmen"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.speechDeliveryFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
     func testDiagnosticSummaryClearsTransientRouteFailureAfterSuccessfulRecovery() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
