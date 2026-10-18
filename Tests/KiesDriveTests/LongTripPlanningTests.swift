@@ -1788,6 +1788,14 @@ final class LongTripPlanningTests: XCTestCase {
             status: "known", amount: 27.4, currency: "Euro", source: "Provider",
             sourceURL: "https://example.test/tolls"
         ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "ABC", source: "Provider",
+            sourceURL: "https://example.test/tolls"
+        ), "Three letters alone are not proof of a real currency")
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "XXX", source: "Provider",
+            sourceURL: "https://example.test/tolls"
+        ), "ISO's no-currency placeholder must never label a payable toll")
         XCTAssertEqual(TollEvidenceValidator.validate(
             status: "known", amount: 27.4, currency: " eur ", source: "Provider",
             sourceURL: "https://example.test/tolls"

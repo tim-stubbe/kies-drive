@@ -475,8 +475,7 @@ enum TollEvidenceValidator {
         let normalizedCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
         guard status == "known", let amount, amount.isFinite, amount > 0, amount <= 5_000,
-              normalizedCurrency.count == 3,
-              normalizedCurrency.unicodeScalars.allSatisfy(CharacterSet.letters.contains),
+              Locale.commonISOCurrencyCodes.contains(normalizedCurrency),
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
               url.host != nil,
