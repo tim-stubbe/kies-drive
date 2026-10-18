@@ -415,7 +415,12 @@ struct DriveContentView: View {
                              (result.additionalFuelStopTime > 0 ? " und \(formatTime(result.additionalFuelStopTime)) Tankzeit" : ""))
                             .font(.caption2).foregroundStyle(.secondary)
                     }
-                    ForEach(result.breaks) { stop in
+                    ForEach(result.breaks.filter {
+                        PlannedRouteStopVisibilityPolicy.isAhead(
+                            $0.routeProgress,
+                            current: planner.currentInstalledRouteProgress
+                        )
+                    }) { stop in
                         VStack(alignment: .leading, spacing: 7) {
                             HStack(alignment: .top, spacing: 9) {
                                 Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color.kiesBrass)
@@ -448,7 +453,12 @@ struct DriveContentView: View {
                             }
                         }
                     }
-                    ForEach(result.fuelStops) { stop in
+                    ForEach(result.fuelStops.filter {
+                        PlannedRouteStopVisibilityPolicy.isAhead(
+                            $0.routeProgress,
+                            current: planner.currentInstalledRouteProgress
+                        )
+                    }) { stop in
                         HStack(alignment: .top, spacing: 9) {
                             Image(systemName: "fuelpump.fill").foregroundStyle(Color.kiesBrass)
                             VStack(alignment: .leading, spacing: 2) {

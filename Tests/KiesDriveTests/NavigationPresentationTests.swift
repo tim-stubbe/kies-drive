@@ -1149,6 +1149,14 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(actions.first?.purpose, .fuelOnly)
     }
 
+    func testPhoneAndCarPlayShareStrictForwardStopVisibility() {
+        XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.49, current: 0.5))
+        XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.5, current: 0.5))
+        XCTAssertTrue(PlannedRouteStopVisibilityPolicy.isAhead(0.6, current: 0.5))
+        XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(.nan, current: 0.5))
+        XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.6, current: .infinity))
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)

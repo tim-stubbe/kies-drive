@@ -120,6 +120,17 @@ struct CarPlayPlannedStopAction: Equatable {
     let afterDistanceMetres: Double?
 }
 
+enum PlannedRouteStopVisibilityPolicy {
+    /// A stop at or behind the matched vehicle position must disappear from
+    /// both phone and CarPlay. Keeping it actionable can create a U-turn on a
+    /// motorway after a stale planning refresh.
+    static func isAhead(_ candidate: Double, current: Double,
+                        minimumLead: Double = 0.000_1) -> Bool {
+        guard candidate.isFinite, current.isFinite else { return false }
+        return candidate >= min(1, max(0, current) + max(0, minimumLead))
+    }
+}
+
 enum CarPlayPlannedStopPolicy {
     /// CarPlay must remain short and glanceable. Prefer the earliest remaining
     /// stop from the currently selected scenario, combine fuel and rest at the
@@ -133,14 +144,16 @@ enum CarPlayPlannedStopPolicy {
         let progress = min(1, max(0, currentRouteProgress))
         let normalizedNames = Set(existingWaypointNames.map(normalize))
         let remainingFuelStops = result.fuelStops.filter {
-            isAhead($0.routeProgress, current: progress)
+            PlannedRouteStopVisibilityPolicy.isAhead($0.routeProgress, current: progress)
         }
         let fuelByID = Dictionary(uniqueKeysWithValues: remainingFuelStops.compactMap { stop in
             stop.candidate.map { ($0.id, stop) }
         })
         var seen = Set<String>()
         var actions = result.breaks.compactMap { plannedBreak -> CarPlayPlannedStopAction? in
-            guard isAhead(plannedBreak.routeProgress, current: progress),
+            guard PlannedRouteStopVisibilityPolicy.isAhead(
+                    plannedBreak.routeProgress, current: progress
+                  ),
                   let candidate = plannedBreak.candidate,
                   !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
                   seen.insert(candidate.id).inserted else { return nil }
@@ -161,10 +174,6 @@ enum CarPlayPlannedStopPolicy {
             ($0.candidate.timeProgress ?? $0.candidate.progress) <
                 ($1.candidate.timeProgress ?? $1.candidate.progress)
         }.prefix(maximum))
-    }
-
-    private static func isAhead(_ candidate: Double, current: Double) -> Bool {
-        candidate.isFinite && candidate >= min(1, current + 0.000_1)
     }
 
     private static func isExisting(_ candidate: BreakCandidate, ids: Set<String>,
