@@ -7,6 +7,12 @@ private enum FuelStationLoadOutcome {
     case superseded
 }
 
+private enum SpeedLimitLoadOutcome {
+    case main([SpeedLimitResult])
+    case comparison([SpeedLimitResult])
+    case superseded
+}
+
 private extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }
@@ -4001,9 +4007,48 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let comparisonPoints = comparisonRoute.map {
             sample($0.polyline, maximum: 80)
         } ?? []
-        async let mainLimits = fetchSpeedLimits(along: points)
-        async let alternativeLimits = fetchSpeedLimits(along: comparisonPoints)
-        let (limits, loadedComparisonLimits) = await (mainLimits, alternativeLimits)
+        var limits: [SpeedLimitResult] = []
+        var loadedComparisonLimits: [SpeedLimitResult] = []
+        var loadWasSuperseded = false
+        await withTaskGroup(of: SpeedLimitLoadOutcome.self) { group in
+            group.addTask { [weak self] in
+                .main(await self?.fetchSpeedLimits(along: points) ?? [])
+            }
+            if !comparisonPoints.isEmpty {
+                group.addTask { [weak self] in
+                    .comparison(await self?.fetchSpeedLimits(along: comparisonPoints) ?? [])
+                }
+            }
+            group.addTask { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    guard !Task.isCancelled else { break }
+                    guard let self else { return .superseded }
+                    if !(await self.isCurrentSpeedLimitLoad(
+                        routeGeneration: routeGeneration,
+                        loadGeneration: generation
+                    )) { return .superseded }
+                }
+                return .superseded
+            }
+            var remainingRequests = comparisonPoints.isEmpty ? 1 : 2
+            while remainingRequests > 0, let outcome = await group.next() {
+                switch outcome {
+                case .main(let loaded):
+                    limits = loaded
+                    remainingRequests -= 1
+                case .comparison(let loaded):
+                    loadedComparisonLimits = loaded
+                    remainingRequests -= 1
+                case .superseded:
+                    loadWasSuperseded = true
+                    group.cancelAll()
+                    return
+                }
+            }
+            group.cancelAll()
+        }
+        guard !loadWasSuperseded else { return }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: speedLimitLoadGeneration
@@ -4014,6 +4059,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             comparisonSpeedLimitPoints = comparisonPoints
             comparisonSpeedLimits = loadedComparisonLimits
         }
+    }
+
+    private func isCurrentSpeedLimitLoad(routeGeneration: UUID,
+                                         loadGeneration: UUID) -> Bool {
+        RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: loadGeneration, currentRequest: speedLimitLoadGeneration
+        )
     }
 
     private func fetchSpeedLimits(along points: [CLLocationCoordinate2D]) async
