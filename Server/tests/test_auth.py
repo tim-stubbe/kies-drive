@@ -185,7 +185,11 @@ def test_unofficial_toll_evidence_must_be_current():
         {"title": old, "snippet": "", "url": "https://archive.example.net/trip"},
     ]
     assert not main.toll_source_is_current(old, official=False, current_year=2026)
-    assert main.toll_source_is_current(old, official=True, current_year=2026)
+    assert not main.toll_source_is_current(old, official=True, current_year=2026)
+    assert main.toll_source_is_current(
+        "ASFINAG Gesamtmaut 27,40 EUR Split Hochheim 2026",
+        official=True, current_year=2026,
+    )
     assert main.verified_toll_evidence(
         sources, "Split", "Hochheim am Main", ["Wurzenpass"]
     ) is None

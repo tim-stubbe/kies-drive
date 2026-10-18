@@ -598,9 +598,13 @@ OFFICIAL_TOLL_HOSTS = ("asfinag.at", "dars.si", "hac.hr", "autostrade.it",
 
 def toll_source_is_current(text: str, official: bool,
                            current_year: int | None = None) -> bool:
-    """Unofficial search snippets must explicitly identify current pricing."""
-    if official:
-        return True
+    """Every snippet must explicitly identify the current pricing year.
+
+    Official domains establish authority, not freshness. Search indexes can
+    retain an old ASFINAG/DARS/HAC price page for years; accepting it without
+    a date would present a stale amount as a verified live toll. Missing year
+    therefore remains unknown, which is safer than inventing certainty.
+    """
     year = current_year if current_year is not None else date.today().year
     return re.search(rf"(?<!\d){year}(?!\d)", text) is not None
 
