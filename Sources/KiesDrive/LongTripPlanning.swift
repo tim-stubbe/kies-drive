@@ -853,8 +853,16 @@ enum DrivingFuelPolicy {
             let distance = CLLocation(latitude: prior.latitude, longitude: prior.longitude)
                 .distance(from: location)
             let plausibleDistance = max(350, interval * 80)
+            let reliableSpeed = NavigationMotionPolicy.reliableSpeed(for: location)
+            // A stationary receiver can wander several metres on every fix.
+            // Prefer Core Location's reliable speed; without one, require a
+            // displacement clearly larger than this fix's uncertainty before
+            // consuming fuel from the estimated tank level.
+            let provesMovement = reliableSpeed.map {
+                $0 >= DrivingRestPolicy.movingThresholdMetresPerSecond
+            } ?? (distance > max(25, max(0, location.horizontalAccuracy) * 2))
             if interval > 0, interval <= maximumCountedSampleGap,
-               distance.isFinite, distance <= plausibleDistance {
+               distance.isFinite, distance <= plausibleDistance, provesMovement {
                 state.distanceSinceObservationMetres += distance
             }
         }

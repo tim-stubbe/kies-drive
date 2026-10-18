@@ -842,6 +842,37 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.distanceSinceObservationMetres, 0)
     }
 
+    func testDrivingFuelPolicyIgnoresStationaryGPSJitter() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 55_000)
+        let origin = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 6, verticalAccuracy: 5,
+            course: 0, speed: 0, timestamp: start
+        )
+        var state = DrivingFuelPolicy.confirmed(
+            .init(), tripID: tripID, fraction: 0.5, location: origin
+        )
+        for second in 1...60 {
+            let longitude = second.isMultiple(of: 2) ? 8.00008 : 7.99992
+            let jitter = CLLocation(
+                coordinate: .init(latitude: 50, longitude: longitude), altitude: 0,
+                horizontalAccuracy: 6, verticalAccuracy: 5,
+                course: 0, speed: 0,
+                timestamp: start.addingTimeInterval(TimeInterval(second))
+            )
+            state = DrivingFuelPolicy.updated(
+                state, tripID: tripID, initialFuelFraction: 0.5, location: jitter
+            )
+        }
+
+        XCTAssertEqual(state.distanceSinceObservationMetres, 0)
+        XCTAssertEqual(DrivingFuelPolicy.estimatedFraction(
+            state, tripID: tripID, tankCapacityLitres: 50,
+            consumptionLPer100km: 8, fallback: 1
+        ), 0.5, accuracy: 0.001)
+    }
+
     func testDrivingFuelStateStorePersistsAndClears() throws {
         let suite = "KiesDriveTests.DrivingFuel.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
