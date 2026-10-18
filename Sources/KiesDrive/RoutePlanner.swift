@@ -2763,7 +2763,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             NavigationStepMetric(
                 distanceFromRoute: .greatestFiniteMagnitude,
                 remainingOnStep: .greatestFiniteMagnitude,
-                stepDistance: $0.step.distance
+                stepDistance: $0.step.distance,
+                hasManeuverInstruction: !$0.step.instructions
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
         let evaluationIndices: any Sequence<Int> = allowsFullRecovery
@@ -2776,7 +2778,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             metrics[index] = Self.navigationMetric(
                 from: location.coordinate, on: steps[index].step.polyline,
                 stepDistance: steps[index].step.distance,
-                vehicleCourse: vehicleCourse
+                vehicleCourse: vehicleCourse,
+                hasManeuverInstruction: !steps[index].step.instructions
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
         let transitionRadius = max(8, location.horizontalAccuracy * 1.5)
@@ -3817,14 +3821,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private static func navigationMetric(from coordinate: CLLocationCoordinate2D,
                                          on polyline: MKPolyline,
                                          stepDistance: CLLocationDistance,
-                                         vehicleCourse: Double?) -> NavigationStepMetric {
+                                         vehicleCourse: Double?,
+                                         hasManeuverInstruction: Bool = false) -> NavigationStepMetric {
         guard polyline.pointCount > 1 else {
             let distance = polyline.pointCount == 1
                 ? MKMapPoint(coordinate).distance(to: polyline.points()[0])
                 : CLLocationDistance.greatestFiniteMagnitude
             return .init(distanceFromRoute: distance, remainingOnStep: distance,
                          stepDistance: stepDistance,
-                         hasUsableGeometry: polyline.pointCount == 1)
+                         hasUsableGeometry: polyline.pointCount == 1,
+                         hasManeuverInstruction: hasManeuverInstruction)
         }
         let target = MKMapPoint(coordinate)
         let points = polyline.points()
@@ -3864,7 +3870,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         return .init(
             distanceFromRoute: bestDistance, remainingOnStep: remaining,
-            stepDistance: stepDistance, courseDifferenceDegrees: difference
+            stepDistance: stepDistance, courseDifferenceDegrees: difference,
+            hasManeuverInstruction: hasManeuverInstruction
         )
     }
 

@@ -2597,6 +2597,52 @@ final class NavigationPresentationTests: XCTestCase {
         ), 0, "Missing geometry must not snap guidance onto opposing traffic")
     }
 
+    func testStepSelectionSkipsConsecutiveEmptyMapKitTransitions() {
+        let metrics = [
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false
+            ),
+            NavigationStepMetric(distanceFromRoute: 9, remainingOnStep: 480),
+        ]
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 10
+        ), 3)
+    }
+
+    func testStepSelectionNeverSkipsGeometryFreeManeuverInstruction() {
+        let metrics = [
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false,
+                hasManeuverInstruction: true
+            ),
+            NavigationStepMetric(distanceFromRoute: 6, remainingOnStep: 500),
+        ]
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 10
+        ), 0, "A real maneuver must not disappear merely because MapKit omitted its geometry")
+    }
+
     func testStepSelectionDoesNotDropFinalCueBeforeJunctionWithCoarseGPS() {
         let beforeJunction = [
             NavigationStepMetric(distanceFromRoute: 7, remainingOnStep: 22),

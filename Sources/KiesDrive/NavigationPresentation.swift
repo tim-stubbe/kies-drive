@@ -1290,6 +1290,8 @@ struct NavigationStepMetric: Equatable {
     let remainingOnStep: CLLocationDistance
     let stepDistance: CLLocationDistance
     let hasUsableGeometry: Bool
+    /// Geometry-free steps containing a real instruction must not be skipped.
+    let hasManeuverInstruction: Bool
     /// Difference between the car's trustworthy course and the local route
     /// segment. `nil` deliberately keeps distance-only matching while stopped
     /// or when Core Location cannot provide a useful course.
@@ -1298,12 +1300,14 @@ struct NavigationStepMetric: Equatable {
     init(distanceFromRoute: CLLocationDistance, remainingOnStep: CLLocationDistance,
          stepDistance: CLLocationDistance = 0,
          courseDifferenceDegrees: Double? = nil,
-         hasUsableGeometry: Bool = true) {
+         hasUsableGeometry: Bool = true,
+         hasManeuverInstruction: Bool = false) {
         self.distanceFromRoute = distanceFromRoute
         self.remainingOnStep = remainingOnStep
         self.stepDistance = stepDistance
         self.courseDifferenceDegrees = courseDifferenceDegrees
         self.hasUsableGeometry = hasUsableGeometry
+        self.hasManeuverInstruction = hasManeuverInstruction
     }
 }
 
@@ -1398,6 +1402,12 @@ enum NavigationStepSelectionPolicy {
         // road-level GPS drift; the explicit recovery path below handles real
         // gaps after tunnels or background suspension.
         let radius = min(15, max(8, transitionRadius))
+        let protectedManeuverBoundary = metrics.indices.dropFirst(current).first(where: {
+            !metrics[$0].hasUsableGeometry && metrics[$0].hasManeuverInstruction
+        })
+        let recoveryCandidateIsSafe: (Int) -> Bool = { index in
+            protectedManeuverBoundary.map { index <= $0 } ?? true
+        }
 
         // Only the first fix of a restored offline route may search the whole
         // remaining journey. Prefer the earliest plausible road segment over
@@ -1406,14 +1416,16 @@ enum NavigationStepSelectionPolicy {
         // forward window below.
         if allowsFullRecovery, metrics[current].distanceFromRoute > 250 {
             if let earliestPlausible = metrics.indices.dropFirst(current).first(where: {
-                metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&
+                recoveryCandidateIsSafe($0) &&
+                    metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&
                     NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }) {
                 return earliestPlausible
             }
             if metrics[current].hasUsableGeometry,
                let nearest = metrics.indices.dropFirst(current).filter({
-                NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
+                recoveryCandidateIsSafe($0) &&
+                    NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }).min(by: {
                 metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
             }), metrics[nearest].distanceFromRoute + 250 < metrics[current].distanceFromRoute {
@@ -1426,14 +1438,16 @@ enum NavigationStepSelectionPolicy {
         let recovery = recoveryIndices(current: current, metrics: metrics)
         if metrics[current].distanceFromRoute > 250 {
             if let earliestPlausible = recovery.first(where: {
-                metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&
+                recoveryCandidateIsSafe($0) &&
+                    metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&
                     NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }) {
                 return earliestPlausible
             }
             if metrics[current].hasUsableGeometry,
                let recovered = recovery.filter({
-                NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
+                recoveryCandidateIsSafe($0) &&
+                    NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }).min(by: {
                 metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
             }), metrics[recovered].distanceFromRoute + 80 < metrics[current].distanceFromRoute {
@@ -1444,7 +1458,19 @@ enum NavigationStepSelectionPolicy {
         var selected = current
         while metrics.indices.contains(selected + 1) {
             let active = metrics[selected]
-            let next = metrics[selected + 1]
+            var successorIndex = selected + 1
+            if !active.hasUsableGeometry,
+               active.stepDistance <= 0,
+               !active.hasManeuverInstruction {
+                while metrics.indices.contains(successorIndex),
+                      !metrics[successorIndex].hasUsableGeometry,
+                      metrics[successorIndex].stepDistance <= 0,
+                      !metrics[successorIndex].hasManeuverInstruction {
+                    successorIndex += 1
+                }
+            }
+            guard metrics.indices.contains(successorIndex) else { break }
+            let next = metrics[successorIndex]
             let headingMatches = NavigationCourseMatchingPolicy.isPlausible(
                 next.courseDifferenceDegrees
             )
@@ -1467,9 +1493,10 @@ enum NavigationStepSelectionPolicy {
             // is missing.
             let unusableTransition = !active.hasUsableGeometry &&
                 active.stepDistance <= 0 &&
+                !active.hasManeuverInstruction &&
                 next.distanceFromRoute <= max(45, radius * 1.5) && headingMatches
             guard reachedJunction || clearlyPastStep || unusableTransition else { break }
-            selected += 1
+            selected = unusableTransition ? successorIndex : selected + 1
         }
         return selected
     }
@@ -2438,7 +2465,9 @@ enum OfflineGuidanceEngine {
             NavigationStepMetric(
                 distanceFromRoute: .greatestFiniteMagnitude,
                 remainingOnStep: .greatestFiniteMagnitude,
-                stepDistance: $0.distance
+                stepDistance: $0.distance,
+                hasManeuverInstruction: !$0.instruction
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
         let evaluationIndices = allowsFullRecovery
@@ -2449,7 +2478,9 @@ enum OfflineGuidanceEngine {
         for index in evaluationIndices {
             metrics[index] = geometryMetric(
                 from: coordinate, on: steps[index].coordinates,
-                stepDistance: steps[index].distance, courseDegrees: courseDegrees
+                stepDistance: steps[index].distance, courseDegrees: courseDegrees,
+                hasManeuverInstruction: !steps[index].instruction
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
         }
         let selected = NavigationStepSelectionPolicy.selectedIndex(
@@ -2494,12 +2525,14 @@ enum OfflineGuidanceEngine {
     private static func geometryMetric(from coordinate: CLLocationCoordinate2D,
                                        on coordinates: [CLLocationCoordinate2D],
                                        stepDistance: CLLocationDistance,
-                                       courseDegrees: Double?) -> NavigationStepMetric {
+                                       courseDegrees: Double?,
+                                       hasManeuverInstruction: Bool = false) -> NavigationStepMetric {
         guard coordinates.count > 1 else {
             return .init(distanceFromRoute: .greatestFiniteMagnitude,
                          remainingOnStep: .greatestFiniteMagnitude,
                          stepDistance: stepDistance,
-                         hasUsableGeometry: false)
+                         hasUsableGeometry: false,
+                         hasManeuverInstruction: hasManeuverInstruction)
         }
         let point = MKMapPoint(coordinate)
         let route = coordinates.map(MKMapPoint.init)
@@ -2526,7 +2559,8 @@ enum OfflineGuidanceEngine {
             }
         }
         return .init(distanceFromRoute: best.distance, remainingOnStep: value,
-                     stepDistance: stepDistance, courseDifferenceDegrees: difference)
+                     stepDistance: stepDistance, courseDifferenceDegrees: difference,
+                     hasManeuverInstruction: hasManeuverInstruction)
     }
 
     private static func segmentProjection(_ point: MKMapPoint, _ start: MKMapPoint,
