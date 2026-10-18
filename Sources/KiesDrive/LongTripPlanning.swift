@@ -929,8 +929,18 @@ struct BreakPlanner {
             // A required fuel stop inside the safe pause window always does both
             // jobs. This also coordinates theoretical fuel stops for which the
             // concrete station has not been verified yet.
-            let best = coordinatedFuelStop?.candidate ?? candidatesInWindow.min {
-                score($0, idealProgress: idealProgress) < score($1, idealProgress: idealProgress)
+            let best: BreakCandidate?
+            if let coordinatedFuelStop {
+                // An unverified fuel requirement is a route position, not
+                // evidence that an unrelated nearby rest area sells fuel.
+                // Keep the stop unverified until a concrete fuel candidate is
+                // known instead of combining the name/coordinate of one place
+                // with the progress and purpose of another.
+                best = coordinatedFuelStop.candidate
+            } else {
+                best = candidatesInWindow.min {
+                    score($0, idealProgress: idealProgress) < score($1, idealProgress: idealProgress)
+                }
             }
             if let best {
                 remaining.removeAll { $0.id == best.id }

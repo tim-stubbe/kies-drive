@@ -887,6 +887,28 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertTrue(breaks.first?.explanation.contains("Tank- und Pausenstopp") == true)
     }
 
+    func testBreakPlannerDoesNotAttachUnverifiedFuelStopToUnrelatedRestArea() {
+        let unverifiedFuelStop = PlannedFuelStop(
+            id: "fuel-1", candidate: nil, afterDistanceMetres: 180_000,
+            routeProgress: 0.37,
+            explanation: "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
+        )
+        let nearbyRestArea = BreakCandidate(
+            id: "rest-1", name: "Rastplatz ohne belegte Tankstelle", coordinate: .init(),
+            progress: 0.4, detourMetres: 100, isOpen: true, supportsFuel: false
+        )
+
+        let breaks = BreakPlanner().plan(
+            drivingTime: 5 * 3600, candidates: [nearbyRestArea],
+            plannedFuelStops: [unverifiedFuelStop]
+        )
+
+        XCTAssertNil(breaks.first?.candidate)
+        XCTAssertEqual(breaks.first?.routeProgress ?? 0, 0.37, accuracy: 0.001)
+        XCTAssertEqual(breaks.first?.afterDriving ?? 0, 0.37 * 5 * 3600, accuracy: 1)
+        XCTAssertTrue(breaks.first?.explanation.contains("konkrete Station noch nicht verifiziert") == true)
+    }
+
     func testBreakPlannerNeverDelaysSafetyBreakForLateFuelStop() {
         let lateFuelStop = PlannedFuelStop(
             id: "fuel-1", candidate: nil, afterDistanceMetres: 250_000,
