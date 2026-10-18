@@ -1619,6 +1619,15 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(
             last: start, now: start.addingTimeInterval(-1)
         ), "Clock rollback must start a fresh checkpoint window")
+        XCTAssertFalse(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: start, now: start.addingTimeInterval(59.9), interval: 60
+        ))
+        XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: start, now: start.addingTimeInterval(60), interval: 60
+        ))
+        XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: start, now: start.addingTimeInterval(-1), interval: 60
+        ), "Route and offline progress must checkpoint after clock rollback")
     }
 
     func testStepSelectionAdvancesSequentiallyAtJunction() {

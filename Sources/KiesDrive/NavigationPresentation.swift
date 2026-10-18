@@ -710,10 +710,13 @@ enum NavigationLocationDiagnosticPolicy {
 enum NavigationPersistenceCheckpointPolicy {
     static let interval: TimeInterval = 30
 
-    static func shouldPersist(last: Date?, now: Date) -> Bool {
+    static func shouldPersist(
+        last: Date?, now: Date,
+        interval: TimeInterval = NavigationPersistenceCheckpointPolicy.interval
+    ) -> Bool {
         guard let last else { return true }
         let elapsed = now.timeIntervalSince(last)
-        return elapsed < 0 || elapsed >= interval
+        return elapsed < 0 || elapsed >= max(0, interval)
     }
 }
 

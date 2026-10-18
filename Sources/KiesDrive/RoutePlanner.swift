@@ -2296,9 +2296,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard progress >= previous else { return }
         let now = location.timestamp
         let enoughMovement = progress - previous >= 0.003
-        let periodicCheckpoint = lastRouteProgressPersistedAt.map {
-            now.timeIntervalSince($0) >= 60
-        } ?? true
+        let periodicCheckpoint = NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: lastRouteProgressPersistedAt, now: now, interval: 60
+        )
         guard enoughMovement || periodicCheckpoint else { return }
         routeLockStore.update { current in
             current.lastRouteProgress = max(current.lastRouteProgress ?? 0, progress)
@@ -2318,9 +2318,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) else { return }
         let previous = cache.navigationProgress ?? 0
         let enoughMovement = progress - previous >= 0.003
-        let periodicCheckpoint = lastOfflineProgressPersistedAt.map {
-            now.timeIntervalSince($0) >= 60
-        } ?? true
+        let periodicCheckpoint = NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: lastOfflineProgressPersistedAt, now: now, interval: 60
+        )
         guard progress >= previous, enoughMovement || periodicCheckpoint else { return }
         cache = cache.updatingNavigationProgress(progress)
         guard Self.offlineCacheStore.save(cache) else { return }
