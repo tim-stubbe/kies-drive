@@ -2025,6 +2025,7 @@ struct DriveSettingsView: View {
                         LabeledContent("Neuberechnungen", value: "\(latestSummary.rerouteRequests)")
                         LabeledContent("Fehlgeschlagen", value: "\(latestSummary.rerouteFailures)")
                         LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
+                        LabeledContent("GPS-Unterbrechungen", value: "\(latestSummary.recoveredLocationGaps)")
                         LabeledContent("Ziel sicher erkannt", value: "\(latestSummary.arrivals)")
                         LabeledContent("Gesprochene Manöver", value: "\(latestSummary.maneuverAnnouncements)")
                         LabeledContent("Pausenhinweise gezeigt", value: "\(latestSummary.breakRemindersShown)")

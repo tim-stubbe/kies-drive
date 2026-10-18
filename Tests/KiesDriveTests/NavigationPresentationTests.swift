@@ -1682,6 +1682,49 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testLocationGapDiagnosticsRequireARealDeliveryInterruption() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let previous = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 4, timestamp: start
+        )
+        let shortGap = CLLocation(
+            coordinate: .init(latitude: 50.001, longitude: 8), altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 4,
+            timestamp: start.addingTimeInterval(29)
+        )
+        let recovered = CLLocation(
+            coordinate: .init(latitude: 50.002, longitude: 8), altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 4,
+            timestamp: start.addingTimeInterval(45)
+        )
+
+        XCTAssertNil(NavigationLocationGapPolicy.recoveredGap(
+            previous: nil, current: recovered
+        ))
+        XCTAssertNil(NavigationLocationGapPolicy.recoveredGap(
+            previous: previous, current: shortGap
+        ))
+        XCTAssertEqual(NavigationLocationGapPolicy.recoveredGap(
+            previous: previous, current: recovered
+        ), 45)
+    }
+
+    func testRepeatedRecoveredLocationGapsMakeDriveQualityActionable() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, date: start, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .locationGapRecovered, date: start.addingTimeInterval(60), detail: "45 s"),
+            DriveDiagnosticEvent(kind: .locationGapRecovered, date: start.addingTimeInterval(120), detail: "50 s"),
+            DriveDiagnosticEvent(kind: .locationGapRecovered, date: start.addingTimeInterval(180), detail: "40 s"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.recoveredLocationGaps, 3)
+        XCTAssertEqual(summary.quality, .attention)
+        XCTAssertTrue(summary.recommendation.contains("Standortübertragung"))
+    }
+
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .final]))

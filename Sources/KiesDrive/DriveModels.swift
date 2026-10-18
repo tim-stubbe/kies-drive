@@ -244,7 +244,8 @@ enum DriveUsageSegmentPolicy {
 
 enum DriveDiagnosticKind: String, Codable, Hashable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
-    case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
+    case navigationStopped, arrivalReached, locationRejected, locationGapRecovered
+    case maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
     case breakReminderShown, breakReminderAnnounced, fuelReminderShown, fuelReminderAnnounced
     case routeSearchCompleted, routeSearchDiscarded, routeStopAdded, routeStopFailed
@@ -343,6 +344,7 @@ struct DriveDiagnosticSummary: Equatable {
     let rerouteRequests: Int
     let rerouteFailures: Int
     let rejectedLocations: Int
+    let recoveredLocationGaps: Int
     let arrivals: Int
     let maneuverAnnouncements: Int
     let breakRemindersShown: Int
@@ -433,6 +435,7 @@ struct DriveDiagnosticSummary: Equatable {
         let totalOfflineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
         let failures = unresolvedReroutes.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
+        let recoveredLocationGaps = session.filter { $0.kind == .locationGapRecovered }.count
         let rejectedBurst = maximumBurst(of: .locationRejected, in: session)
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
         let totalSpeechFailures = session.filter { $0.kind == .speechDeliveryFailed }.count
@@ -455,11 +458,15 @@ struct DriveDiagnosticSummary: Equatable {
             } else {
                 recommendation = "Die letzte Neuberechnung ist noch fehlgeschlagen; die alte Route blieb aktiv."
             }
-        } else if rejectedBurst >= 3 || reroutes >= 3 {
+        } else if rejectedBurst >= 3 || recoveredLocationGaps >= 3 || reroutes >= 3 {
             quality = .attention
-            recommendation = rejectedBurst >= 3
-                ? "Mehrere GPS-Messungen waren unzuverlässig; freie Sicht zum Himmel verbessert die Führung."
-                : "Die Route wurde mehrfach neu berechnet; den Diagnosebericht nach der Fahrt prüfen."
+            if rejectedBurst >= 3 {
+                recommendation = "Mehrere GPS-Messungen waren unzuverlässig; freie Sicht zum Himmel verbessert die Führung."
+            } else if recoveredLocationGaps >= 3 {
+                recommendation = "Die Standortübertragung war mehrfach unterbrochen; Hintergrundfreigabe und Energiesparmodus prüfen."
+            } else {
+                recommendation = "Die Route wurde mehrfach neu berechnet; den Diagnosebericht nach der Fahrt prüfen."
+            }
         } else {
             quality = .good
             recommendation = resolved > 0
@@ -475,6 +482,7 @@ struct DriveDiagnosticSummary: Equatable {
         return .init(quality: quality, eventCount: session.count,
                      rerouteRequests: reroutes,
                      rerouteFailures: failures, rejectedLocations: rejected,
+                     recoveredLocationGaps: recoveredLocationGaps,
                      arrivals: arrivals, maneuverAnnouncements: maneuvers,
                      breakRemindersShown: shownBreaks,
                      breakRemindersAnnounced: spokenBreaks,

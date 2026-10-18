@@ -2090,6 +2090,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         updateUsageSession(at: location)
         lastAcceptedNavigationLocation = location
+        if let gap = NavigationLocationGapPolicy.recoveredGap(
+            previous: previousNavigationLocation, current: location
+        ) {
+            DriveDiagnosticStore.append(
+                .locationGapRecovered,
+                detail: DriveDiagnosticDetail.navigationSample(
+                    "Standort nach \(Int(gap.rounded())) Sekunden wieder verfügbar",
+                    location: location
+                )
+            )
+        }
         let allowsFullLiveRecovery = NavigationLiveRecoveryPolicy.allowsFullRouteMatch(
             previous: previousNavigationLocation, current: location
         )

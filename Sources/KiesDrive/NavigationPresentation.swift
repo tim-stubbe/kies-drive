@@ -890,6 +890,17 @@ enum NavigationLiveRecoveryPolicy {
     }
 }
 
+enum NavigationLocationGapPolicy {
+    static let minimumGap: TimeInterval = 30
+
+    static func recoveredGap(previous: CLLocation?, current: CLLocation) -> TimeInterval? {
+        guard let previous else { return nil }
+        let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
+        guard elapsed.isFinite, elapsed >= minimumGap else { return nil }
+        return elapsed
+    }
+}
+
 /// Live navigation state changes on every accepted GPS fix, but encoding and
 /// writing several UserDefaults payloads at that same cadence can stall map
 /// rendering on long drives. A short checkpoint interval retains useful crash
