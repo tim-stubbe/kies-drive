@@ -71,6 +71,15 @@ struct CachedRoute: Codable {
     }
 }
 
+enum OfflineRouteCacheWritePolicy {
+    static func retainedProgress(existing: CachedRoute?, currentTripID: UUID?,
+                                 preservingProgress: Bool) -> Double? {
+        guard preservingProgress,
+              existing?.tripID == currentTripID else { return nil }
+        return existing?.navigationProgress
+    }
+}
+
 struct OfflineRouteCacheStore {
     let fileURL: URL
 
@@ -329,7 +338,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // had no trip lock. Bind the exact same geometry to the now-persisted
         // trip before guidance starts, so an immediate network loss or app
         // termination cannot leave only an anonymous short-lived cache.
-        cacheForOffline()
+        cacheForOffline(preservingProgress: true)
         beginNavigationSession()
         isNavigating = true
         hasArrived = false
@@ -1311,10 +1320,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// angezeigt werden kann - kein Kartenmaterial, nur Fahrhinweise und Preise.
     private func cacheForOffline(preservingProgress: Bool = false) {
         guard !legs.isEmpty else { return }
-        let retainedProgress = preservingProgress ? offlineRoute?.navigationProgress : nil
+        let currentTripID = routeLockStore.activeLock?.id
+        let retainedProgress = OfflineRouteCacheWritePolicy.retainedProgress(
+            existing: offlineRoute,
+            currentTripID: currentTripID,
+            preservingProgress: preservingProgress
+        )
         let cached = CachedRoute(
             destinationName: destination?.name ?? destinationText,
-            tripID: routeLockStore.activeLock?.id,
+            tripID: currentTripID,
             destinationCoordinate: destination.map {
                 .init(latitude: $0.placemark.coordinate.latitude,
                       longitude: $0.placemark.coordinate.longitude)

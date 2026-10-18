@@ -89,6 +89,25 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(route.updatingNavigationProgress(2).navigationProgress, 1)
     }
 
+    func testOfflineCacheProgressIsRetainedOnlyForSameTrip() {
+        let tripID = UUID()
+        let route = CachedRoute(
+            destinationName: "Ziel", tripID: tripID,
+            destinationCoordinate: .init(latitude: 50, longitude: 8),
+            legs: [], stations: [], savedAt: Date(), navigationProgress: 0.62
+        )
+
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.retainedProgress(
+            existing: route, currentTripID: tripID, preservingProgress: true
+        ), 0.62)
+        XCTAssertNil(OfflineRouteCacheWritePolicy.retainedProgress(
+            existing: route, currentTripID: UUID(), preservingProgress: true
+        ))
+        XCTAssertNil(OfflineRouteCacheWritePolicy.retainedProgress(
+            existing: route, currentTripID: tripID, preservingProgress: false
+        ))
+    }
+
     func testOfflineRouteIdentityRequiresExactActiveTrip() {
         let tripID = UUID()
         XCTAssertTrue(OfflineRouteTripIdentityPolicy.belongs(
