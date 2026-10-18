@@ -321,7 +321,7 @@ final class LongTripPlanningTests: XCTestCase {
         let loadedAt = Date(timeIntervalSince1970: 10_000)
         let snapshot = TollLookupSnapshot(
             routeIdentity: "hochheim|wurzenpass", origin: .init(latitude: 50, longitude: 8),
-            cost: .known(amount: 27.4, currency: "EUR", source: "Provider"), loadedAt: loadedAt
+            cost: .known(amount: 27.4, currency: "EUR", source: "Provider", sourceURL: nil), loadedAt: loadedAt
         )
         XCTAssertEqual(TollLookupCachePolicy.reusable(
             snapshot, routeIdentity: "hochheim|wurzenpass",
@@ -437,7 +437,7 @@ final class LongTripPlanningTests: XCTestCase {
     func testTollComparisonPublishesOnlyCompleteVariantPair() {
         let standard = TollLookupBatchItem(
             avoidTolls: false, routeIdentity: "route|standard",
-            cost: .known(amount: 24, currency: "EUR", source: "Provider"), fetched: true
+            cost: .known(amount: 24, currency: "EUR", source: "Provider", sourceURL: nil), fetched: true
         )
         let avoiding = TollLookupBatchItem(
             avoidTolls: true, routeIdentity: "route|avoid",
@@ -647,7 +647,7 @@ final class LongTripPlanningTests: XCTestCase {
         let routeB = RoutePlanningInput(
             id: "b", title: "Mautfreie Route", distanceMetres: 520_000,
             mapKitExpectedTravelTime: 19_000, unlimitedMotorwayFraction: 0.2,
-            typicalUnlimitedSpeedKmh: 130, toll: .noToll(source: "test"), breakCandidates: []
+            typicalUnlimitedSpeedKmh: 130, toll: .noToll(source: "test", sourceURL: nil), breakCandidates: []
         )
         let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
             routes: [routeA, routeB],
@@ -1522,6 +1522,24 @@ final class LongTripPlanningTests: XCTestCase {
         guard case .unknown = cost else { return XCTFail("Expected unknown toll cost") }
     }
 
+    func testVerifiedTollSourceLinkSurvivesPlanEncoding() throws {
+        let expected = TollCost.known(
+            amount: 27.4, currency: "EUR", source: "Official provider",
+            sourceURL: "https://example.test/tolls/2026"
+        )
+        let data = try JSONEncoder().encode(expected)
+        XCTAssertEqual(try JSONDecoder().decode(TollCost.self, from: data), expected)
+
+        let noToll = TollCost.noToll(
+            source: "Official provider",
+            sourceURL: "https://example.test/toll-free/2026"
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(TollCost.self, from: JSONEncoder().encode(noToll)),
+            noToll
+        )
+    }
+
     func testTollEvidenceRequiresPlausibleAmountAndHTTPSSource() {
         XCTAssertNotNil(TollEvidenceValidator.validate(
             status: "known", amount: 27.4, currency: "EUR", source: "Official toll provider",
@@ -1590,9 +1608,9 @@ final class LongTripPlanningTests: XCTestCase {
     func testComparisonOnlyCalculatesTollSavingsForKnownPrices() throws {
         let scenario = SpeedScenario.target(150)
         let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)
-        let baseline = RouteScenarioResult(id: "a", routeTitle: "A", scenario: scenario, distanceMetres: 500_000, drivingTime: 18_000, totalTime: 19_200, fuel: fuel, toll: .known(amount: 24, currency: "EUR", source: "provider"), breaks: [], fuelStops: [], unlimitedFraction: 0)
+        let baseline = RouteScenarioResult(id: "a", routeTitle: "A", scenario: scenario, distanceMetres: 500_000, drivingTime: 18_000, totalTime: 19_200, fuel: fuel, toll: .known(amount: 24, currency: "EUR", source: "provider", sourceURL: nil), breaks: [], fuelStops: [], unlimitedFraction: 0)
         let unknown = RouteScenarioResult(id: "b", routeTitle: "B", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .unknown(reason: "missing"), breaks: [], fuelStops: [], unlimitedFraction: 0)
-        let free = RouteScenarioResult(id: "c", routeTitle: "C", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .noToll(source: "provider"), breaks: [], fuelStops: [], unlimitedFraction: 0)
+        let free = RouteScenarioResult(id: "c", routeTitle: "C", scenario: scenario, distanceMetres: 520_000, drivingTime: 19_000, totalTime: 20_200, fuel: fuel, toll: .noToll(source: "provider", sourceURL: nil), breaks: [], fuelStops: [], unlimitedFraction: 0)
 
         XCTAssertNil(RouteComparisonDelta(from: baseline, to: unknown).tollSavings)
         let delta = RouteComparisonDelta(from: baseline, to: free)
@@ -1605,11 +1623,11 @@ final class LongTripPlanningTests: XCTestCase {
         let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)
         let euro = RouteScenarioResult(id: "eur", routeTitle: "EUR", scenario: scenario,
                                        distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
-                                       toll: .known(amount: 20, currency: "EUR", source: "provider"),
+                                       toll: .known(amount: 20, currency: "EUR", source: "provider", sourceURL: nil),
                                        breaks: [], fuelStops: [], unlimitedFraction: 0)
         let francs = RouteScenarioResult(id: "chf", routeTitle: "CHF", scenario: scenario,
                                          distanceMetres: 1, drivingTime: 1, totalTime: 1, fuel: fuel,
-                                         toll: .known(amount: 20, currency: "CHF", source: "provider"),
+                                         toll: .known(amount: 20, currency: "CHF", source: "provider", sourceURL: nil),
                                          breaks: [], fuelStops: [], unlimitedFraction: 0)
         let delta = RouteComparisonDelta(from: euro, to: francs)
         XCTAssertNil(delta.tollSavings)

@@ -1525,7 +1525,7 @@ final class NavigationPresentationTests: XCTestCase {
             id: "route", routeTitle: "Route", scenario: .init(id: "normal", name: "Normal",
             targetSpeedKmh: 130), distanceMetres: 500_000, drivingTime: 18_000,
             totalTime: 19_000, fuel: .init(litres: 30, cost: 55,
-            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test"),
+            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test", sourceURL: nil),
             breaks: [.init(id: "break", candidate: candidate, afterDriving: 7_200,
                            duration: 900, routeProgress: 0.3, explanation: "Pause")],
             fuelStops: [.init(id: "fuel", candidate: candidate, afterDistanceMetres: 150_000,
@@ -1554,7 +1554,7 @@ final class NavigationPresentationTests: XCTestCase {
             id: "route", routeTitle: "Route", scenario: .init(id: "normal", name: "Normal",
             targetSpeedKmh: 130), distanceMetres: 500_000, drivingTime: 18_000,
             totalTime: 19_000, fuel: .init(litres: 30, cost: 55,
-            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test"),
+            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test", sourceURL: nil),
             breaks: [first, second, third].map {
                 .init(id: $0.id, candidate: $0, afterDriving: $0.progress * 18_000,
                       duration: 900, routeProgress: $0.progress, explanation: "Pause")
@@ -1580,7 +1580,7 @@ final class NavigationPresentationTests: XCTestCase {
             id: "route", routeTitle: "Route", scenario: .init(id: "normal", name: "Normal",
             targetSpeedKmh: 130), distanceMetres: 500_000, drivingTime: 18_000,
             totalTime: 19_000, fuel: .init(litres: 30, cost: 55,
-            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test"),
+            averageConsumptionLPer100km: 6), toll: .noToll(source: "Test", sourceURL: nil),
             breaks: [.init(id: "behind-break", candidate: behind, afterDriving: 7_200,
                            duration: 900, routeProgress: 0.3, explanation: "Pause")],
             fuelStops: [

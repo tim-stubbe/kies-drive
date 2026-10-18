@@ -286,13 +286,16 @@ enum DriveAPI {
             source: result.source, sourceURL: result.sourceURL,
             corroboratingSourceURLs: result.sources.map(\.url)
         ) {
-            return .known(amount: Decimal(evidence.amount), currency: evidence.currency, source: evidence.source)
+            return .known(
+                amount: Decimal(evidence.amount), currency: evidence.currency,
+                source: evidence.source, sourceURL: result.sourceURL
+            )
         }
         if TollEvidenceValidator.validatesNoToll(
             status: result.status, source: result.source, sourceURL: result.sourceURL,
             corroboratingSourceURLs: result.sources.map(\.url)
         ) {
-            return .noToll(source: result.source)
+            return .noToll(source: result.source, sourceURL: result.sourceURL)
         }
         let titles = result.sources.prefix(3).map(\.title).joined(separator: " · ")
         return .unknown(reason: titles.isEmpty ? "SearXNG fand keinen eindeutig belegten Gesamtpreis." : "SearXNG geprüft: \(titles)")

@@ -48,12 +48,12 @@ struct SpeedScenario: Codable, Identifiable, Equatable {
 }
 
 enum TollCost: Codable, Equatable, Sendable {
-    case known(amount: Decimal, currency: String, source: String)
-    case noToll(source: String)
+    case known(amount: Decimal, currency: String, source: String, sourceURL: String?)
+    case noToll(source: String, sourceURL: String?)
     case unknown(reason: String)
 
     var amount: Decimal? {
-        if case .known(let amount, _, _) = self { return amount }
+        if case .known(let amount, _, _, _) = self { return amount }
         if case .noToll = self { return 0 }
         return nil
     }
@@ -1404,15 +1404,15 @@ struct RouteComparisonDelta: Equatable {
         fuelDifferenceLitres = alternative.fuel.litres - baseline.fuel.litres
         fuelCostDifference = alternative.fuel.cost - baseline.fuel.cost
         switch (baseline.toll, alternative.toll) {
-        case let (.known(baselineAmount, baselineCurrency, _),
-                  .known(alternativeAmount, alternativeCurrency, _))
+        case let (.known(baselineAmount, baselineCurrency, _, _),
+                  .known(alternativeAmount, alternativeCurrency, _, _))
             where baselineCurrency.caseInsensitiveCompare(alternativeCurrency) == .orderedSame:
             tollSavings = baselineAmount - alternativeAmount
             tollCurrency = baselineCurrency.uppercased()
-        case let (.known(amount, currency, _), .noToll):
+        case let (.known(amount, currency, _, _), .noToll):
             tollSavings = amount
             tollCurrency = currency.uppercased()
-        case let (.noToll, .known(amount, currency, _)):
+        case let (.noToll, .known(amount, currency, _, _)):
             tollSavings = -amount
             tollCurrency = currency.uppercased()
         case (.noToll, .noToll):

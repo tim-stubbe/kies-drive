@@ -1349,10 +1349,12 @@ struct DriveContentView: View {
                                 Text("\(formatDistance(result.totalDistanceMetres)) · \(formatTime(result.totalTime)) inkl. \(result.breaks.count) Pause(n)")
                                 Text(String(format: "%.1f l · %.2f € Kraftstoff · %.1f l/100 km", result.fuel.litres, result.fuel.cost, result.fuel.averageConsumptionLPer100km))
                                 switch result.toll {
-                                case .known(let amount, let currency, let source):
+                                case .known(let amount, let currency, let source, let sourceURL):
                                     Text("Maut: \(NSDecimalNumber(decimal: amount).stringValue) \(currency) · \(source)")
-                                case .noToll(let source):
+                                    tollEvidenceLink(sourceURL)
+                                case .noToll(let source, let sourceURL):
                                     Text("Keine Maut · \(source)")
+                                    tollEvidenceLink(sourceURL)
                                 case .unknown(let reason):
                                     Text("Mautkosten unbekannt · \(reason)").foregroundStyle(.secondary)
                                 }
@@ -1774,6 +1776,17 @@ struct DriveContentView: View {
     private func formatTime(_ seconds: TimeInterval) -> String { let m = Int(seconds / 60); return m >= 60 ? "\(m / 60) Std. \(m % 60) Min." : "\(m) Min." }
     private func formatArrival(_ seconds: TimeInterval) -> String {
         Date().addingTimeInterval(seconds).formatted(date: .omitted, time: .shortened)
+    }
+
+    @ViewBuilder
+    private func tollEvidenceLink(_ value: String?) -> some View {
+        if let value, let url = URL(string: value), url.scheme?.lowercased() == "https" {
+            Link(destination: url) {
+                Label("Mautquelle prüfen", systemImage: "checkmark.shield.fill")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(Color.kiesForest)
+        }
     }
 
     @ViewBuilder
