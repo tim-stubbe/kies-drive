@@ -159,6 +159,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: true))
     }
 
+    func testCarPlayReconnectRejectsOldRouteRestoreCompletion() {
+        let oldConnection = UUID()
+        let currentConnection = UUID()
+        XCTAssertTrue(CarPlayConnectionWorkPolicy.mayPublish(
+            request: currentConnection, current: currentConnection, connected: true
+        ))
+        XCTAssertFalse(CarPlayConnectionWorkPolicy.mayPublish(
+            request: oldConnection, current: currentConnection, connected: true
+        ))
+        XCTAssertFalse(CarPlayConnectionWorkPolicy.mayPublish(
+            request: currentConnection, current: currentConnection, connected: false
+        ))
+    }
+
     func testRouteOriginUsesFirstGeometryVertexInsteadOfOverlayRepresentativeCoordinate() {
         let first = CLLocationCoordinate2D(latitude: 50.01, longitude: 8.01)
         let midpoint = CLLocationCoordinate2D(latitude: 49.0, longitude: 9.0)

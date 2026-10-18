@@ -939,6 +939,15 @@ enum CarPlayTripStartPolicy {
     }
 }
 
+enum CarPlayConnectionWorkPolicy {
+    /// Async restoration belongs to the exact head-unit connection that
+    /// started it. A reconnect can reuse the same scene delegate while every
+    /// CarPlay template from the previous connection is already invalid.
+    static func mayPublish(request: UUID, current: UUID, connected: Bool) -> Bool {
+        connected && request == current
+    }
+}
+
 /// Builds the first guidance card directly from a newly committed route.
 /// This is deliberately independent of the previous GPS cursor so changing a
 /// destination or completing a reroute can never briefly publish or speak an

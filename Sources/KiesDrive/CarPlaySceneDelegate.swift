@@ -34,6 +34,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var hasShownLocationAccessAlert = false
     private var hasShownBackgroundLocationAlert = false
     private var routeRestoreInProgress = false
+    private var routeRestoreTask: Task<Void, Never>?
+    private var connectionGeneration = UUID()
     private var hasShownRouteRestoreAlert = false
     private var routeRecoveryPresentationState: CarPlayRouteRecoveryPresentationState = .normal
     private var cancellables: Set<AnyCancellable> = []
@@ -62,6 +64,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         // finishes only the CarPlay presentation; RoutePlanner keeps the
         // local trip and guidance running on the phone.
         navigationSession?.finishTrip()
+        routeRestoreTask?.cancel()
+        routeRestoreTask = nil
+        routeRestoreInProgress = false
+        connectionGeneration = UUID()
         navigationSession = nil
         activeTrip = nil
         activeTripDestination = nil
@@ -117,6 +123,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         // cannot retain stale maneuvers after unplugging. The shared planner
         // remains active and continues guidance on the iPhone.
         navigationSession?.finishTrip()
+        routeRestoreTask?.cancel()
+        routeRestoreTask = nil
+        connectionGeneration = UUID()
         interfaceController = nil
         carWindow = nil
         mapView = nil
@@ -286,10 +295,18 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
               let location = suppliedLocation ?? LocationService.shared.location,
               NavigationLocationPolicy.accepts(location, after: nil) else { return }
         routeRestoreInProgress = true
-        Task {
+        let requestedConnection = connectionGeneration
+        routeRestoreTask = Task { [weak self] in
             let restored = await planner.restoreActiveTripIfNeeded(
                 from: location.coordinate, settings: .shared
             )
+            guard !Task.isCancelled, let self,
+                  CarPlayConnectionWorkPolicy.mayPublish(
+                    request: requestedConnection,
+                    current: self.connectionGeneration,
+                    connected: self.interfaceController != nil
+                  ) else { return }
+            self.routeRestoreTask = nil
             self.routeRestoreInProgress = false
             if restored {
                 self.hasShownRouteRestoreAlert = false
