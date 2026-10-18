@@ -1571,6 +1571,17 @@ enum OfflineGuidanceResumePolicy {
     }
 }
 
+enum OfflineRouteProgressPolicy {
+    static func progress(liveRouteDistance: CLLocationDistance,
+                         cachedRouteDistance: CLLocationDistance,
+                         remainingDistance: CLLocationDistance) -> Double? {
+        guard remainingDistance.isFinite, remainingDistance >= 0 else { return nil }
+        let distance = liveRouteDistance > 0 ? liveRouteDistance : cachedRouteDistance
+        guard distance.isFinite, distance > 0 else { return nil }
+        return min(1, max(0, 1 - remainingDistance / distance))
+    }
+}
+
 struct OfflineGuidanceProgress: Equatable {
     let currentStepIndex: Int
     let maneuverStepIndex: Int

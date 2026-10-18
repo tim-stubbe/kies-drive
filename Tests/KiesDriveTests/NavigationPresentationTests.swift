@@ -1320,6 +1320,21 @@ final class NavigationPresentationTests: XCTestCase {
         ), 4)
     }
 
+    func testOfflineProgressUsesCachedDistanceWhenLiveLegsAreUnavailable() throws {
+        XCTAssertEqual(try XCTUnwrap(OfflineRouteProgressPolicy.progress(
+            liveRouteDistance: 0, cachedRouteDistance: 100_000,
+            remainingDistance: 40_000
+        )), 0.6, accuracy: 0.000_1)
+        XCTAssertEqual(try XCTUnwrap(OfflineRouteProgressPolicy.progress(
+            liveRouteDistance: 120_000, cachedRouteDistance: 100_000,
+            remainingDistance: 30_000
+        )), 0.75, accuracy: 0.000_1)
+        XCTAssertNil(OfflineRouteProgressPolicy.progress(
+            liveRouteDistance: 0, cachedRouteDistance: 0,
+            remainingDistance: 0
+        ))
+    }
+
     func testOfflineGuidanceReportsDistanceFromCachedCorridor() throws {
         let steps = [
             OfflineGuidanceStep(instruction: "Geradeaus", distance: 1_000, coordinates: [

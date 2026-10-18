@@ -44,16 +44,30 @@ struct CachedRoute: Codable {
     let legs: [Leg]
     let stations: [FuelStation]
     let savedAt: Date
+    /// Progress on this exact cached geometry. The trip lock's progress refers
+    /// to the original corridor and can differ substantially after a reroute.
+    let navigationProgress: Double?
 
     init(destinationName: String, tripID: UUID? = nil,
          destinationCoordinate: DriveCoordinate?, legs: [Leg],
-         stations: [FuelStation], savedAt: Date) {
+         stations: [FuelStation], savedAt: Date,
+         navigationProgress: Double? = nil) {
         self.destinationName = destinationName
         self.tripID = tripID
         self.destinationCoordinate = destinationCoordinate
         self.legs = legs
         self.stations = stations
         self.savedAt = savedAt
+        self.navigationProgress = navigationProgress
+    }
+
+    func updatingNavigationProgress(_ progress: Double) -> CachedRoute {
+        .init(
+            destinationName: destinationName, tripID: tripID,
+            destinationCoordinate: destinationCoordinate, legs: legs,
+            stations: stations, savedAt: savedAt,
+            navigationProgress: min(1, max(navigationProgress ?? 0, progress))
+        )
     }
 }
 
@@ -201,6 +215,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var automaticRestoreInProgress = false
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
+    private var lastOfflineProgressPersistedAt: Date?
     private var lastLongTripPlanRefreshAt: Date?
     /// A waypoint is only persisted after the replacement route has been
     /// committed. Keeping the in-flight identity here prevents every GPS fix
@@ -1401,7 +1416,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         navigationStepCursor = OfflineGuidanceResumePolicy.stepIndex(
             steps: cachedGuidanceSteps,
-            persistedProgress: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress
+            persistedProgress: cache.navigationProgress ??
+                activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress
         )
         offlineNeedsInitialPositionMatch = true
         lastOfflineRecoveryAttempt = Date()
@@ -1620,6 +1636,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         offlineDeviationWarningActive = false
         isManeuverGuidanceReliable = true
         lastLongTripPlanRefreshAt = nil
+        lastOfflineProgressPersistedAt = nil
     }
 
     /// Publishes a maneuver belonging to the newly installed route before the
@@ -1831,6 +1848,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func persistRouteLockProgress(at location: CLLocation) {
+        persistOfflineCacheProgress(at: location.timestamp)
         guard let lock = routeLockStore.activeLock,
               let corridor = lock.corridorPoints, corridor.count > 2,
               let match = RouteCorridorRestorePolicy.forwardNearBestMatch(
@@ -1854,6 +1872,27 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         activeRouteLock = routeLockStore.activeLock
         lastRouteProgressPersistedAt = now
+    }
+
+    private func persistOfflineCacheProgress(at now: Date) {
+        guard isNavigating, remainingDistanceMetres >= 0,
+              var cache = offlineRoute else { return }
+        let cachedDistance = cache.legs.reduce(0) { $0 + $1.distance }
+        guard let progress = OfflineRouteProgressPolicy.progress(
+            liveRouteDistance: totalDistance,
+            cachedRouteDistance: cachedDistance,
+            remainingDistance: remainingDistanceMetres
+        ) else { return }
+        let previous = cache.navigationProgress ?? 0
+        let enoughMovement = progress - previous >= 0.003
+        let periodicCheckpoint = lastOfflineProgressPersistedAt.map {
+            now.timeIntervalSince($0) >= 60
+        } ?? true
+        guard progress >= previous, enoughMovement || periodicCheckpoint else { return }
+        cache = cache.updatingNavigationProgress(progress)
+        guard Self.offlineCacheStore.save(cache) else { return }
+        offlineRoute = cache
+        lastOfflineProgressPersistedAt = now
     }
 
     private func checkSpeedLimit(at coordinate: CLLocationCoordinate2D, speedMps: Double?) {

@@ -49,15 +49,28 @@ final class RoutePersistenceTests: XCTestCase {
                 coordinates: [.init(latitude: 50, longitude: 8),
                               .init(latitude: 50.01, longitude: 8.1)]
             )],
-            stations: [], savedAt: Date(timeIntervalSince1970: 1_000)
+            stations: [], savedAt: Date(timeIntervalSince1970: 1_000),
+            navigationProgress: 0.42
         )
 
         XCTAssertTrue(store.save(route))
         XCTAssertEqual(store.load()?.destinationName, "Hochheim")
         XCTAssertEqual(store.load()?.tripID, route.tripID)
         XCTAssertEqual(store.load()?.legs.first?.steps.first?.instructions, "Rechts abbiegen")
+        XCTAssertEqual(store.load()?.navigationProgress, 0.42)
         store.clear()
         XCTAssertNil(store.load())
+    }
+
+    func testOfflineProgressIsMonotonicAndGeometrySpecific() {
+        let route = CachedRoute(
+            destinationName: "Home", destinationCoordinate: nil,
+            legs: [], stations: [], savedAt: Date(), navigationProgress: 0.6
+        )
+
+        XCTAssertEqual(route.updatingNavigationProgress(0.4).navigationProgress, 0.6)
+        XCTAssertEqual(route.updatingNavigationProgress(0.75).navigationProgress, 0.75)
+        XCTAssertEqual(route.updatingNavigationProgress(2).navigationProgress, 1)
     }
 
     func testOfflineRouteIdentityRequiresExactActiveTrip() {
