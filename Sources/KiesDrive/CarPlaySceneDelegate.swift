@@ -337,9 +337,18 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                             routeProgress: action.candidate.progress,
                             explanation: "Über CarPlay zur Route hinzugefügt"
                         )
-                        await planner.addPlannedBreak(plannedBreak, from: start, settings: .shared)
+                        let succeeded = await planner.addPlannedBreak(
+                            plannedBreak, from: start, settings: .shared
+                        )
                         completion()
-                        self?.interfaceController?.popToRootTemplate(animated: true, completion: nil)
+                        if succeeded {
+                            self?.interfaceController?.popToRootTemplate(animated: true, completion: nil)
+                        } else {
+                            self?.showFailure(
+                                planner.errorMessage ??
+                                    "Der geplante Stopp konnte nicht zur Route hinzugefügt werden."
+                            )
+                        }
                     }
                 }
                 return item

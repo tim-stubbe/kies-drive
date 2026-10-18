@@ -2571,10 +2571,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         return true
     }
 
-    func addPlannedBreak(_ plannedBreak: PlannedBreak, from start: CLLocationCoordinate2D, settings: DriveSettings) async {
-        guard let candidate = plannedBreak.candidate else { return }
+    @discardableResult
+    func addPlannedBreak(_ plannedBreak: PlannedBreak, from start: CLLocationCoordinate2D,
+                         settings: DriveSettings) async -> Bool {
+        guard let candidate = plannedBreak.candidate else {
+            errorMessage = "Für diesen geplanten Stopp ist kein Ort verfügbar."
+            return false
+        }
         if let station = stations.first(where: { $0.id == candidate.id }) {
-            guard !viaStations.contains(where: { $0.id == station.id }) else { return }
+            guard !viaStations.contains(where: { $0.id == station.id }) else { return true }
             let previousStations = viaStations
             let previousLock = routeLockStore.activeLock
             viaStations.append(station)
@@ -2595,16 +2600,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     current: viaStations, mutated: mutatedStations
                 ), RouteMutationRollbackPolicy.shouldRollback(
                     current: routeLockStore.activeLock, mutated: mutatedLock
-                ) else { return }
+                ) else { return false }
                 viaStations = previousStations
                 routeLockStore.replace(with: previousLock)
                 activeRouteLock = previousLock
-                return
+                return false
             }
+            return true
         } else {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
             item.name = candidate.name
-            await addRouteStop(item, from: start, settings: settings)
+            return await addRouteStop(item, from: start, settings: settings)
         }
     }
 
