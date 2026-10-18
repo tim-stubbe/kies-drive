@@ -1357,7 +1357,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 navigationActive: true
             )
             let currentProgress = RouteSearchPolicy.currentProgress(
-                projected: projectedProgress ?? installedProgress,
+                // Reconcile both signals exactly as the search did. At a
+                // cloverleaf or route crossing, the geometrically nearest
+                // visit may be behind the car even though distance progress
+                // already proves that visit was completed.
+                projected: RouteSearchPolicy.installedProgress(
+                    projected: projectedProgress,
+                    distanceEstimate: installedProgress
+                ),
                 persisted: activeRouteLock?.lastRouteProgress ??
                     routeLockStore.activeLock?.lastRouteProgress,
                 navigationActive: true

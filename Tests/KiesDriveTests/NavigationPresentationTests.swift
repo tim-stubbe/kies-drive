@@ -2423,6 +2423,25 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A stop selected after driving well past it must not route the car backwards")
     }
 
+    func testRouteSearchSelectionDoesNotMoveBackAtRepeatedJunction() {
+        let reconciled = RouteSearchPolicy.installedProgress(
+            projected: 0.42,
+            distanceEstimate: 0.58
+        )
+        let current = RouteSearchPolicy.currentProgress(
+            projected: reconciled,
+            persisted: 0.80,
+            navigationActive: true
+        )
+
+        XCTAssertEqual(current, 0.58)
+        XCTAssertFalse(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.50,
+            currentProgress: current,
+            totalRouteDistance: 400_000
+        ), "A stop beside an earlier visit to the same junction is already behind the car")
+    }
+
     func testRouteSearchQueriesOnlyTheRemainingRoute() {
         let route = (0...10).map {
             CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) / 100)
