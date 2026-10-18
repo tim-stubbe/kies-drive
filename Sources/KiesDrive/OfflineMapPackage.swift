@@ -68,6 +68,41 @@ enum OfflineMapCameraPolicy {
     }
 }
 
+enum OfflineRouteLookaheadPolicy {
+    /// Selects a small set of points on the route immediately ahead of the
+    /// vehicle. Checking only the tile beneath the car causes visible fallback
+    /// flashes at the edge of an incomplete package; checking the entire route
+    /// would make local driving unnecessarily expensive.
+    static func coordinates(from current: CLLocationCoordinate2D,
+                            route: [CLLocationCoordinate2D],
+                            lookaheadMetres: CLLocationDistance = 8_000,
+                            intervalMetres: CLLocationDistance = 2_000) -> [CLLocationCoordinate2D] {
+        guard !route.isEmpty else { return [current] }
+        let currentLocation = CLLocation(latitude: current.latitude, longitude: current.longitude)
+        let nearestIndex = route.indices.min {
+            currentLocation.distance(from: CLLocation(latitude: route[$0].latitude, longitude: route[$0].longitude)) <
+            currentLocation.distance(from: CLLocation(latitude: route[$1].latitude, longitude: route[$1].longitude))
+        } ?? route.startIndex
+        var result = [current]
+        var travelled: CLLocationDistance = 0
+        var nextSample = max(250, intervalMetres)
+        var previous = route[nearestIndex]
+        guard nearestIndex < route.index(before: route.endIndex) else { return result }
+        for index in route.index(after: nearestIndex)..<route.endIndex {
+            let coordinate = route[index]
+            travelled += CLLocation(latitude: previous.latitude, longitude: previous.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            if travelled >= nextSample {
+                result.append(coordinate)
+                nextSample += max(250, intervalMetres)
+            }
+            if travelled >= max(0, lookaheadMetres) { break }
+            previous = coordinate
+        }
+        return result
+    }
+}
+
 enum OfflineTileCoordinatePolicy {
     struct Tile: Hashable {
         let z: Int
@@ -331,11 +366,16 @@ final class OfflineMapPackageStore: ObservableObject {
     /// a useful local zoom so small camera movements remain local as well.
     func hasNavigationTiles(around coordinate: CLLocationCoordinate2D,
                             package: InstalledOfflineMapPackage) -> Bool {
+        hasNavigationTiles(along: [coordinate], package: package)
+    }
+
+    func hasNavigationTiles(along coordinates: [CLLocationCoordinate2D],
+                            package: InstalledOfflineMapPackage) -> Bool {
         let zoom = min(package.manifest.maximumZoom,
                        max(package.manifest.minimumZoom, 14))
-        let requiredTiles = OfflineTileCoordinatePolicy.neighbourhood(
-            containing: coordinate, zoom: zoom
-        )
+        let requiredTiles = coordinates.reduce(into: Set<OfflineTileCoordinatePolicy.Tile>()) {
+            $0.formUnion(OfflineTileCoordinatePolicy.neighbourhood(containing: $1, zoom: zoom))
+        }
         guard !requiredTiles.isEmpty else { return false }
         return hasTiles(requiredTiles, package: package)
     }

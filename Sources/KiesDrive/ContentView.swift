@@ -1537,16 +1537,18 @@ struct DriveContentView: View {
         return live.isEmpty ? planner.offlinePolylines : live
     }
 
+    private var visibleRouteCoordinates: [CLLocationCoordinate2D] {
+        visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
+            guard polyline.pointCount > 0 else { return [] }
+            let points = polyline.points()
+            return (0..<polyline.pointCount).map { points[$0].coordinate }
+        }
+    }
+
     private var applicableOfflinePackage: InstalledOfflineMapPackage? {
         guard let package = offlineMaps.activePackage else { return nil }
         let needsRouteCoverage = isShowingRouteOverview || location.location == nil
-        let routeCoordinates: [CLLocationCoordinate2D] = needsRouteCoverage
-            ? visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
-                guard polyline.pointCount > 0 else { return [] }
-                let points = polyline.points()
-                return (0..<polyline.pointCount).map { points[$0].coordinate }
-            }
-            : []
+        let routeCoordinates = needsRouteCoverage ? visibleRouteCoordinates : []
         guard OfflineMapCoveragePolicy.canUse(
             bounds: package.manifest.bounds,
             currentCoordinate: location.location?.coordinate,
@@ -1560,9 +1562,13 @@ struct DriveContentView: View {
               offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package) else {
             return nil
         }
-        if !needsRouteCoverage, let coordinate = location.location?.coordinate,
-           !offlineMaps.hasNavigationTiles(around: coordinate, package: package) {
-            return nil
+        if !needsRouteCoverage, let coordinate = location.location?.coordinate {
+            let lookahead = OfflineRouteLookaheadPolicy.coordinates(
+                from: coordinate, route: visibleRouteCoordinates
+            )
+            if !offlineMaps.hasNavigationTiles(along: lookahead, package: package) {
+                return nil
+            }
         }
         return package
     }
@@ -1570,11 +1576,7 @@ struct DriveContentView: View {
     private var offlineMapFallbackMessage: String? {
         guard let package = offlineMaps.activePackage,
               applicableOfflinePackage == nil else { return nil }
-        let routeCoordinates = visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
-            guard polyline.pointCount > 0 else { return [] }
-            let points = polyline.points()
-            return (0..<polyline.pointCount).map { points[$0].coordinate }
-        }
+        let routeCoordinates = visibleRouteCoordinates
         let state = OfflineMapCoveragePolicy.state(
             bounds: package.manifest.bounds,
             currentCoordinate: location.location?.coordinate,

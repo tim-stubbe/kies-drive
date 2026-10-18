@@ -192,6 +192,30 @@ final class OfflineMapPackageTests: XCTestCase {
         ))
     }
 
+    func testOfflineLookaheadStartsAtCarAndOnlySamplesRouteAhead() {
+        let route = (0...12).map {
+            CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) * 0.01)
+        }
+        let current = CLLocationCoordinate2D(latitude: 50, longitude: 8.052)
+
+        let lookahead = OfflineRouteLookaheadPolicy.coordinates(
+            from: current, route: route, lookaheadMetres: 4_000, intervalMetres: 1_000
+        )
+
+        XCTAssertEqual(lookahead.first?.latitude, current.latitude)
+        XCTAssertEqual(lookahead.first?.longitude, current.longitude)
+        XCTAssertTrue(lookahead.dropFirst().allSatisfy { $0.longitude >= 8.05 })
+        XCTAssertTrue(lookahead.count <= 6)
+    }
+
+    func testOfflineLookaheadWithoutRouteStillChecksCurrentTile() {
+        let current = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let lookahead = OfflineRouteLookaheadPolicy.coordinates(from: current, route: [])
+        XCTAssertEqual(lookahead.count, 1)
+        XCTAssertEqual(lookahead[0].latitude, current.latitude)
+        XCTAssertEqual(lookahead[0].longitude, current.longitude)
+    }
+
     func testRuntimeCoverageRequiresRealBaseTiles() throws {
         try writeManifest(id: "runtime-coverage")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
