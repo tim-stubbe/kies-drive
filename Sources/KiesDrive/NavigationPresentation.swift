@@ -919,6 +919,21 @@ enum NavigationSpeechInterruptionPolicy {
         return incoming.rawValue >= active.rawValue
     }
 
+    /// At compact junctions a `.final` cue for the road just left can still
+    /// be playing when the next maneuver has already entered its immediate
+    /// zone. Both are nominally critical, but the current `.now` instruction
+    /// is the only safe one to prioritise. Never preempt an active `.now` cue
+    /// or an utterance that already chains the incoming maneuver.
+    static func shouldPreemptCriticalFinalCue(
+        activeKeys: Set<String>,
+        activeStages: Set<NavigationAnnouncementStage>,
+        incomingKeys: Set<String>,
+        incomingStages: Set<NavigationAnnouncementStage>
+    ) -> Bool {
+        guard incomingStages.contains(.now), !activeStages.contains(.now) else { return false }
+        return !activeKeys.isEmpty && activeKeys.isDisjoint(with: incomingKeys)
+    }
+
     /// A newer distance stage for the same turn must not cut a sentence in
     /// half. Keep it retryable until the audible sentence finishes. Only the
     /// immediate, critical cue may overtake older preparation for that turn.

@@ -3682,6 +3682,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             hasQueuedUtterance: activeUtterance != nil
         )
         let requestedManeuverClaims = maneuverClaims + (maneuverClaim.map { [$0] } ?? [])
+        let activeManeuverClaims = (Array(pendingManeuverSpeech.values) +
+            Array(activeManeuverSpeech.values)).flatMap { $0 }
+        let shouldPreemptCriticalFinalCue = priority == .critical &&
+            activeSpeechPriority == .critical &&
+            NavigationSpeechInterruptionPolicy.shouldPreemptCriticalFinalCue(
+                activeKeys: Set(activeManeuverClaims.map(\.key)),
+                activeStages: Set(activeManeuverClaims.map(\.stage)),
+                incomingKeys: Set(requestedManeuverClaims.map(\.key)),
+                incomingStages: Set(requestedManeuverClaims.map(\.stage))
+            )
         if hasActiveSpeechWork, !requestedManeuverClaims.isEmpty {
             let activeKeys = Set(
                 (Array(pendingManeuverSpeech.values) + Array(activeManeuverSpeech.values))
@@ -3699,6 +3709,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
         }
         if hasActiveSpeechWork, let activeSpeechPriority,
+           !shouldPreemptCriticalFinalCue,
            !NavigationSpeechInterruptionPolicy.shouldInterrupt(
                active: activeSpeechPriority, incoming: priority
            ) {

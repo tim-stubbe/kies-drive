@@ -1852,6 +1852,25 @@ final class NavigationPresentationTests: XCTestCase {
         ), "The immediate cue must still overtake an old distance cue")
     }
 
+    func testImmediateNextTurnPreemptsOnlyStaleFinalCue() {
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldPreemptCriticalFinalCue(
+            activeKeys: ["leg-0-step-4"], activeStages: [.final],
+            incomingKeys: ["leg-0-step-5"], incomingStages: [.now]
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldPreemptCriticalFinalCue(
+            activeKeys: ["leg-0-step-4"], activeStages: [.now],
+            incomingKeys: ["leg-0-step-5"], incomingStages: [.now]
+        ), "A current immediate cue must still finish")
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldPreemptCriticalFinalCue(
+            activeKeys: ["leg-0-step-4", "leg-0-step-5"], activeStages: [.final],
+            incomingKeys: ["leg-0-step-5"], incomingStages: [.now]
+        ), "A chained utterance already contains the next turn")
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldPreemptCriticalFinalCue(
+            activeKeys: ["leg-0-step-4"], activeStages: [.final],
+            incomingKeys: ["leg-0-step-5"], incomingStages: [.final]
+        ), "Only the immediate next instruction may interrupt critical speech")
+    }
+
     func testOnlyUnexpectedManeuverCancellationRetriesImmediately() {
         XCTAssertTrue(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
             hadManeuverClaim: true, navigationActive: true, voiceGuidance: true,
