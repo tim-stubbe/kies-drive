@@ -610,6 +610,21 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechExpandsGermanJunctionAndRoadAbbreviationsNaturally() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Am AK Wiesbaden rechts auf St 2060, Rtg. Bhf. abfahren"
+            ),
+            "Am Autobahnkreuz Wiesbaden rechts auf Staatsstraße 2060, Richtung Bahnhof abfahren."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Am AD links zur AS 12 [St. Goar]"
+            ),
+            "Am Autobahndreieck links zur Anschlussstelle 12, Sankt Goar."
+        )
+    }
+
     func testSpeechInstructionUsesImmediateCueNearManeuver() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("links abbiegen", distance: 20),

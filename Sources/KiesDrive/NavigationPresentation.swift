@@ -285,8 +285,22 @@ enum NavigationSpeechFormatter {
             .replacingOccurrences(of: "—", with: ", ")
             .replacingOccurrences(of: "(", with: ", ")
             .replacingOccurrences(of: ")", with: " ")
+            .replacingOccurrences(of: "[", with: ", ")
+            .replacingOccurrences(of: "]", with: " ")
+            .replacingOccurrences(of: "{", with: ", ")
+            .replacingOccurrences(of: "}", with: " ")
 
         text = replacing(#"(?i)\bStr\."#, in: text, with: "Straße")
+        text = replacing(#"(?i)\bRtg\.?(?=\s|$)"#, in: text, with: "Richtung")
+        text = replacing(#"(?i)\bBhf\.?(?=\s|$)"#, in: text, with: "Bahnhof")
+        text = replacing(#"(?i)\bAK(?=\s|$)"#, in: text, with: "Autobahnkreuz")
+        text = replacing(#"(?i)\bAD(?=\s|$)"#, in: text, with: "Autobahndreieck")
+        text = replacing(#"(?i)\bAS(?=\s|$)"#, in: text, with: "Anschlussstelle")
+        // German state-road labels use `St` plus digits. Keep `St.` before a
+        // place name distinct: there it conventionally means "Sankt".
+        text = replacing(#"(?i)\bSt\.?\s*([0-9]{1,4})([a-z]?)\b"#,
+                         in: text, with: "Staatsstraße $1$2")
+        text = replacing(#"(?i)\bSt\.\s+(?=[A-ZÄÖÜ])"#, in: text, with: "Sankt ")
         text = replacing(#"(?i)\bBAB\s*([0-9]{1,3})\b"#, in: text, with: "Autobahn $1")
         // Force a small spoken pause between road class and number. Compact
         // forms such as A66 or B40 otherwise sound like arbitrary words on
