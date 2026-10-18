@@ -69,6 +69,19 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(restored, state)
     }
 
+    func testPendingBreakSpeechClearsOnlyAfterMatchingCompletion() {
+        let plan = NavigationBreakReminderPolicy.Stage.plan.rawValue
+        XCTAssertFalse(NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingRawValue: plan, completed: nil
+        ), "Cancellation must leave the reminder retryable")
+        XCTAssertFalse(NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingRawValue: plan, completed: .soon
+        ), "An older callback must not clear a newer pending reminder")
+        XCTAssertTrue(NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingRawValue: plan, completed: .plan
+        ))
+    }
+
     func testBreakCandidateShortlistIsBoundedAndDistributed() {
         let candidates = (0..<18).map { index in
             BreakCandidate(id: "candidate-\(index)", name: "Halt \(index)", coordinate: .init(),

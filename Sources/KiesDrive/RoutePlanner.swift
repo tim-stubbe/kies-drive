@@ -292,6 +292,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
     private var pendingManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
     private var activeManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
+    private struct BreakReminderSpeechClaim {
+        let stage: NavigationBreakReminderPolicy.Stage
+        let issuedAt: Date
+    }
+    private var pendingBreakReminderSpeech: [ObjectIdentifier: BreakReminderSpeechClaim] = [:]
+    private var activeBreakReminderSpeech: [ObjectIdentifier: BreakReminderSpeechClaim] = [:]
     private var diagnosticManeuverKey: String?
     private var diagnosticManeuverInstruction: String?
     private var diagnosticManeuverDistance: CLLocationDistance?
@@ -549,6 +555,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             synthesizer.stopSpeaking(at: .immediate)
             pendingManeuverSpeech = [:]
             activeManeuverSpeech = [:]
+            pendingBreakReminderSpeech = [:]
+            activeBreakReminderSpeech = [:]
             diagnosticManeuverKey = nil
             diagnosticManeuverInstruction = nil
             diagnosticManeuverDistance = nil
@@ -1996,14 +2004,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if settings.voiceGuidance,
            let raw = drivingRestState.pendingSpokenReminderRawValue,
            let pendingStage = NavigationBreakReminderPolicy.Stage(rawValue: raw) {
+            let inFlight = pendingBreakReminderSpeech.values.contains { $0.stage == pendingStage } ||
+                activeBreakReminderSpeech.values.contains { $0.stage == pendingStage }
+            if inFlight { return }
             let pendingText = NavigationBreakReminderTextPolicy.text(
                 stage: pendingStage, plannedName: plannedName
             )
-            if speak(pendingText, priority: .status) {
-                drivingRestState.pendingSpokenReminderRawValue = nil
-                drivingRestStore.save(drivingRestState)
-                return
-            }
+            if speak(pendingText, priority: .status,
+                     breakReminderClaim: pendingStage) { return }
         } else if drivingRestState.pendingSpokenReminderRawValue != nil {
             drivingRestState.pendingSpokenReminderRawValue = nil
             drivingRestStore.save(drivingRestState)
@@ -2021,13 +2029,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         breakReminderText = text
         if settings.voiceGuidance {
             // A break reminder must never interrupt an immediate turn cue.
-            if !speak(text, priority: .status) {
-                drivingRestState.pendingSpokenReminderRawValue = stage.rawValue
-                drivingRestStore.save(drivingRestState)
-            } else if drivingRestState.pendingSpokenReminderRawValue != nil {
-                drivingRestState.pendingSpokenReminderRawValue = nil
-                drivingRestStore.save(drivingRestState)
-            }
+            drivingRestState.pendingSpokenReminderRawValue = stage.rawValue
+            drivingRestStore.save(drivingRestState)
+            _ = speak(text, priority: .status, breakReminderClaim: stage)
         }
     }
 
@@ -2316,6 +2320,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         announcedManeuverStages = [:]
         pendingManeuverSpeech = [:]
         activeManeuverSpeech = [:]
+        pendingBreakReminderSpeech = [:]
+        activeBreakReminderSpeech = [:]
         diagnosticManeuverKey = nil
         diagnosticManeuverInstruction = nil
         diagnosticManeuverDistance = nil
@@ -2758,17 +2764,31 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 issuedAt: $0.issuedAt, now: now, active: true
             ) }
         }
-        guard !expiredPending.isEmpty || !expiredActive.isEmpty else { return }
+        let expiredPendingBreaks = pendingBreakReminderSpeech.filter {
+            NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.value.issuedAt, now: now, active: false
+            )
+        }
+        let expiredActiveBreaks = activeBreakReminderSpeech.filter {
+            NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.value.issuedAt, now: now, active: true
+            )
+        }
+        guard !expiredPending.isEmpty || !expiredActive.isEmpty ||
+                !expiredPendingBreaks.isEmpty || !expiredActiveBreaks.isEmpty else { return }
         let claim = expiredActive.values.first?.first ?? expiredPending.values.first?.first
         // Remove the stale queued utterance from AVSpeechSynthesizer as well;
         // otherwise it could start after the retry and produce a duplicate.
         // Clean all local ownership synchronously because the exact failure
         // being handled here may also mean `didCancel` never arrives.
         cancelCurrentSpeechWork()
+        let breakStage = expiredActiveBreaks.values.first?.stage ??
+            expiredPendingBreaks.values.first?.stage
         DriveDiagnosticStore.append(
             .speechDeliveryFailed,
             detail: DriveDiagnosticDetail.navigationSample(
-                claim.map { "\($0.stage) · \($0.instruction)" } ?? "Unbekannte Fahransage",
+                claim.map { "\($0.stage) · \($0.instruction)" } ??
+                    breakStage.map { "Pausenerinnerung · \($0)" } ?? "Unbekannte Fahransage",
                 location: lastAcceptedNavigationLocation
             )
         )
@@ -2798,7 +2818,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private var hasSpeechWork: Bool {
         synthesizer.isSpeaking || activeUtterance != nil ||
-            !pendingManeuverSpeech.isEmpty || !activeManeuverSpeech.isEmpty
+            !pendingManeuverSpeech.isEmpty || !activeManeuverSpeech.isEmpty ||
+            !pendingBreakReminderSpeech.isEmpty || !activeBreakReminderSpeech.isEmpty
     }
 
     private func cancelCurrentSpeechWork() {
@@ -2806,6 +2827,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         synthesizer.stopSpeaking(at: .immediate)
         pendingManeuverSpeech = [:]
         activeManeuverSpeech = [:]
+        pendingBreakReminderSpeech = [:]
+        activeBreakReminderSpeech = [:]
         if let replacedUtterance {
             finishAudioSession(for: replacedUtterance)
         } else {
@@ -2816,7 +2839,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     private func speak(_ text: String, priority: NavigationSpeechPriority,
                        maneuverClaim: ManeuverSpeechClaim? = nil,
-                       maneuverClaims: [ManeuverSpeechClaim] = []) -> Bool {
+                       maneuverClaims: [ManeuverSpeechClaim] = [],
+                       breakReminderClaim: NavigationBreakReminderPolicy.Stage? = nil) -> Bool {
         // Do not queue a maneuver under an active call, Siri session or other
         // system interruption. Returning false leaves its claim retryable on
         // the next GPS fix after audio becomes available again.
@@ -2855,6 +2879,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if !claims.isEmpty {
             pendingManeuverSpeech[ObjectIdentifier(utterance)] = claims
         }
+        if let breakReminderClaim {
+            pendingBreakReminderSpeech[ObjectIdentifier(utterance)] = .init(
+                stage: breakReminderClaim, issuedAt: Date()
+            )
+        }
         synthesizer.speak(utterance)
         return true
     }
@@ -2882,8 +2911,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didStart utterance: AVSpeechUtterance) {
         let identifier = ObjectIdentifier(utterance)
-        guard let claims = pendingManeuverSpeech.removeValue(forKey: identifier) else { return }
-        activeManeuverSpeech[identifier] = claims
+        if let claims = pendingManeuverSpeech.removeValue(forKey: identifier) {
+            activeManeuverSpeech[identifier] = claims
+        }
+        if let claim = pendingBreakReminderSpeech.removeValue(forKey: identifier) {
+            activeBreakReminderSpeech[identifier] = claim
+        }
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
@@ -2892,6 +2925,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let claims = NavigationAnnouncementDeliveryPolicy.completedClaims(
             active: activeManeuverSpeech.removeValue(forKey: identifier),
             queued: pendingManeuverSpeech.removeValue(forKey: identifier)
+        )
+        let breakClaim = NavigationAnnouncementDeliveryPolicy.completedClaims(
+            active: activeBreakReminderSpeech.removeValue(forKey: identifier),
+            queued: pendingBreakReminderSpeech.removeValue(forKey: identifier)
         )
         if let claims,
            NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(didFinish: true) {
@@ -2910,6 +2947,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }
         }
+        if NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingRawValue: drivingRestState.pendingSpokenReminderRawValue,
+            completed: breakClaim?.stage
+        ) {
+            drivingRestState.pendingSpokenReminderRawValue = nil
+            drivingRestStore.save(drivingRestState)
+        }
         finishAudioSession(for: utterance)
     }
 
@@ -2920,6 +2964,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let identifier = ObjectIdentifier(utterance)
         pendingManeuverSpeech.removeValue(forKey: identifier)
         activeManeuverSpeech.removeValue(forKey: identifier)
+        pendingBreakReminderSpeech.removeValue(forKey: identifier)
+        activeBreakReminderSpeech.removeValue(forKey: identifier)
         finishAudioSession(for: utterance)
     }
 

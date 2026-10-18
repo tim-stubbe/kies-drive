@@ -919,6 +919,14 @@ enum NavigationBreakReminderTextPolicy {
     }
 }
 
+enum NavigationBreakReminderSpeechDeliveryPolicy {
+    static func shouldClearPending(pendingRawValue: Int?,
+                                   completed: NavigationBreakReminderPolicy.Stage?) -> Bool {
+        guard let completed else { return false }
+        return pendingRawValue == completed.rawValue
+    }
+}
+
 struct DrivingRestStateStore {
     let defaults: UserDefaults
     var key = "drive.longTrip.drivingRestState"
