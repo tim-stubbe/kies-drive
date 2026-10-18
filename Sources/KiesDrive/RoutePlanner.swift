@@ -202,6 +202,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
     private var lastLongTripPlanRefreshAt: Date?
+    /// A waypoint is only persisted after the replacement route has been
+    /// committed. Keeping the in-flight identity here prevents every GPS fix
+    /// near the same point from starting another MapKit calculation.
+    private var pendingReachedWaypointID: String?
     private var deliveredBreakReminderStages: Set<NavigationBreakReminderPolicy.Stage> {
         get {
             Set(drivingRestState.deliveredReminderRawValues.compactMap(
@@ -974,7 +978,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func calculate(from start: CLLocationCoordinate2D, settings: DriveSettings,
                    showLoading: Bool = true,
                    navigationSession: UUID? = nil,
-                   navigationWork: UUID? = nil) async -> Bool {
+                   navigationWork: UUID? = nil,
+                   newlyReachedWaypointID: String? = nil) async -> Bool {
         guard let destination else { return false }
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
@@ -993,9 +998,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
             let lock = routeLockStore.activeLock
-            let newlyPassed = Set(lock?.passedWaypointIDs(at: .init(
+            var newlyPassed = Set(lock?.passedWaypointIDs(at: .init(
                 latitude: start.latitude, longitude: start.longitude
             )) ?? [])
+            if let newlyReachedWaypointID {
+                newlyPassed.insert(newlyReachedWaypointID)
+            }
             let visited = Set(lock?.visitedWaypointIDs ?? []).union(newlyPassed)
             let lockedWaypoints = lock?.waypoints.filter { $0.required && !visited.contains($0.id) } ?? []
             let currentLockedOptions = lock.map {
@@ -1755,21 +1763,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func markReachedWaypoints(at location: CLLocation, settings: DriveSettings) {
-        guard let lock = routeLockStore.activeLock else { return }
+        guard pendingReachedWaypointID == nil,
+              let lock = routeLockStore.activeLock else { return }
         let visited = Set(lock.visitedWaypointIDs ?? [])
         guard let reachedID = RouteWaypointVisitPolicy.reachedWaypointID(
             waypoints: lock.waypoints, visitedIDs: visited, location: location
         ) else { return }
-        routeLockStore.update { current in
-            var ids = current.visitedWaypointIDs ?? []
-            if !ids.contains(reachedID) { ids.append(reachedID) }
-            current.visitedWaypointIDs = ids
-        }
-        activeRouteLock = routeLockStore.activeLock
+        pendingReachedWaypointID = reachedID
         let session = navigationSessionGeneration
         Task {
-            await calculate(from: location.coordinate, settings: settings,
-                            navigationSession: session)
+            _ = await calculate(from: location.coordinate, settings: settings,
+                                navigationSession: session,
+                                newlyReachedWaypointID: reachedID)
+            if pendingReachedWaypointID == reachedID {
+                pendingReachedWaypointID = nil
+            }
         }
     }
 
