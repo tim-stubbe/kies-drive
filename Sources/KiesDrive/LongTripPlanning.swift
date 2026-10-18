@@ -658,16 +658,30 @@ enum RemainingRoutePlanningPolicy {
         let timeRemainder = max(0.000_001, 1 - timeStart)
         return candidates.compactMap { candidate in
             let candidateTime = candidate.timeProgress ?? candidate.progress
-            let candidateTimeStart = candidate.timeProgress == nil ? distanceStart : timeStart
-            let candidateTimeRemainder = candidate.timeProgress == nil ? distanceRemainder : timeRemainder
-            guard candidate.progress > distanceStart + 0.000_1,
-                  candidateTime > candidateTimeStart + 0.000_1 else { return nil }
+            // Physical route progress is authoritative for whether a place is
+            // still ahead. Traffic can shorten the current ETA enough that a
+            // previously stored time fraction appears to be behind `timeStart`
+            // even though the stop is visibly kilometres ahead on the route.
+            guard candidate.progress > distanceStart + 0.000_1 else { return nil }
+            let rebasedDistance = min(1, max(0,
+                (candidate.progress - distanceStart) / distanceRemainder
+            ))
+            let rebasedTime: Double
+            if candidate.timeProgress != nil,
+               candidateTime > timeStart + 0.000_1 {
+                rebasedTime = min(1, max(0,
+                    (candidateTime - timeStart) / timeRemainder
+                ))
+            } else {
+                // A missing or traffic-invalidated time position safely falls
+                // back to monotonic remaining distance instead of deleting the
+                // only usable pause/fuel candidate.
+                rebasedTime = rebasedDistance
+            }
             return BreakCandidate(
                 id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
-                progress: min(1, max(0, (candidate.progress - distanceStart) / distanceRemainder)),
-                timeProgress: min(1, max(0,
-                    (candidateTime - candidateTimeStart) / candidateTimeRemainder
-                )),
+                progress: rebasedDistance,
+                timeProgress: rebasedTime,
                 detourMetres: candidate.detourMetres,
                 detourIsEstimated: candidate.detourIsEstimated,
                 isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel

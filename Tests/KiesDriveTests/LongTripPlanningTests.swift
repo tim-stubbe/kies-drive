@@ -491,6 +491,34 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(remaining[1].timeProgress ?? 0, 1.0 / 3.0, accuracy: 0.001)
     }
 
+    func testRemainingRoutePlanningKeepsPhysicalStopAheadAfterTrafficEtaImproves() {
+        let aheadButOldTimeLooksPassed = BreakCandidate(
+            id: "ahead", name: "Raststätte voraus", coordinate: .init(),
+            progress: 0.65, timeProgress: 0.35,
+            detourMetres: 200, isOpen: true, supportsFuel: true
+        )
+
+        let remaining = RemainingRoutePlanningPolicy.rebasedCandidates(
+            [aheadButOldTimeLooksPassed], distanceProgress: 0.4, timeProgress: 0.5
+        )
+
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining[0].progress, 5.0 / 12.0, accuracy: 0.001)
+        XCTAssertEqual(remaining[0].timeProgress ?? -1, 5.0 / 12.0, accuracy: 0.001)
+    }
+
+    func testRemainingRoutePlanningStillDropsPhysicallyPassedStopDespiteEtaDrift() {
+        let passedButTimeLooksAhead = BreakCandidate(
+            id: "passed", name: "Raststätte zurück", coordinate: .init(),
+            progress: 0.35, timeProgress: 0.7,
+            detourMetres: 100, isOpen: true
+        )
+
+        XCTAssertTrue(RemainingRoutePlanningPolicy.rebasedCandidates(
+            [passedButTimeLooksAhead], distanceProgress: 0.4, timeProgress: 0.3
+        ).isEmpty)
+    }
+
     func testRemainingRouteFuelEstimateAccountsForDistanceAlreadyDriven() {
         let fraction = RemainingRoutePlanningPolicy.estimatedFuelFraction(
             departureFraction: 0.8, tankCapacityLitres: 50,
