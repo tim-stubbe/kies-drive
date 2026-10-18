@@ -294,6 +294,20 @@ def public_url(request: Request) -> str:
     return configured or str(request.base_url).rstrip("/")
 
 
+def well_known_url(identifier: str, suffix: str) -> str:
+    """Insert a well-known suffix before an issuer/resource path.
+
+    RFC 8414 and RFC 9728 do not append `/.well-known` after a path-based
+    identifier. For example, `/kies-drive/mcp` is discovered at
+    `/.well-known/oauth-protected-resource/kies-drive/mcp`.
+    """
+    parsed = urlparse(identifier)
+    path = parsed.path.rstrip("/")
+    return parsed._replace(
+        path=f"/.well-known/{suffix}{path}", params="", query="", fragment=""
+    ).geturl()
+
+
 def valid_oauth_redirect(value: str) -> bool:
     try:
         parsed = urlparse(value)
@@ -951,7 +965,9 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
     try:
         user = current_user(authorization)
     except HTTPException as exc:
-        metadata = f"{public_url(request)}/.well-known/oauth-protected-resource"
+        metadata = well_known_url(
+            f"{public_url(request)}/mcp", "oauth-protected-resource"
+        )
         raise HTTPException(exc.status_code, exc.detail, headers={
             "WWW-Authenticate": f'Bearer resource_metadata="{metadata}"'
         }) from exc

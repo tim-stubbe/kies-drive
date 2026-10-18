@@ -566,7 +566,7 @@ def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, mon
 
 def test_mcp_oauth_pkce_browser_login(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "oauth.db"))
-    monkeypatch.setenv("KIES_DRIVE_PUBLIC_URL", "https://drive.example.test")
+    monkeypatch.setenv("KIES_DRIVE_PUBLIC_URL", "https://drive.example.test/kies-drive")
     verification = {}
     monkeypatch.setattr(main, "send_verification_email",
                         lambda email, token: verification.update(email=email, token=token))
@@ -576,7 +576,10 @@ def test_mcp_oauth_pkce_browser_login(tmp_path, monkeypatch):
         "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}
     })
     assert challenge_response.status_code == 401
-    assert "oauth-protected-resource" in challenge_response.headers["www-authenticate"]
+    assert challenge_response.headers["www-authenticate"] == (
+        'Bearer resource_metadata="https://drive.example.test/'
+        '.well-known/oauth-protected-resource/kies-drive/mcp"'
+    )
     email, password = "mcp@example.com", "a-secure-mcp-password"
     client.post("/auth/register", json={"email": email, "password": password})
     client.get("/auth/verify-email", params={"token": verification["token"]})
@@ -620,3 +623,12 @@ def test_mcp_oauth_pkce_browser_login(tmp_path, monkeypatch):
         "redirect_uri": "https://chatgpt.com/connector/callback",
         "code": query["code"][0], "code_verifier": verifier,
     }).status_code == 400
+
+
+def test_well_known_urls_insert_before_path_components():
+    assert main.well_known_url(
+        "https://drive.example.test/kies-drive", "oauth-authorization-server"
+    ) == "https://drive.example.test/.well-known/oauth-authorization-server/kies-drive"
+    assert main.well_known_url(
+        "https://drive.example.test/kies-drive/mcp", "oauth-protected-resource"
+    ) == "https://drive.example.test/.well-known/oauth-protected-resource/kies-drive/mcp"
