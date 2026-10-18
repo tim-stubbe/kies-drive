@@ -62,12 +62,50 @@ struct CachedRoute: Codable {
     }
 
     func updatingNavigationProgress(_ progress: Double) -> CachedRoute {
-        .init(
+        guard progress.isFinite else { return self }
+        return .init(
             destinationName: destinationName, tripID: tripID,
             destinationCoordinate: destinationCoordinate, legs: legs,
             stations: stations, savedAt: savedAt,
             navigationProgress: min(1, max(navigationProgress ?? 0, progress))
         )
+    }
+}
+
+enum OfflineRouteCacheValidationPolicy {
+    static func isValid(_ route: CachedRoute) -> Bool {
+        guard !route.destinationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              route.savedAt.timeIntervalSinceReferenceDate.isFinite,
+              route.destinationCoordinate.map(isValid) ?? true,
+              route.navigationProgress.map({ $0.isFinite && (0...1).contains($0) }) ?? true,
+              !route.legs.isEmpty,
+              route.legs.allSatisfy(isValid),
+              route.legs.contains(where: { $0.distance > 0 }),
+              route.stations.allSatisfy(isValid)
+        else { return false }
+        return true
+    }
+
+    private static func isValid(_ leg: CachedRoute.Leg) -> Bool {
+        leg.distance.isFinite && leg.distance >= 0
+            && leg.travelTime.isFinite && leg.travelTime >= 0
+            && (leg.coordinates?.allSatisfy(isValid) ?? true)
+            && leg.steps.allSatisfy { step in
+                step.distance.isFinite && step.distance >= 0
+                    && (step.coordinates?.allSatisfy(isValid) ?? true)
+            }
+    }
+
+    private static func isValid(_ station: FuelStation) -> Bool {
+        isValid(.init(latitude: station.lat, longitude: station.lon))
+            && station.price.isFinite && station.price >= 0
+            && station.distanceKm.isFinite && station.distanceKm >= 0
+    }
+
+    private static func isValid(_ coordinate: DriveCoordinate) -> Bool {
+        coordinate.latitude.isFinite && coordinate.longitude.isFinite
+            && (-90...90).contains(coordinate.latitude)
+            && (-180...180).contains(coordinate.longitude)
     }
 }
 
@@ -93,11 +131,14 @@ struct OfflineRouteCacheStore {
 
     func load() -> CachedRoute? {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(CachedRoute.self, from: data)
+        guard let route = try? JSONDecoder().decode(CachedRoute.self, from: data),
+              OfflineRouteCacheValidationPolicy.isValid(route) else { return nil }
+        return route
     }
 
     @discardableResult
     func save(_ route: CachedRoute, fileManager: FileManager = .default) -> Bool {
+        guard OfflineRouteCacheValidationPolicy.isValid(route) else { return false }
         do {
             try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(),
                                             withIntermediateDirectories: true)
@@ -1681,7 +1722,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if let route = offlineCacheStore.load() { return route }
         // One-time migration from the legacy large UserDefaults value.
         guard let data = UserDefaults.standard.data(forKey: Self.cacheKey),
-              let route = try? JSONDecoder().decode(CachedRoute.self, from: data) else { return nil }
+              let route = try? JSONDecoder().decode(CachedRoute.self, from: data),
+              OfflineRouteCacheValidationPolicy.isValid(route) else { return nil }
         if offlineCacheStore.save(route) {
             UserDefaults.standard.removeObject(forKey: Self.cacheKey)
         }

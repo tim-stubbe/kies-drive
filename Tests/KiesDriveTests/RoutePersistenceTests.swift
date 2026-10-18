@@ -135,6 +135,42 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(route.updatingNavigationProgress(0.4).navigationProgress, 0.6)
         XCTAssertEqual(route.updatingNavigationProgress(0.75).navigationProgress, 0.75)
         XCTAssertEqual(route.updatingNavigationProgress(2).navigationProgress, 1)
+        XCTAssertEqual(route.updatingNavigationProgress(.nan).navigationProgress, 0.6)
+    }
+
+    func testOfflineRouteStoreRejectsSemanticallyInvalidCache() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiesDriveInvalidOfflineCache-\(UUID().uuidString)",
+                                    isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = OfflineRouteCacheStore(fileURL: directory.appendingPathComponent("route.json"))
+        let invalid = CachedRoute(
+            destinationName: "Ziel", destinationCoordinate: .init(latitude: 123, longitude: 8),
+            legs: [.init(distance: 1_000, travelTime: 60, steps: [], coordinates: nil)],
+            stations: [], savedAt: Date(), navigationProgress: 0.5
+        )
+
+        XCTAssertFalse(OfflineRouteCacheValidationPolicy.isValid(invalid))
+        XCTAssertFalse(store.save(invalid))
+        XCTAssertNil(store.load())
+    }
+
+    func testOfflineRouteStoreRejectsInvalidProgressFromReadableJSON() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiesDriveInvalidOfflineProgress-\(UUID().uuidString)",
+                                    isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("route.json")
+        let store = OfflineRouteCacheStore(fileURL: url)
+        let invalid = CachedRoute(
+            destinationName: "Ziel", destinationCoordinate: .init(latitude: 50, longitude: 8),
+            legs: [.init(distance: 1_000, travelTime: 60, steps: [], coordinates: nil)],
+            stations: [], savedAt: Date(), navigationProgress: 1.5
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(invalid).write(to: url)
+
+        XCTAssertNil(store.load())
     }
 
     func testOfflineCacheProgressIsRetainedOnlyForSameTrip() {
