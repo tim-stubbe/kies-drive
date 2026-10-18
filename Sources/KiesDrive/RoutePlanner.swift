@@ -2407,6 +2407,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ) {
                 isManeuverGuidanceReliable = true
                 onRouteRecoveryFixCount = 0
+                DriveDiagnosticStore.append(
+                    .routeRejoined,
+                    detail: DriveDiagnosticDetail.navigationSample(
+                        "Ursprüngliche Route stabil wieder erreicht", location: location
+                    )
+                )
             }
         } else {
             onRouteRecoveryFixCount = 0

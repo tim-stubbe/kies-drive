@@ -243,7 +243,7 @@ enum DriveUsageSegmentPolicy {
 }
 
 enum DriveDiagnosticKind: String, Codable {
-    case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
+    case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
 }
@@ -353,7 +353,9 @@ struct DriveDiagnosticSummary: Equatable {
         // work from that drive may finish later, but must not retroactively
         // turn a clean session into a warning or critical result.
         let session = terminal.map { events[start...$0] } ?? events[start...]
-        let lastRerouteRecovery = session.lastIndex(where: { $0.kind == .rerouteSucceeded })
+        let lastRerouteRecovery = session.lastIndex(where: {
+            $0.kind == .rerouteSucceeded || $0.kind == .routeRejoined
+        })
         let unresolvedReroutes = lastRerouteRecovery.map {
             session[session.index(after: $0)...]
         } ?? session[session.startIndex...]

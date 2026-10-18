@@ -1191,6 +1191,34 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
+    func testDiagnosticSummaryClearsFailedRerouteAfterStableOnlineRejoin() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .rerouteRequested, detail: "Falsche Abfahrt"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Kein Netz"),
+            DriveDiagnosticEvent(kind: .routeRejoined, detail: "Ursprüngliche Route erreicht"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.rerouteFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+        XCTAssertTrue(summary.recommendation.contains("automatisch behoben"))
+    }
+
+    func testDiagnosticSummaryKeepsFailureAfterLatestOnlineRejoinOpen() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .routeRejoined, detail: "Ursprüngliche Route erreicht"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Später erneut kein Netz"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.rerouteFailures, 1)
+        XCTAssertEqual(summary.resolvedRouteIssues, 0)
+    }
+
     func testOfflineRejoinDoesNotHideFailedOnlineReroute() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
