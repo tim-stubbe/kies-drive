@@ -234,6 +234,17 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(TollLookupBatchPolicy.complete([standard]))
         XCTAssertFalse(TollLookupBatchPolicy.complete([standard, standard]))
         XCTAssertTrue(TollLookupBatchPolicy.complete([avoiding, standard]))
+        XCTAssertEqual(TollLookupBatchPolicy.requestedVariants(
+            mainRouteAvoidsTolls: false, comparisonAvailable: false
+        ), Set([false]))
+        XCTAssertEqual(TollLookupBatchPolicy.requestedVariants(
+            mainRouteAvoidsTolls: true, comparisonAvailable: false
+        ), Set([true]))
+        XCTAssertEqual(TollLookupBatchPolicy.requestedVariants(
+            mainRouteAvoidsTolls: true, comparisonAvailable: true
+        ), Set([false, true]))
+        XCTAssertTrue(TollLookupBatchPolicy.complete([standard], expected: [false]))
+        XCTAssertTrue(TollLookupBatchPolicy.complete([avoiding], expected: [true]))
     }
 
     func testRouteProjectionMeasuresBetweenSparseGeometryPoints() throws {

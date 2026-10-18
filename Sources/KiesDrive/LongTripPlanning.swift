@@ -47,8 +47,13 @@ enum TollLookupBatchPolicy {
     /// Both route variants form one comparison. Do not publish either result
     /// until the requested pair is complete, otherwise the UI can briefly
     /// compare fresh provider data with an unrelated previous journey.
-    static func complete(_ items: [TollLookupBatchItem]) -> Bool {
-        Set(items.map(\.avoidTolls)) == Set([false, true])
+    static func requestedVariants(mainRouteAvoidsTolls: Bool,
+                                  comparisonAvailable: Bool) -> Set<Bool> {
+        comparisonAvailable ? Set([false, true]) : Set([mainRouteAvoidsTolls])
+    }
+
+    static func complete(_ items: [TollLookupBatchItem], expected: Set<Bool> = [false, true]) -> Bool {
+        Set(items.map(\.avoidTolls)) == expected
     }
 }
 

@@ -2850,7 +2850,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ?? String(format: "%.4f, %.4f", start.latitude, start.longitude)
         var results: [TollLookupBatchItem] = []
         var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
-        for avoidTolls in [false, true] {
+        let requestedVariants = TollLookupBatchPolicy.requestedVariants(
+            mainRouteAvoidsTolls: settings.avoidTolls,
+            comparisonAvailable: comparisonRoute != nil
+        )
+        for avoidTolls in [false, true] where requestedVariants.contains(avoidTolls) {
             let usesComparison = TollVariantRoutePolicy.usesComparisonRoute(
                 requestAvoidsTolls: avoidTolls,
                 mainRouteAvoidsTolls: settings.avoidTolls,
@@ -2897,7 +2901,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             for await result in group { results.append(result) }
         }
-        guard TollLookupBatchPolicy.complete(results),
+        guard TollLookupBatchPolicy.complete(results, expected: requestedVariants),
               RouteEnrichmentPublicationPolicy.isCurrent(
                 route: routeGeneration, currentRoute: routeCalculationGeneration,
                 request: generation, currentRequest: tollLoadGeneration
