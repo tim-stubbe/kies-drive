@@ -1746,6 +1746,21 @@ enum NavigationAsyncWorkPolicy {
     }
 }
 
+enum NavigationRerouteSupersessionPolicy {
+    /// A route edit or reached mandatory waypoint starts a fresh calculation
+    /// inside the same navigation session. It supersedes an automatic reroute
+    /// so the older task and watchdog cannot later publish a false failure or
+    /// leave the driving screen in its recalculating state. The reroute's own
+    /// calculation carries a work token and must retain ownership.
+    static func shouldInvalidateAutomaticReroute(
+        isRecalculating: Bool,
+        navigationSession: UUID?,
+        navigationWork: UUID?
+    ) -> Bool {
+        isRecalculating && navigationSession != nil && navigationWork == nil
+    }
+}
+
 enum OfflineRouteCachePolicy {
     /// New caches are tied to a geographic destination, not merely a place
     /// label that may occur in several cities. Name-only matching remains as

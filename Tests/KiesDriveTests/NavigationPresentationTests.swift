@@ -683,6 +683,22 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testManualRouteChangeSupersedesAutomaticRerouteWithoutCancellingItself() {
+        let session = UUID()
+        XCTAssertTrue(NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
+            isRecalculating: true, navigationSession: session, navigationWork: nil
+        ))
+        XCTAssertFalse(NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
+            isRecalculating: true, navigationSession: session, navigationWork: UUID()
+        ), "The automatic reroute calculation must retain its own work ownership")
+        XCTAssertFalse(NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
+            isRecalculating: true, navigationSession: nil, navigationWork: nil
+        ), "A route preview outside navigation has no reroute lifecycle to supersede")
+        XCTAssertFalse(NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
+            isRecalculating: false, navigationSession: session, navigationWork: nil
+        ))
+    }
+
     func testRemoteSyncPolicyIsFastOnlyDuringNavigationAndRejectsBadFixes() {
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: true), 5)
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: false), 15)

@@ -1674,6 +1674,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                    navigationWork: UUID? = nil,
                    newlyReachedWaypointID: String? = nil) async -> Bool {
         guard let destination else { return false }
+        if NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
+            isRecalculating: isRecalculating,
+            navigationSession: navigationSession,
+            navigationWork: navigationWork
+        ) {
+            rerouteGeneration = UUID()
+            isRecalculating = false
+        }
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
         destinationSearchGeneration = UUID()
