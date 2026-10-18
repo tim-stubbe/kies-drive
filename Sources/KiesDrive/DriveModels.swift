@@ -307,8 +307,11 @@ struct DriveDiagnosticSummary: Equatable {
 
     let quality: Quality
     let eventCount: Int
+    let rerouteRequests: Int
     let rerouteFailures: Int
     let rejectedLocations: Int
+    let arrivals: Int
+    let maneuverAnnouncements: Int
     let missedFinalCues: Int
     let speechDeliveryFailures: Int
     let offlineRouteDepartures: Int
@@ -368,7 +371,10 @@ struct DriveDiagnosticSummary: Equatable {
                 : "Keine auffälligen Navigationsprobleme erkannt."
         }
         return .init(quality: quality, eventCount: session.count,
+                     rerouteRequests: reroutes,
                      rerouteFailures: failures, rejectedLocations: rejected,
+                     arrivals: session.filter { $0.kind == .arrivalReached }.count,
+                     maneuverAnnouncements: session.filter { $0.kind == .maneuverAnnounced }.count,
                      missedFinalCues: missed, speechDeliveryFailures: speechFailures,
                      offlineRouteDepartures: offlineDepartures,
                      resolvedRouteIssues: resolved, recommendation: recommendation)

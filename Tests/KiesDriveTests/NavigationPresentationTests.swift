@@ -901,8 +901,11 @@ final class NavigationPresentationTests: XCTestCase {
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
         XCTAssertEqual(summary.quality, .good)
         XCTAssertEqual(summary.eventCount, 3)
+        XCTAssertEqual(summary.rerouteRequests, 0)
         XCTAssertEqual(summary.rerouteFailures, 0)
         XCTAssertEqual(summary.rejectedLocations, 1)
+        XCTAssertEqual(summary.arrivals, 0)
+        XCTAssertEqual(summary.maneuverAnnouncements, 1)
         XCTAssertEqual(summary.resolvedRouteIssues, 0)
     }
 

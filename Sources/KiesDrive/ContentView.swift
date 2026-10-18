@@ -1824,13 +1824,6 @@ struct DriveSettingsView: View {
                 }
                 Section("Navigationsqualität") {
                     let latestSummary = DriveDiagnosticSummary.latestSession(in: diagnosticEvents)
-                    let reroutes = diagnosticEvents.filter { $0.kind == .rerouteRequested }.count
-                    let failures = diagnosticEvents.filter { $0.kind == .rerouteFailed }.count
-                    let rejectedLocations = diagnosticEvents.filter { $0.kind == .locationRejected }.count
-                    let arrivals = diagnosticEvents.filter { $0.kind == .arrivalReached }.count
-                    let announcements = diagnosticEvents.filter { $0.kind == .maneuverAnnounced }.count
-                    let missedFinalCues = diagnosticEvents.filter { $0.kind == .maneuverFinalCueMissed }.count
-                    let speechFailures = diagnosticEvents.filter { $0.kind == .speechDeliveryFailed }.count
                     if let latestSummary {
                         LabeledContent("Letzte Fahrt", value: latestSummary.quality.rawValue)
                         Text(latestSummary.recommendation)
@@ -1842,17 +1835,18 @@ struct DriveSettingsView: View {
                             Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
+                        LabeledContent("Ereignisse dieser Fahrt", value: "\(latestSummary.eventCount)")
+                        LabeledContent("Neuberechnungen", value: "\(latestSummary.rerouteRequests)")
+                        LabeledContent("Fehlgeschlagen", value: "\(latestSummary.rerouteFailures)")
+                        LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
+                        LabeledContent("Ziel sicher erkannt", value: "\(latestSummary.arrivals)")
+                        LabeledContent("Gesprochene Fahrhinweise", value: "\(latestSummary.maneuverAnnouncements)")
+                        LabeledContent("Nicht beendete Fahransagen", value: "\(latestSummary.speechDeliveryFailures)")
+                        LabeledContent("Letzte Ansage verpasst", value: "\(latestSummary.missedFinalCues)")
                     } else {
                         LabeledContent("Letzte Fahrt", value: "Noch keine Daten")
                     }
-                    LabeledContent("Aufgezeichnete Fahrereignisse", value: "\(diagnosticEvents.count)")
-                    LabeledContent("Neuberechnungen", value: "\(reroutes)")
-                    LabeledContent("Fehlgeschlagen", value: "\(failures)")
-                    LabeledContent("GPS-Ausreißer verworfen", value: "\(rejectedLocations)")
-                    LabeledContent("Ziele sicher erkannt", value: "\(arrivals)")
-                    LabeledContent("Gesprochene Fahrhinweise", value: "\(announcements)")
-                    LabeledContent("Nicht beendete Fahransagen", value: "\(speechFailures)")
-                    LabeledContent("Letzte Ansage verpasst", value: "\(missedFinalCues)")
+                    LabeledContent("Ereignisse im lokalen Archiv", value: "\(diagnosticEvents.count)")
                     Text("Die Diagnose bleibt lokal auf diesem Gerät und enthält keine vollständige Standortspur.")
                         .font(.caption).foregroundStyle(.secondary)
                     ShareLink(item: DriveDiagnosticReport.text(
