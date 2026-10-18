@@ -1081,7 +1081,7 @@ struct DriveContentView: View {
     }
 
     private func stationDetailSheet(_ station: FuelStation) -> some View {
-        let isVia = planner.viaStations.contains(where: { $0.id == station.id })
+        let isVia = planner.isRouteStopSelected(id: station.id)
         let isUpdating = stationRouteUpdateID == station.id
         return NavigationStack {
             VStack(alignment: .leading, spacing: 20) {
@@ -1327,7 +1327,7 @@ struct DriveContentView: View {
                     Text("Keine geöffneten Tankstellen mit Preis in Routennähe gefunden.").foregroundStyle(.secondary)
                 }
                 ForEach(planner.stations) { station in
-                    let isVia = planner.viaStations.contains(where: { $0.id == station.id })
+                    let isVia = planner.isRouteStopSelected(id: station.id)
                     HStack {
                         Button { selectedStation = station; position = .region(.init(center: station.coordinate, latitudinalMeters: 8_000, longitudinalMeters: 8_000)) } label: {
                             HStack {

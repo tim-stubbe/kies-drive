@@ -301,8 +301,14 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             routeManagementItems.append(item)
         }
         nearbyFuelItems.append(contentsOf: planner.stations.prefix(3).map { station in
+            let selected = planner.isRouteStopSelected(id: station.id)
+            let detail = selected
+                ? String(format: "%.3f € · hinzugefügt", station.price)
+                : String(format: "%.3f € · %.1f km", station.price, station.distanceKm)
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
-                                  detailText: String(format: "%.3f € · %.1f km", station.price, station.distanceKm))
+                                  detailText: detail,
+                                  image: UIImage(systemName: selected
+                                                 ? "checkmark.circle.fill" : "fuelpump.fill"))
             item.handler = { _, completion in
                 Task {
                     guard let start = LocationService.shared.location?.coordinate else {

@@ -1056,6 +1056,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         return viaStations.filter { !lockedIDs.contains($0.id) }
     }
 
+    func isRouteStopSelected(id: String) -> Bool {
+        RouteStopSelectionPolicy.contains(
+            stopID: id,
+            transientStationIDs: viaStations.map(\.id),
+            lockedWaypoints: activeRouteLock?.waypoints ?? []
+        )
+    }
+
     @discardableResult
     func removeRouteStop(id: String, from start: CLLocationCoordinate2D,
                          settings: DriveSettings) async -> Bool {
