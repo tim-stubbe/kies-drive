@@ -103,6 +103,7 @@ class RegistrationCompletionRequest(BaseModel):
 
 AUTH_ATTEMPTS: dict[str, list[float]] = {}
 REMOTE_COMMAND_MAX_AGE = timedelta(minutes=5)
+MAX_REMOTE_STATE_BYTES = 256 * 1024
 
 
 def rate_limit(key: str, maximum: int = 8, window: int = 900) -> None:
@@ -158,6 +159,37 @@ def remote_state_freshness(payload: dict[str, Any], stored_at: str | None,
     # payload is not evidence of a live car and must remain visibly stale.
     live = -5 <= delta <= 30
     return observed_text, max(0, delta), live
+
+
+def encode_remote_state(payload: Any) -> str:
+    """Validate the phone-owned live snapshot before persisting it.
+
+    MCP reads must remain available even when a buggy or outdated app sends a
+    malformed snapshot. The size limit also prevents one authenticated device
+    from filling the database with unbounded navigation state.
+    """
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Live-Daten müssen ein Objekt sein.")
+    try:
+        encoded = json.dumps(
+            payload, ensure_ascii=False, allow_nan=False,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, "Live-Daten enthalten ungültige Werte.") from exc
+    if len(encoded.encode("utf-8")) > MAX_REMOTE_STATE_BYTES:
+        raise HTTPException(413, "Live-Daten sind zu groß.")
+    return encoded
+
+
+def decode_remote_state(payload: str | None) -> dict[str, Any]:
+    if not payload:
+        return {}
+    try:
+        decoded = json.loads(payload)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return decoded if isinstance(decoded, dict) else {}
 
 
 @app.get("/healthz")
@@ -718,10 +750,14 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
 @app.put("/api/navigation/remote/state")
 async def put_state(request: Request, authorization: str | None = Header(None)):
     user = current_user(authorization)
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, "Live-Daten sind kein gültiges JSON.") from exc
+    encoded = encode_remote_state(payload)
     with db() as conn:
         conn.execute("INSERT INTO user_state(user_id,payload,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at",
-                     (user["id"], json.dumps(payload), datetime.now(timezone.utc).isoformat()))
+                     (user["id"], encoded, datetime.now(timezone.utc).isoformat()))
     return {"ok": True}
 
 
@@ -904,7 +940,7 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
                 }
             elif isinstance(name, str) and name.startswith("get_"):
                 row = conn.execute("SELECT payload,updated_at FROM user_state WHERE user_id=?", (user["id"],)).fetchone()
-                state = json.loads(row["payload"]) if row else {}
+                state = decode_remote_state(row["payload"] if row else None)
                 keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
                 value = {"active_route": state.get("active_route"), "route_lock": state.get("route_lock")} if name == "get_active_route" else state.get(keys.get(name, ""))
                 observed_at, age, live = remote_state_freshness(

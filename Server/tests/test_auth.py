@@ -442,6 +442,25 @@ def test_remote_state_freshness_rejects_materially_future_device_clock():
     assert live is False
 
 
+def test_remote_state_payload_is_bounded_and_mcp_safe():
+    encoded = main.encode_remote_state({"speed_kmh": 82, "recorded_at": "2026-10-18T12:00:00Z"})
+    assert main.decode_remote_state(encoded)["speed_kmh"] == 82
+    assert main.decode_remote_state("not-json") == {}
+    assert main.decode_remote_state("[]") == {}
+
+    try:
+        main.encode_remote_state(["not", "an", "object"])
+        assert False, "A non-object snapshot must be rejected"
+    except main.HTTPException as exc:
+        assert exc.status_code == 422
+
+    try:
+        main.encode_remote_state({"oversized": "x" * main.MAX_REMOTE_STATE_BYTES})
+        assert False, "An oversized snapshot must be rejected"
+    except main.HTTPException as exc:
+        assert exc.status_code == 413
+
+
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
     verification = {}
