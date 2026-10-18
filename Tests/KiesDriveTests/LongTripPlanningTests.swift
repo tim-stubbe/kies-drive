@@ -130,6 +130,24 @@ final class LongTripPlanningTests: XCTestCase {
         ), [])
     }
 
+    func testDeferredBreakSpeechPromotesToNewestUrgency() {
+        XCTAssertEqual(DrivingRestReminderStatePolicy.stageToRetry(
+            pending: .plan, newlyDue: .soon
+        ), .soon)
+        XCTAssertEqual(DrivingRestReminderStatePolicy.stageToRetry(
+            pending: .plan, newlyDue: .due
+        ), .due)
+        XCTAssertEqual(DrivingRestReminderStatePolicy.stageToRetry(
+            pending: .soon, newlyDue: nil
+        ), .soon)
+        XCTAssertEqual(DrivingRestReminderStatePolicy.stageToRetry(
+            pending: nil, newlyDue: .plan
+        ), .plan)
+        XCTAssertNil(DrivingRestReminderStatePolicy.stageToRetry(
+            pending: nil, newlyDue: nil
+        ))
+    }
+
     func testBreakReminderTextCanBeRebuiltForDeferredSpeech() {
         XCTAssertEqual(NavigationBreakReminderTextPolicy.text(
             stage: .plan, plannedName: "Autohof Süd"

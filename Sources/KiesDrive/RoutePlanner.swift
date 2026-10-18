@@ -2330,42 +2330,53 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             breaks: longTripPlan?.results.first?.breaks ?? [],
             currentRouteProgress: currentProgress
         )
-        if settings.voiceGuidance,
-           let raw = drivingRestState.pendingSpokenReminderRawValue,
-           let pendingStage = NavigationBreakReminderPolicy.Stage(rawValue: raw) {
-            let inFlight = pendingBreakReminderSpeech.values.contains { $0.stage == pendingStage } ||
-                activeBreakReminderSpeech.values.contains { $0.stage == pendingStage }
-            if inFlight { return }
-            let pendingText = NavigationBreakReminderTextPolicy.text(
-                stage: pendingStage, plannedName: plannedName
-            )
-            if speak(pendingText, priority: .status,
-                     breakReminderClaim: pendingStage) { return }
-        } else if drivingRestState.pendingSpokenReminderRawValue != nil {
-            drivingRestState.pendingSpokenReminderRawValue = nil
-            drivingRestStore.save(drivingRestState)
-        }
         let remaining = remainingTravelTime > 0 ? remainingTravelTime : totalTravelTime
-        guard let stage = NavigationBreakReminderPolicy.stage(
+        let newlyDueStage = NavigationBreakReminderPolicy.stage(
             continuousDriving: drivingRestState.continuousDriving,
             remainingTravelTime: remaining,
             delivered: deliveredBreakReminderStages
-        ) else { return }
-        deliveredBreakReminderStages.insert(stage)
-        let text = NavigationBreakReminderTextPolicy.text(
-            stage: stage, plannedName: plannedName
         )
-        breakReminderText = text
-        DriveDiagnosticStore.append(
-            .breakReminderShown,
-            detail: "Pausenerinnerung · \(stage) · \(text)"
+        let persistedPendingStage = drivingRestState.pendingSpokenReminderRawValue.flatMap(
+            NavigationBreakReminderPolicy.Stage.init(rawValue:)
         )
-        if settings.voiceGuidance {
-            // A break reminder must never interrupt an immediate turn cue.
-            drivingRestState.pendingSpokenReminderRawValue = stage.rawValue
-            drivingRestStore.save(drivingRestState)
-            _ = speak(text, priority: .status, breakReminderClaim: stage)
+        let stageToRetry = DrivingRestReminderStatePolicy.stageToRetry(
+            pending: persistedPendingStage, newlyDue: newlyDueStage
+        )
+
+        if let newlyDueStage {
+            deliveredBreakReminderStages.insert(newlyDueStage)
+            let text = NavigationBreakReminderTextPolicy.text(
+                stage: newlyDueStage, plannedName: plannedName
+            )
+            breakReminderText = text
+            DriveDiagnosticStore.append(
+                .breakReminderShown,
+                detail: "Pausenerinnerung · \(newlyDueStage) · \(text)"
+            )
         }
+
+        guard settings.voiceGuidance else {
+            if drivingRestState.pendingSpokenReminderRawValue != nil {
+                drivingRestState.pendingSpokenReminderRawValue = nil
+                drivingRestStore.save(drivingRestState)
+            }
+            return
+        }
+        guard let stageToRetry else { return }
+        if drivingRestState.pendingSpokenReminderRawValue != stageToRetry.rawValue {
+            drivingRestState.pendingSpokenReminderRawValue = stageToRetry.rawValue
+            drivingRestStore.save(drivingRestState)
+        }
+        let text = NavigationBreakReminderTextPolicy.text(
+            stage: stageToRetry, plannedName: plannedName
+        )
+        // Restore the visible reminder after an app/scene restart as well as
+        // the pending spoken claim.
+        breakReminderText = text
+        let inFlight = pendingBreakReminderSpeech.values.contains { $0.stage == stageToRetry } ||
+            activeBreakReminderSpeech.values.contains { $0.stage == stageToRetry }
+        guard !inFlight else { return }
+        _ = speak(text, priority: .status, breakReminderClaim: stageToRetry)
     }
 
     private func updateFuelReminder() {

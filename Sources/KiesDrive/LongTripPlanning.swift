@@ -1001,6 +1001,17 @@ enum DrivingRestReminderStatePolicy {
         let updated = Set(stages.map(\.rawValue))
         return updated == current ? nil : updated
     }
+
+    /// A status-priority reminder may wait behind an important maneuver. If
+    /// the fatigue clock advances meanwhile, retry the newest urgency instead
+    /// of speaking stale wording such as "in 30 minutes" after the break is
+    /// already due.
+    static func stageToRetry(
+        pending: NavigationBreakReminderPolicy.Stage?,
+        newlyDue: NavigationBreakReminderPolicy.Stage?
+    ) -> NavigationBreakReminderPolicy.Stage? {
+        [pending, newlyDue].compactMap { $0 }.max { $0.rawValue < $1.rawValue }
+    }
 }
 
 enum NavigationBreakReminderTextPolicy {
