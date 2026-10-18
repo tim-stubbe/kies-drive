@@ -523,6 +523,13 @@ enum NavigationVoiceSelectionPolicy {
         qualityRawValue * 100 +
             (identifier.localizedCaseInsensitiveContains("siri") ? 10 : 0)
     }
+
+    /// A saved voice is only used while it remains installed. This lets an
+    /// iCloud/device migration safely fall back to automatic voice selection.
+    static func selectedIdentifier(preferred: String, available: [String]) -> String? {
+        guard !preferred.isEmpty, available.contains(preferred) else { return nil }
+        return preferred
+    }
 }
 
 enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {

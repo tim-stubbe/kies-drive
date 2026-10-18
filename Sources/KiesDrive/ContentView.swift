@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import Contacts
+import AVFoundation
 #if os(iOS)
 import UIKit
 #endif
@@ -1848,6 +1849,15 @@ struct DriveSettingsView: View {
         case idle, testing, success, failed(String)
     }
 
+    private var germanNavigationVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language == "de-DE" }
+            .sorted {
+                if $0.quality != $1.quality { return $0.quality.rawValue > $1.quality.rawValue }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1921,6 +1931,23 @@ struct DriveSettingsView: View {
                         .onChange(of: settings.voiceGuidance) { _, enabled in
                             planner.setVoiceGuidanceEnabled(enabled)
                         }
+                    Picker("Navigationsstimme", selection: $settings.navigationVoiceIdentifier) {
+                        Text("Automatisch – beste Stimme").tag("")
+                        ForEach(germanNavigationVoices, id: \.identifier) { voice in
+                            Text(voice.name).tag(voice.identifier)
+                        }
+                    }
+                    Button {
+                        planner.previewNavigationVoice()
+                    } label: {
+                        Label("Stimme anhören", systemImage: "waveform.circle.fill")
+                    }
+                    .disabled(planner.isNavigating)
+                    if planner.isNavigating {
+                        Text("Die Hörprobe ist während einer aktiven Navigation deaktiviert, damit keine Abbiegeansage unterbrochen wird.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Picker("Kraftstoff", selection: $settings.fuel) {
                         ForEach(FuelKind.allCases) { Text($0.label).tag($0) }
                     }

@@ -19,6 +19,10 @@ final class DriveSettings: ObservableObject {
     @Published var avoidHighways: Bool { didSet { UserDefaults.standard.set(avoidHighways, forKey: "drive.avoidHighways") } }
     @Published var mapAppearance: DriveMapAppearance { didSet { UserDefaults.standard.set(mapAppearance.rawValue, forKey: "drive.mapAppearance") } }
     @Published var voiceGuidance: Bool { didSet { UserDefaults.standard.set(voiceGuidance, forKey: "drive.voiceGuidance") } }
+    /// Empty means Kies Drive automatically picks the best installed German voice.
+    @Published var navigationVoiceIdentifier: String {
+        didSet { UserDefaults.standard.set(navigationVoiceIdentifier, forKey: "drive.navigationVoiceIdentifier") }
+    }
     @Published var homeAddress: String { didSet { UserDefaults.standard.set(homeAddress, forKey: "drive.homeAddress") } }
 
     /// Fahrzeugdaten für Reichweiten-/Tankvorschläge.
@@ -50,6 +54,9 @@ final class DriveSettings: ObservableObject {
         // the calm road map. Hybrid remains available on demand.
         mapAppearance = DriveMapAppearance(rawValue: UserDefaults.standard.string(forKey: "drive.mapAppearance") ?? "standard") ?? .standard
         voiceGuidance = UserDefaults.standard.object(forKey: "drive.voiceGuidance") as? Bool ?? true
+        navigationVoiceIdentifier = UserDefaults.standard.string(
+            forKey: "drive.navigationVoiceIdentifier"
+        ) ?? ""
         homeAddress = UserDefaults.standard.string(forKey: "drive.homeAddress") ?? ""
 
         consumptionLPer100km = Self.sanitizedNumber(

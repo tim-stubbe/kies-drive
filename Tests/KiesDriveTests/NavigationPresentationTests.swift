@@ -1037,6 +1037,25 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertGreaterThan(enhancedSiri, enhancedGeneric)
     }
 
+    func testPreferredVoiceMustStillBeInstalled() {
+        XCTAssertEqual(
+            NavigationVoiceSelectionPolicy.selectedIdentifier(
+                preferred: "de.voice.anna", available: ["de.voice.anna", "de.voice.siri"]
+            ),
+            "de.voice.anna"
+        )
+        XCTAssertNil(
+            NavigationVoiceSelectionPolicy.selectedIdentifier(
+                preferred: "de.voice.removed", available: ["de.voice.anna"]
+            )
+        )
+        XCTAssertNil(
+            NavigationVoiceSelectionPolicy.selectedIdentifier(
+                preferred: "", available: ["de.voice.anna"]
+            )
+        )
+    }
+
     func testSpeechNormalisesCompactRoadNamesAndUnsafeCharacters() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("\u{FFFC} ↗ A66 • B40 – Richtung Köln (E40)"),

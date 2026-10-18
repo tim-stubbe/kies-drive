@@ -630,6 +630,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
     }
 
+    /// Plays a deliberate sample from settings without changing the normal
+    /// guidance toggle. Never interrupts live driving instructions.
+    @discardableResult
+    func previewNavigationVoice() -> Bool {
+        guard !isNavigating else { return false }
+        return speak(
+            "In 500 Metern rechts abbiegen auf die Autobahn A 66, Richtung Wiesbaden.",
+            priority: .status
+        )
+    }
+
     /// Beendet den Trip bewusst. Ein normales Stoppen/Pausieren der Navigation
     /// loescht den Lock dagegen nicht, damit Rast und App-Neustart sicher sind.
     func completeActiveTrip() {
@@ -3378,6 +3389,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private static func preferredGermanVoice() -> AVSpeechSynthesisVoice? {
         let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == "de-DE" }
+        if let identifier = NavigationVoiceSelectionPolicy.selectedIdentifier(
+            preferred: DriveSettings.shared.navigationVoiceIdentifier,
+            available: voices.map(\.identifier)
+        ), let selected = voices.first(where: { $0.identifier == identifier }) {
+            return selected
+        }
         return voices.max { lhs, rhs in
             let lhsScore = NavigationVoiceSelectionPolicy.score(
                 qualityRawValue: lhs.quality.rawValue, identifier: lhs.identifier
