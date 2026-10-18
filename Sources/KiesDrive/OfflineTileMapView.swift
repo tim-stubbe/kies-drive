@@ -43,6 +43,11 @@ struct OfflineTileMapView: View {
 
 private final class LocalXYZTileOverlay: MKTileOverlay {
     private let package: InstalledOfflineMapPackage
+    private let tileReadQueue = DispatchQueue(
+        label: "app.kies.drive.offline-tiles",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
 
     init(package: InstalledOfflineMapPackage) {
         self.package = package
@@ -57,14 +62,21 @@ private final class LocalXYZTileOverlay: MKTileOverlay {
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, (any Error)?) -> Void) {
-        guard let url = OfflineTileFilePolicy.tileURL(
-            z: path.z, x: path.x, y: path.y,
-            packageDirectory: package.directoryURL, manifest: package.manifest
-        ), let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
-            result(nil, nil)
-            return
+        // MapKit may request several tiles while SwiftUI is publishing a
+        // camera update. Disk I/O here must never block the main actor or
+        // delay the moving guidance surface. Every request still completes
+        // exactly once; nil deliberately exposes the safe online fallback.
+        let package = package
+        tileReadQueue.async {
+            guard let url = OfflineTileFilePolicy.tileURL(
+                z: path.z, x: path.x, y: path.y,
+                packageDirectory: package.directoryURL, manifest: package.manifest
+            ), let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+                result(nil, nil)
+                return
+            }
+            result(data, nil)
         }
-        result(data, nil)
     }
 }
 
