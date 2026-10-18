@@ -3203,6 +3203,24 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationArrivalPolicy.mayCompleteTrip(
             hasOpenRequiredWaypoints: true
         ), "Arrival must not silently skip a mandatory pass or user-selected stop")
+        XCTAssertFalse(NavigationArrivalPolicy.mayCompleteTrip(
+            hasOpenRequiredWaypoints: false,
+            guidanceReliable: false,
+            remainingRouteDistance: 20
+        ), "A nearby parallel road must not complete an unreliable route")
+        XCTAssertFalse(NavigationArrivalPolicy.mayCompleteTrip(
+            hasOpenRequiredWaypoints: false,
+            recalculating: true,
+            remainingRouteDistance: 20
+        ), "Arrival must wait for the replacement route")
+        XCTAssertFalse(NavigationArrivalPolicy.mayCompleteTrip(
+            hasOpenRequiredWaypoints: false,
+            remainingRouteDistance: NavigationArrivalPolicy.maximumRemainingRouteDistance + 1
+        ), "Geographic proximity alone is insufficient while the route still continues")
+        XCTAssertTrue(NavigationArrivalPolicy.mayCompleteTrip(
+            hasOpenRequiredWaypoints: false,
+            remainingRouteDistance: NavigationArrivalPolicy.maximumRemainingRouteDistance
+        ))
         let firstFix = Date(timeIntervalSince1970: 1_000)
         XCTAssertFalse(NavigationArrivalPolicy.hasSettled(
             since: firstFix, at: firstFix.addingTimeInterval(3.9)

@@ -3069,7 +3069,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             $0.required && !visited.contains($0.id)
         } ?? false
         guard NavigationArrivalPolicy.mayCompleteTrip(
-            hasOpenRequiredWaypoints: hasOpenRequiredWaypoints
+            hasOpenRequiredWaypoints: hasOpenRequiredWaypoints,
+            guidanceReliable: isManeuverGuidanceReliable,
+            recalculating: isRecalculating,
+            remainingRouteDistance: remainingDistanceMetres
         ) else {
             arrivalStrikes = 0
             arrivalCandidateSince = nil

@@ -1650,9 +1650,15 @@ enum NavigationGuidanceSpeedPolicy {
 enum NavigationArrivalPolicy {
     static let requiredConsecutiveFixes = 3
     static let requiredStableDuration: TimeInterval = 4
+    static let maximumRemainingRouteDistance: CLLocationDistance = 250
 
-    static func mayCompleteTrip(hasOpenRequiredWaypoints: Bool) -> Bool {
-        !hasOpenRequiredWaypoints
+    static func mayCompleteTrip(hasOpenRequiredWaypoints: Bool,
+                                guidanceReliable: Bool = true,
+                                recalculating: Bool = false,
+                                remainingRouteDistance: CLLocationDistance = 0) -> Bool {
+        !hasOpenRequiredWaypoints && guidanceReliable && !recalculating &&
+            remainingRouteDistance.isFinite && remainingRouteDistance >= 0 &&
+            remainingRouteDistance <= maximumRemainingRouteDistance
     }
 
     static func isArrivalFix(_ location: CLLocation, destination: CLLocationCoordinate2D) -> Bool {
