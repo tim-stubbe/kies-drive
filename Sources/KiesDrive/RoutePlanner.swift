@@ -961,7 +961,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             navigationActive: isNavigating
         )
         let currentRouteProgress = RouteSearchPolicy.currentProgress(
-            projected: projectedRouteProgress ?? installedRouteProgress,
+            projected: RouteSearchPolicy.installedProgress(
+                projected: projectedRouteProgress,
+                distanceEstimate: installedRouteProgress
+            ),
             persisted: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress,
             navigationActive: isNavigating
         )

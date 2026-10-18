@@ -2331,6 +2331,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRouteSearchProgressNeverMovesBackAtRouteCrossing() {
+        XCTAssertEqual(RouteSearchPolicy.installedProgress(
+            projected: 0.42, distanceEstimate: 0.50
+        ), 0.50)
+        XCTAssertEqual(RouteSearchPolicy.installedProgress(
+            projected: 0.58, distanceEstimate: 0.50
+        ), 0.58)
+        XCTAssertEqual(RouteSearchPolicy.installedProgress(
+            projected: nil, distanceEstimate: 0.50
+        ), 0.50)
+        XCTAssertNil(RouteSearchPolicy.installedProgress(
+            projected: .infinity, distanceEstimate: nil
+        ))
+    }
+
     func testRouteSearchRanksSmallUsefulDetourAheadOfEarlierLargeDetour() {
         let earlyLargeDetour = RouteSearchPolicy.rankingScore(
             detourMetres: 8_000, candidateProgress: 0.25,

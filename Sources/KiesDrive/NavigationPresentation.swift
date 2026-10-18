@@ -1548,6 +1548,19 @@ enum RouteSearchPolicy {
         return 0
     }
 
+    /// Resolves two progress signals that both describe the currently
+    /// installed route. At a cloverleaf, bridge or loop, pure geometric map
+    /// matching can snap to an earlier visit of the same coordinate. The
+    /// distance-derived estimate has already advanced past that visit, so a
+    /// route search must never move backwards and offer completed POIs again.
+    static func installedProgress(projected: Double?, distanceEstimate: Double?) -> Double? {
+        let values = [projected, distanceEstimate].compactMap { value -> Double? in
+            guard let value, value.isFinite else { return nil }
+            return min(1, max(0, value))
+        }
+        return values.max()
+    }
+
     /// Estimates progress on the currently installed route geometry. This is
     /// deliberately separate from the persistent trip-corridor progress: a
     /// reroute starts its new `legs` at the current vehicle position (0%),
