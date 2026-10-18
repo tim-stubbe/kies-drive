@@ -696,7 +696,10 @@ struct DrivingRestState: Codable, Equatable {
 }
 
 enum DrivingRestPolicy {
-    static let movingThresholdMetresPerSecond = 2.5
+    // Slow stop-and-go traffic is still driving and must never reset the
+    // fatigue timer. Stay above normal stationary GPS jitter, but well below
+    // walking/creeping speed so only a genuinely stopped vehicle starts rest.
+    static let movingThresholdMetresPerSecond = 0.8
     static let maximumCountedSampleGap: TimeInterval = 2 * 60
     static let restResetDuration: TimeInterval = 20 * 60
 

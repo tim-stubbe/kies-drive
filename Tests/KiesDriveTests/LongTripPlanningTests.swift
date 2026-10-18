@@ -735,6 +735,27 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 0)
     }
 
+    func testDrivingRestPolicyCountsProlongedStopAndGoAsDriving() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 27_000)
+        var state = DrivingRestState(
+            tripID: tripID, continuousDriving: 90 * 60,
+            lastSampleAt: start, stationarySince: nil
+        )
+
+        // Roughly 4.3 km/h: crawling traffic, not a restorative pause.
+        for minute in 1...21 {
+            state = DrivingRestPolicy.updated(
+                state, tripID: tripID,
+                at: start.addingTimeInterval(TimeInterval(minute * 60)),
+                speedMetresPerSecond: 1.2
+            )
+        }
+
+        XCTAssertNil(state.stationarySince)
+        XCTAssertEqual(state.continuousDriving, 111 * 60, accuracy: 0.001)
+    }
+
     func testDrivingRestStateStorePersistsWithoutLocationData() throws {
         let suite = "KiesDriveTests.DrivingRest.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
