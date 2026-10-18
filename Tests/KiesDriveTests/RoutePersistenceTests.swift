@@ -685,6 +685,20 @@ final class RoutePersistenceTests: XCTestCase {
         ), lock.defaultOptions)
     }
 
+    func testDirectFinalLegKeepsLockedTripOptions() {
+        let locked = LockedRouteOptions(avoidTolls: true, avoidHighways: true)
+
+        XCTAssertEqual(RouteWaypointRoutingPolicy.initialLockedOptions(
+            source: .direct, current: locked
+        ), locked, "Finishing all waypoints must not discard the trip's active rules")
+        XCTAssertEqual(RouteWaypointRoutingPolicy.initialLockedOptions(
+            source: .persistedLock, current: locked
+        ), locked)
+        XCTAssertNil(RouteWaypointRoutingPolicy.initialLockedOptions(
+            source: .transientStations, current: locked
+        ), "A non-locked preview must continue using the user's normal settings")
+    }
+
     func testActiveTripSurvivesStoreRecreationWithSegmentRules() throws {
         let suite = "RoutePersistenceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

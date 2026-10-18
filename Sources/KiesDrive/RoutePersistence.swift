@@ -588,6 +588,15 @@ enum RouteWaypointRoutingPolicy {
         }
         return transientStationCount > 0 ? .transientStations : .direct
     }
+
+    /// A direct route can still belong to a locked trip: it is the normal
+    /// state after the last mandatory waypoint has been reached. Keep the
+    /// active segment rules in that case instead of silently falling back to
+    /// the app-wide switches for the final leg or a later reroute.
+    static func initialLockedOptions(source: Source,
+                                     current: LockedRouteOptions?) -> LockedRouteOptions? {
+        source == .transientStations ? nil : current
+    }
 }
 
 enum RouteWaypointOptionsPolicy {

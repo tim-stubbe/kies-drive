@@ -1984,7 +1984,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 transientStationCount: viaStations.count
             )
             if waypointSource == .direct {
-                let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
+                let routes = try await computeRoutes(
+                    from: startItem, to: destination, settings: settings,
+                    alternates: true,
+                    lockedOptions: RouteWaypointRoutingPolicy.initialLockedOptions(
+                        source: waypointSource, current: currentLockedOptions
+                    )
+                )
                 guard calculationGeneration == routeCalculationGeneration else { return false }
                 // A strict trip corridor may reject every MapKit alternative.
                 // Never replace an active, still usable route with an empty
@@ -2061,7 +2067,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             liveRouteConstraintIdentity = routeLockStore.activeLock.map {
                 OfflineRouteConstraintIdentityPolicy.identity(for: $0)
             }
-            installedDefaultRouteOptions = lock?.defaultOptions ?? .init(
+            // Record the rules that actually produced this installed segment.
+            // After a mandatory waypoint these can differ from both the
+            // trip's original defaults and the app-wide switches.
+            installedDefaultRouteOptions = currentLockedOptions ?? .init(
                 avoidTolls: settings.avoidTolls,
                 avoidHighways: settings.avoidHighways
             )
@@ -2105,7 +2114,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     guard let self else { return }
                     let comparison = try? await self.computeRoutes(
                         from: startItem, to: destination, settings: settings,
-                        alternates: false, avoidTollsOverride: !settings.avoidTolls
+                        alternates: false,
+                        avoidTollsOverride: !(currentLockedOptions?.avoidTolls ?? settings.avoidTolls),
+                        lockedOptions: currentLockedOptions
                     ).first
                     let activeLock = self.routeLockStore.activeLock
                     let visited = Set(activeLock?.visitedWaypointIDs ?? [])
@@ -4409,6 +4420,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func buildLongTripPlan(settings: DriveSettings) {
         guard !legs.isEmpty else { longTripPlan = nil; return }
+        let mainRouteAvoidsTolls = installedDefaultRouteOptions?.avoidTolls ?? settings.avoidTolls
         let isRemainingRoutePlan = isNavigating && remainingDistanceMetres > 0 && totalDistance > 0
         let mainDistance = isRemainingRoutePlan ? remainingDistanceMetres : totalDistance
         let mainTime = isRemainingRoutePlan ? remainingTravelTime : totalTravelTime
@@ -4426,13 +4438,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 allCandidates, distanceProgress: distanceProgress, timeProgress: timeProgress
             ) : allCandidates
         var inputs = [RoutePlanningInput(
-            id: settings.avoidTolls ? "toll-avoiding" : "standard",
-            title: settings.avoidTolls ? "Maut vermeiden" : "Schnellste Route",
+            id: mainRouteAvoidsTolls ? "toll-avoiding" : "standard",
+            title: mainRouteAvoidsTolls ? "Maut vermeiden" : "Schnellste Route",
             distanceMetres: mainDistance,
             mapKitExpectedTravelTime: mainTime,
             unlimitedMotorwayFraction: unlimitedFraction,
             typicalUnlimitedSpeedKmh: 130,
-            toll: settings.avoidTolls ? researchedAvoidingToll : researchedStandardToll,
+            toll: mainRouteAvoidsTolls ? researchedAvoidingToll : researchedStandardToll,
             breakCandidates: candidates,
             installedRouteStartProgress: distanceProgress
         )]
@@ -4443,13 +4455,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 limits: comparisonSpeedLimits
             )
             inputs.append(.init(
-                id: settings.avoidTolls ? "standard" : "toll-avoiding",
-                title: settings.avoidTolls ? "Schnellste Route" : "Maut vermeiden",
+                id: mainRouteAvoidsTolls ? "standard" : "toll-avoiding",
+                title: mainRouteAvoidsTolls ? "Schnellste Route" : "Maut vermeiden",
                 distanceMetres: comparisonRoute.distance,
                 mapKitExpectedTravelTime: comparisonRoute.expectedTravelTime,
                 unlimitedMotorwayFraction: comparisonUnlimitedFraction,
                 typicalUnlimitedSpeedKmh: 130,
-                toll: settings.avoidTolls ? researchedStandardToll : researchedAvoidingToll,
+                toll: mainRouteAvoidsTolls ? researchedStandardToll : researchedAvoidingToll,
                 breakCandidates: breakCandidates(along: [comparisonRoute])
             ))
         }
@@ -4511,14 +4523,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) else { return }
         var results: [TollLookupBatchItem] = []
         var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
+        let mainRouteAvoidsTolls = installedDefaultRouteOptions?.avoidTolls ?? settings.avoidTolls
         let requestedVariants = TollLookupBatchPolicy.requestedVariants(
-            mainRouteAvoidsTolls: settings.avoidTolls,
+            mainRouteAvoidsTolls: mainRouteAvoidsTolls,
             comparisonAvailable: comparisonRoute != nil
         )
         for avoidTolls in [false, true] where requestedVariants.contains(avoidTolls) {
             let usesComparison = TollVariantRoutePolicy.usesComparisonRoute(
                 requestAvoidsTolls: avoidTolls,
-                mainRouteAvoidsTolls: settings.avoidTolls,
+                mainRouteAvoidsTolls: mainRouteAvoidsTolls,
                 comparisonAvailable: comparisonRoute != nil
             )
             let variantRoutes = usesComparison ? comparisonRoute.map { [$0] } ?? [] : legs
