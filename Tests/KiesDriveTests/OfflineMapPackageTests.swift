@@ -97,6 +97,29 @@ final class OfflineMapPackageTests: XCTestCase {
         )
     }
 
+    func testRejectsPackageWhenAnyTileIsCorrupt() throws {
+        try writeManifest(id: "partly-broken")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        try FileManager.default.createDirectory(
+            at: source.appendingPathComponent("tiles/8/135"), withIntermediateDirectories: true
+        )
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("tiles/8/135/89.png"))
+
+        XCTAssertThrowsError(
+            try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source)
+        )
+        XCTAssertTrue((try FileManager.default.contentsOfDirectory(atPath: root.path)).isEmpty)
+    }
+
+    func testSuccessfulImportLeavesNoStagingDirectory() throws {
+        try writeManifest(id: "atomic-map")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+
+        _ = try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source)
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["atomic-map"])
+    }
+
     func testCoverageFallsBackOutsidePackageAndForIncompleteOverview() {
         let bounds = OfflineMapBounds(north: 48, south: 45, east: 17, west: 8)
         XCTAssertTrue(OfflineMapCoveragePolicy.canUse(

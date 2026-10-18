@@ -184,7 +184,16 @@ final class OfflineMapPackageStore: ObservableObject {
             throw OfflineMapPackageError.packageAlreadyExists
         }
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        try fileManager.copyItem(at: sourceURL, to: destination)
+        // Copy into a hidden staging directory, validate the copied bytes and
+        // publish them with one move. A cancelled Files import or full disk
+        // must never leave a half-installed package that blocks the next try.
+        let staging = rootURL.appendingPathComponent(
+            ".import-\(UUID().uuidString)", isDirectory: true
+        )
+        defer { try? fileManager.removeItem(at: staging) }
+        try fileManager.copyItem(at: sourceURL, to: staging)
+        _ = try Self.readPackage(at: staging, fileManager: fileManager)
+        try fileManager.moveItem(at: staging, to: destination)
         reload()
         activePackageID = source.manifest.id
         return packages.first(where: { $0.id == source.manifest.id }) ?? source
@@ -218,7 +227,7 @@ final class OfflineMapPackageStore: ObservableObject {
               tileRootValues?.isSymbolicLink != true else {
             throw OfflineMapPackageError.missingTiles
         }
-        guard containsValidTile(in: tilesURL, manifest: manifest, fileManager: fileManager) else {
+        guard containsOnlyValidTiles(in: tilesURL, manifest: manifest, fileManager: fileManager) else {
             throw OfflineMapPackageError.invalidTiles
         }
         return InstalledOfflineMapPackage(
@@ -228,8 +237,8 @@ final class OfflineMapPackageStore: ObservableObject {
         )
     }
 
-    private static func containsValidTile(in tilesURL: URL, manifest: OfflineMapManifest,
-                                          fileManager: FileManager) -> Bool {
+    private static func containsOnlyValidTiles(in tilesURL: URL, manifest: OfflineMapManifest,
+                                               fileManager: FileManager) -> Bool {
         guard let enumerator = fileManager.enumerator(
             at: tilesURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
@@ -237,12 +246,17 @@ final class OfflineMapPackageStore: ObservableObject {
         ) else { return false }
         let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
         let rootComponents = tilesURL.resolvingSymlinksInPath().pathComponents
+        var foundTile = false
         for case let tileURL as URL in enumerator {
-            guard tileURL.pathExtension.lowercased() == "png",
-                  let values = try? tileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
-                  values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            guard tileURL.pathExtension.lowercased() == "png" else { continue }
+            guard let values = try? tileURL.resourceValues(
+                forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+            ), values.isRegularFile == true, values.isSymbolicLink != true,
+                  let fileSize = values.fileSize, fileSize > 0, fileSize <= 5_000_000 else {
+                return false
+            }
             let tileComponents = tileURL.resolvingSymlinksInPath().pathComponents
-            guard tileComponents.starts(with: rootComponents) else { continue }
+            guard tileComponents.starts(with: rootComponents) else { return false }
             let relative = tileComponents.dropFirst(rootComponents.count)
             guard relative.count == 3,
                   let zoom = Int(relative[relative.startIndex]),
@@ -256,10 +270,15 @@ final class OfflineMapPackageStore: ObservableObject {
                   data.count > pngSignature.count, data.prefix(pngSignature.count) == pngSignature,
                   let source = CGImageSourceCreateWithData(data as CFData, nil),
                   CGImageSourceGetCount(source) == 1,
-                  CGImageSourceCreateImageAtIndex(source, 0, nil) != nil else { continue }
-            return true
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                    as? [CFString: Any],
+                  let width = properties[kCGImagePropertyPixelWidth] as? Int,
+                  let height = properties[kCGImagePropertyPixelHeight] as? Int,
+                  (1...1_024).contains(width), (1...1_024).contains(height),
+                  CGImageSourceCreateImageAtIndex(source, 0, nil) != nil else { return false }
+            foundTile = true
         }
-        return false
+        return foundTile
     }
 
     private static func directorySize(at url: URL, fileManager: FileManager) -> Int64 {
