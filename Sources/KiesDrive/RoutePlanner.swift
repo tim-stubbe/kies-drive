@@ -554,6 +554,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             diagnosticManeuverDistance = nil
             activeUtterance = nil
             activeSpeechPriority = nil
+            if drivingRestState.pendingSpokenReminderRawValue != nil {
+                drivingRestState.pendingSpokenReminderRawValue = nil
+                drivingRestStore.save(drivingRestState)
+            }
             #if os(iOS)
             // `didCancel` normally releases this session, but Bluetooth route
             // changes can delay or omit that callback. Muting is an immediate
@@ -1967,17 +1971,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func updateBreakReminder(settings: DriveSettings) {
         guard drivingRestState.continuousDriving > 0 else {
+            let hadPendingSpeech = drivingRestState.pendingSpokenReminderRawValue != nil
             deliveredBreakReminderStages = []
+            drivingRestState.pendingSpokenReminderRawValue = nil
+            if hadPendingSpeech { drivingRestStore.save(drivingRestState) }
             breakReminderText = nil
             return
         }
-        let remaining = remainingTravelTime > 0 ? remainingTravelTime : totalTravelTime
-        guard let stage = NavigationBreakReminderPolicy.stage(
-            continuousDriving: drivingRestState.continuousDriving,
-            remainingTravelTime: remaining,
-            delivered: deliveredBreakReminderStages
-        ) else { return }
-        deliveredBreakReminderStages.insert(stage)
         let distanceProgress = RouteSearchPolicy.installedRouteProgress(
             totalDistance: totalDistance,
             remainingDistance: remainingDistanceMetres,
@@ -1993,21 +1993,41 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             breaks: longTripPlan?.results.first?.breaks ?? [],
             currentRouteProgress: currentProgress
         )
-        let text: String
-        switch stage {
-        case .plan:
-            text = plannedName.map { "In etwa 30 Minuten Pause bei \($0) einplanen." }
-                ?? "In etwa 30 Minuten eine Pause einplanen."
-        case .soon:
-            text = plannedName.map { "Bitte in etwa 10 Minuten bei \($0) Pause einlegen." }
-                ?? "Bitte in etwa 10 Minuten eine Pause einlegen."
-        case .due:
-            text = "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen."
+        if settings.voiceGuidance,
+           let raw = drivingRestState.pendingSpokenReminderRawValue,
+           let pendingStage = NavigationBreakReminderPolicy.Stage(rawValue: raw) {
+            let pendingText = NavigationBreakReminderTextPolicy.text(
+                stage: pendingStage, plannedName: plannedName
+            )
+            if speak(pendingText, priority: .status) {
+                drivingRestState.pendingSpokenReminderRawValue = nil
+                drivingRestStore.save(drivingRestState)
+                return
+            }
+        } else if drivingRestState.pendingSpokenReminderRawValue != nil {
+            drivingRestState.pendingSpokenReminderRawValue = nil
+            drivingRestStore.save(drivingRestState)
         }
+        let remaining = remainingTravelTime > 0 ? remainingTravelTime : totalTravelTime
+        guard let stage = NavigationBreakReminderPolicy.stage(
+            continuousDriving: drivingRestState.continuousDriving,
+            remainingTravelTime: remaining,
+            delivered: deliveredBreakReminderStages
+        ) else { return }
+        deliveredBreakReminderStages.insert(stage)
+        let text = NavigationBreakReminderTextPolicy.text(
+            stage: stage, plannedName: plannedName
+        )
         breakReminderText = text
         if settings.voiceGuidance {
             // A break reminder must never interrupt an immediate turn cue.
-            _ = speak(text, priority: .status)
+            if !speak(text, priority: .status) {
+                drivingRestState.pendingSpokenReminderRawValue = stage.rawValue
+                drivingRestStore.save(drivingRestState)
+            } else if drivingRestState.pendingSpokenReminderRawValue != nil {
+                drivingRestState.pendingSpokenReminderRawValue = nil
+                drivingRestStore.save(drivingRestState)
+            }
         }
     }
 

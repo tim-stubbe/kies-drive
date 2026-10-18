@@ -723,20 +723,26 @@ struct DrivingRestState: Codable, Equatable {
     var lastSampleAt: Date?
     var stationarySince: Date?
     var deliveredReminderRawValues: Set<Int> = []
+    /// A reminder can be visually delivered while its status-priority speech
+    /// is rejected by an active maneuver, Siri or a call. Persist the stage so
+    /// it remains retryable after a background suspension or app restart.
+    var pendingSpokenReminderRawValue: Int?
 
     init(tripID: UUID? = nil, continuousDriving: TimeInterval = 0,
          lastSampleAt: Date? = nil, stationarySince: Date? = nil,
-         deliveredReminderRawValues: Set<Int> = []) {
+         deliveredReminderRawValues: Set<Int> = [],
+         pendingSpokenReminderRawValue: Int? = nil) {
         self.tripID = tripID
         self.continuousDriving = continuousDriving
         self.lastSampleAt = lastSampleAt
         self.stationarySince = stationarySince
         self.deliveredReminderRawValues = deliveredReminderRawValues
+        self.pendingSpokenReminderRawValue = pendingSpokenReminderRawValue
     }
 
     private enum CodingKeys: String, CodingKey {
         case tripID, continuousDriving, lastSampleAt, stationarySince
-        case deliveredReminderRawValues
+        case deliveredReminderRawValues, pendingSpokenReminderRawValue
     }
 
     init(from decoder: Decoder) throws {
@@ -748,6 +754,9 @@ struct DrivingRestState: Codable, Equatable {
         deliveredReminderRawValues = try values.decodeIfPresent(
             Set<Int>.self, forKey: .deliveredReminderRawValues
         ) ?? []
+        pendingSpokenReminderRawValue = try values.decodeIfPresent(
+            Int.self, forKey: .pendingSpokenReminderRawValue
+        )
     }
 }
 
@@ -891,6 +900,22 @@ enum DrivingRestReminderStatePolicy {
     ) -> Set<Int>? {
         let updated = Set(stages.map(\.rawValue))
         return updated == current ? nil : updated
+    }
+}
+
+enum NavigationBreakReminderTextPolicy {
+    static func text(stage: NavigationBreakReminderPolicy.Stage,
+                     plannedName: String?) -> String {
+        switch stage {
+        case .plan:
+            return plannedName.map { "In etwa 30 Minuten Pause bei \($0) einplanen." }
+                ?? "In etwa 30 Minuten eine Pause einplanen."
+        case .soon:
+            return plannedName.map { "Bitte in etwa 10 Minuten bei \($0) Pause einlegen." }
+                ?? "Bitte in etwa 10 Minuten eine Pause einlegen."
+        case .due:
+            return "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen."
+        }
     }
 }
 

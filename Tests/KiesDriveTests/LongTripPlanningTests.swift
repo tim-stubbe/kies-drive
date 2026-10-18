@@ -45,6 +45,30 @@ final class LongTripPlanningTests: XCTestCase {
         ), [])
     }
 
+    func testBreakReminderTextCanBeRebuiltForDeferredSpeech() {
+        XCTAssertEqual(NavigationBreakReminderTextPolicy.text(
+            stage: .plan, plannedName: "Autohof Süd"
+        ), "In etwa 30 Minuten Pause bei Autohof Süd einplanen.")
+        XCTAssertEqual(NavigationBreakReminderTextPolicy.text(
+            stage: .soon, plannedName: nil
+        ), "Bitte in etwa 10 Minuten eine Pause einlegen.")
+        XCTAssertEqual(NavigationBreakReminderTextPolicy.text(
+            stage: .due, plannedName: "Wird bewusst nicht genannt"
+        ), "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen.")
+    }
+
+    func testPendingSpokenBreakReminderSurvivesStateRoundTrip() throws {
+        let state = DrivingRestState(
+            tripID: UUID(), continuousDriving: 5_000,
+            deliveredReminderRawValues: [NavigationBreakReminderPolicy.Stage.plan.rawValue],
+            pendingSpokenReminderRawValue: NavigationBreakReminderPolicy.Stage.plan.rawValue
+        )
+        let restored = try JSONDecoder().decode(
+            DrivingRestState.self, from: JSONEncoder().encode(state)
+        )
+        XCTAssertEqual(restored, state)
+    }
+
     func testBreakCandidateShortlistIsBoundedAndDistributed() {
         let candidates = (0..<18).map { index in
             BreakCandidate(id: "candidate-\(index)", name: "Halt \(index)", coordinate: .init(),
