@@ -2111,13 +2111,36 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
-    func testDiagnosticStoreCreatesNewSessionAfterExplicitStop() throws {
+    func testDiagnosticStoreKeepsTripSessionAcrossNavigationPause() throws {
         let suite = "DriveDiagnosticStopSessionTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
+        let tripID = UUID()
+        DriveDiagnosticStore.activateSession(tripID, defaults: defaults)
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Kroatien", defaults: defaults)
+        DriveDiagnosticStore.append(.rerouteFailed, detail: "Vor der Pause", defaults: defaults)
+        DriveDiagnosticStore.append(.navigationStopped, detail: "Rast", defaults: defaults)
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Kroatien fortsetzen", defaults: defaults)
+        DriveDiagnosticStore.append(.rerouteSucceeded, detail: "Nach der Pause", defaults: defaults)
+
+        let events = DriveDiagnosticStore.load(defaults: defaults)
+        XCTAssertEqual(Set(events.compactMap(\.sessionID)), Set([tripID]))
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.eventCount, 5)
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
+    func testDiagnosticStoreCreatesNewSessionAfterTripFinished() throws {
+        let suite = "DriveDiagnosticFinishedSessionTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        DriveDiagnosticStore.activateSession(UUID(), defaults: defaults)
         DriveDiagnosticStore.append(.navigationStarted, detail: "Alte Fahrt", defaults: defaults)
         DriveDiagnosticStore.append(.navigationStopped, detail: "Beendet", defaults: defaults)
+        DriveDiagnosticStore.finishActiveSession(defaults: defaults)
         DriveDiagnosticStore.append(.navigationStarted, detail: "Neue Fahrt", defaults: defaults)
 
         let events = DriveDiagnosticStore.load(defaults: defaults)

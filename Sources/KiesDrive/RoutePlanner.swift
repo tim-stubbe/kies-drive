@@ -650,6 +650,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// loescht den Lock dagegen nicht, damit Rast und App-Neustart sicher sind.
     func completeActiveTrip() {
         stopNavigation()
+        DriveDiagnosticStore.finishActiveSession()
         finishUsageSession()
         routeLockStore.finish()
         activeRouteLock = nil
@@ -3736,6 +3737,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lastRerouteAt = nil
         isManeuverGuidanceReliable = true
         let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id
+        if let tripID { DriveDiagnosticStore.activateSession(tripID) }
         if usageSessionState.tripID != tripID {
             usageSessionState = DriveUsageSessionState(tripID: tripID)
             usageSessionStore.save(usageSessionState)

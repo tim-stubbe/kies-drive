@@ -304,6 +304,17 @@ enum DriveDiagnosticStore {
         return (try? JSONDecoder().decode([DriveDiagnosticEvent].self, from: data)) ?? []
     }
 
+    /// Binds diagnostics to the persistent trip rather than to one foreground
+    /// navigation run. Pausing and restoring the same trip therefore keeps a
+    /// continuous quality history, including across process restarts.
+    static func activateSession(_ id: UUID, defaults: UserDefaults = .standard) {
+        defaults.set(id.uuidString, forKey: activeSessionKey)
+    }
+
+    static func finishActiveSession(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: activeSessionKey)
+    }
+
     static func append(_ kind: DriveDiagnosticKind, detail: String, defaults: UserDefaults = .standard) {
         var events = load(defaults: defaults)
         let sessionID: UUID?
@@ -324,7 +335,7 @@ enum DriveDiagnosticStore {
         }
         if let data = try? JSONEncoder().encode(events) {
             defaults.set(data, forKey: key)
-            if kind == .navigationStopped || kind == .arrivalReached {
+            if kind == .arrivalReached {
                 defaults.removeObject(forKey: activeSessionKey)
             }
             NotificationCenter.default.post(name: didChange, object: nil)
@@ -444,8 +455,12 @@ struct DriveDiagnosticSummary: Equatable {
         let start = sessionID.flatMap { id in
             events.firstIndex { $0.kind == .navigationStarted && $0.sessionID == id }
         } ?? latestStart
-        let afterStart = events.index(after: start)..<events.endIndex
-        let terminal = afterStart.first(where: {
+        // A navigationStopped event is only a pause while the persistent trip
+        // remains active. Search for a terminal only after the latest resume;
+        // this keeps the whole trip visible while excluding late async work
+        // once its final run actually stops or arrives.
+        let afterLatestStart = events.index(after: latestStart)..<events.endIndex
+        let terminal = afterLatestStart.first(where: {
             events[$0].kind == .navigationStopped || events[$0].kind == .arrivalReached
         })
         // A completed drive ends at its first terminal event. Async network
