@@ -804,6 +804,16 @@ enum NavigationInstructionSequencePolicy {
             result.append(cleaned)
         }
     }
+
+    static func firstDistinctInstructionIndex(in instructions: [String], after index: Int) -> Int? {
+        guard instructions.indices.contains(index) else { return nil }
+        let current = instructions[index].trimmingCharacters(in: .whitespacesAndNewlines)
+        return instructions.indices.dropFirst(index + 1).first { candidateIndex in
+            let candidate = instructions[candidateIndex]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !candidate.isEmpty && candidate.caseInsensitiveCompare(current) != .orderedSame
+        }
+    }
 }
 
 enum CarPlayGuidancePresentationPolicy {
@@ -902,9 +912,9 @@ enum NavigationInitialManeuverPolicy {
             let value = step.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? nil : value
         }
-        let followingIndex = steps.indices.dropFirst(maneuverIndex + 1).first(where: {
-            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
+        let followingIndex = NavigationInstructionSequencePolicy.firstDistinctInstructionIndex(
+            in: steps.map(\.instruction), after: maneuverIndex
+        )
         let followingDistance = followingIndex.map { index in
             steps[maneuverIndex..<index].reduce(0) { $0 + max(0, $1.distance) }
         }
@@ -2620,9 +2630,9 @@ enum OfflineGuidanceEngine {
         let upcoming = steps[maneuver...].map(\.instruction).filter {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        let followingIndex = steps.indices.dropFirst(maneuver + 1).first(where: {
-            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
+        let followingIndex = NavigationInstructionSequencePolicy.firstDistinctInstructionIndex(
+            in: steps.map(\.instruction), after: maneuver
+        )
         let followingDistance = followingIndex.map { index in
             steps[maneuver..<index].reduce(0) { $0 + $1.distance }
         }

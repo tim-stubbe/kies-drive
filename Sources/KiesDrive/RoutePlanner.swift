@@ -2937,9 +2937,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             let instruction = item.step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
             return instruction.isEmpty ? nil : instruction
         }
-        let followingIndex = steps.indices.dropFirst(maneuverIndex + 1).first(where: {
-            !steps[$0].step.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        })
+        let followingIndex = NavigationInstructionSequencePolicy.firstDistinctInstructionIndex(
+            in: steps.map(\.step.instructions), after: maneuverIndex
+        )
         let followingDistance = followingIndex.map { index in
             steps[maneuverIndex..<index].reduce(0) { $0 + $1.step.distance }
         }

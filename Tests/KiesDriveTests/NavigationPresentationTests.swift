@@ -1696,6 +1696,21 @@ final class NavigationPresentationTests: XCTestCase {
         ), ["Ausfahrt 4 nehmen", "Links halten"])
     }
 
+    func testDuplicateBoundaryInstructionDoesNotBorrowWrongFollowingDistance() throws {
+        let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
+            (instruction: "Ausfahrt 4 nehmen", distance: 80),
+            (instruction: " AUSFAHRT 4 NEHMEN ", distance: 120),
+            (instruction: "", distance: 300),
+            (instruction: "Links halten", distance: 500),
+        ]))
+
+        XCTAssertEqual(seed.upcomingInstructions, ["Ausfahrt 4 nehmen", "Links halten"])
+        XCTAssertEqual(try XCTUnwrap(seed.followingManeuverDistance), 500, accuracy: 0.001)
+        XCTAssertEqual(NavigationInstructionSequencePolicy.firstDistinctInstructionIndex(
+            in: ["Rechts abbiegen", "rechts ABBIEGEN", "", "Links halten"], after: 0
+        ), 3)
+    }
+
     func testCarPlayAdvancesIdenticallyWordedManeuversByRouteIdentity() {
         XCTAssertNotEqual(
             CarPlayManeuverIdentityPolicy.live(legIndex: 0, stepIndex: 4),
