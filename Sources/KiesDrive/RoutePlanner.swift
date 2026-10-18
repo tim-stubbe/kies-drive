@@ -1293,6 +1293,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         case .publish:
             break
         case .discardAndFinish:
+            DriveDiagnosticStore.append(
+                .routeSearchDiscarded,
+                detail: "POI-Suche verworfen · Route oder Suchtext geändert"
+            )
             finishRouteSearch(generation: generation, clearResults: true)
             return
         case .superseded:
@@ -1392,6 +1396,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         case .publish:
             break
         case .discardAndFinish:
+            DriveDiagnosticStore.append(
+                .routeSearchDiscarded,
+                detail: "Umwegprüfung verworfen · Route oder Suchtext geändert"
+            )
             finishRouteSearch(generation: generation, clearResults: true)
             return
         case .superseded:
@@ -1412,6 +1420,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
             return lhs == rhs ? $0.detourMetres < $1.detourMetres : lhs < rhs
         }
+        DriveDiagnosticStore.append(
+            .routeSearchCompleted,
+            detail: "POI \(matches.count) · Korridor \(candidates.count) · Umweg geprüft \(shortlist.count) · zulässig \(routeSearchResults.count)"
+        )
         isSearchingAlongRoute = false
     }
 
@@ -1605,12 +1617,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             routeSearchQuery = rollback.searchQuery
             routeSearchResults = rollback.searchResults
             isSearchingAlongRoute = false
+            DriveDiagnosticStore.append(
+                .routeStopFailed,
+                detail: "Zwischenstopp nicht berechenbar · \(stopName)"
+            )
             return false
         }
         // `calculate` deliberately preserves `isNavigating`. A stop added to
         // a preview therefore stays a preview, while an active drive continues
         // seamlessly without a second "Route gestartet" announcement or an
         // unnecessary second navigation reset.
+        DriveDiagnosticStore.append(.routeStopAdded, detail: stopName)
         return true
     }
 

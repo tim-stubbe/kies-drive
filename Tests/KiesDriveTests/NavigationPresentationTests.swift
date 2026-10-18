@@ -968,6 +968,23 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertLessThan(data.count, 16_000)
     }
 
+    func testRouteSearchDiagnosticsRemainLocationPrivate() {
+        let events = [
+            DriveDiagnosticEvent(
+                kind: .routeSearchCompleted,
+                detail: "POI 18 · Korridor 6 · Umweg geprüft 6 · zulässig 3"
+            ),
+            DriveDiagnosticEvent(kind: .routeStopAdded, detail: "Raststätte Spessart"),
+        ]
+
+        let report = DriveDiagnosticReport.text(events: events, appVersion: "Test")
+
+        XCTAssertTrue(report.contains("routeSearchCompleted"))
+        XCTAssertTrue(report.contains("routeStopAdded"))
+        XCTAssertFalse(report.contains("latitude"))
+        XCTAssertFalse(report.contains("longitude"))
+    }
+
     func testRemoteCommandJournalPersistsOutcomeUntilServerAcknowledgesIt() throws {
         let suite = "KiesDriveTests.RemoteJournal.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

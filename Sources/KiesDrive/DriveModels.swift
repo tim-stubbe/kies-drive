@@ -247,6 +247,7 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
     case breakReminderShown, breakReminderAnnounced, fuelReminderShown, fuelReminderAnnounced
+    case routeSearchCompleted, routeSearchDiscarded, routeStopAdded, routeStopFailed
 }
 
 /// Produces useful driving diagnostics without ever recording coordinates or
