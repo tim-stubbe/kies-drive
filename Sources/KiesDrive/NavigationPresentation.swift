@@ -647,7 +647,7 @@ enum ManeuverDiagnosticPolicy {
     }
 
     static func missedFinalCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
-        !stages.contains(.now)
+        !deliveredDecisiveCue(stages: stages)
     }
 
     /// A completed final distance cue is already actionable. Repeating that

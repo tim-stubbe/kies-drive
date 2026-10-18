@@ -1200,6 +1200,7 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .final]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare, .now]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: [.early, .prepare]))
         XCTAssertTrue(ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: [.final]))
