@@ -81,6 +81,14 @@ struct RecentDestination: Codable, Identifiable, Equatable {
     var coordinate: CLLocationCoordinate2D { .init(latitude: latitude, longitude: longitude) }
 }
 
+enum DriveSavedDestinationPolicy {
+    static func isValid(name: String, latitude: Double, longitude: Double) -> Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            latitude.isFinite && longitude.isFinite &&
+            (-90...90).contains(latitude) && (-180...180).contains(longitude)
+    }
+}
+
 enum RecentDestinationStore {
     private static let key = "drive.recentDestinations.v1"
     static let maximumCount = 8
@@ -88,12 +96,22 @@ enum RecentDestinationStore {
     static func load(defaults: UserDefaults = .standard) -> [RecentDestination] {
         guard let data = defaults.data(forKey: key) else { return [] }
         return ((try? JSONDecoder().decode([RecentDestination].self, from: data)) ?? [])
+            .filter {
+                DriveSavedDestinationPolicy.isValid(
+                    name: $0.name, latitude: $0.latitude, longitude: $0.longitude
+                )
+            }
             .sorted { $0.lastUsedAt > $1.lastUsedAt }
     }
 
     @discardableResult
     static func record(_ destination: RecentDestination, defaults: UserDefaults = .standard) -> [RecentDestination] {
         var values = load(defaults: defaults)
+        guard DriveSavedDestinationPolicy.isValid(
+            name: destination.name,
+            latitude: destination.latitude,
+            longitude: destination.longitude
+        ) else { return values }
         values.removeAll {
             abs($0.latitude - destination.latitude) < 0.00001 &&
             abs($0.longitude - destination.longitude) < 0.00001
@@ -130,11 +148,20 @@ enum DriveFavoriteStore {
 
     static func load(defaults: UserDefaults = .standard) -> [DriveFavorite] {
         guard let data = defaults.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([DriveFavorite].self, from: data)) ?? []
+        return ((try? JSONDecoder().decode([DriveFavorite].self, from: data)) ?? []).filter {
+            DriveSavedDestinationPolicy.isValid(
+                name: $0.name, latitude: $0.latitude, longitude: $0.longitude
+            )
+        }
     }
 
     static func save(_ favorites: [DriveFavorite], defaults: UserDefaults = .standard) {
-        guard let data = try? JSONEncoder().encode(favorites) else { return }
+        let valid = favorites.filter {
+            DriveSavedDestinationPolicy.isValid(
+                name: $0.name, latitude: $0.latitude, longitude: $0.longitude
+            )
+        }
+        guard let data = try? JSONEncoder().encode(valid) else { return }
         defaults.set(data, forKey: key)
     }
 }

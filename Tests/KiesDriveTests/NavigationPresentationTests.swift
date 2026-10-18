@@ -2134,6 +2134,30 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(values.first?.name, "Zuhause neu")
     }
 
+    func testSavedDestinationsRejectInvalidCoordinatesAndBlankNames() {
+        let suite = "DriveSavedDestinationValidationTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let valid = RecentDestination(
+            name: "Zuhause", subtitle: "Hochheim", latitude: 50, longitude: 8
+        )
+        _ = RecentDestinationStore.record(valid, defaults: defaults)
+
+        XCTAssertEqual(RecentDestinationStore.record(.init(
+            name: "Außerhalb", subtitle: "", latitude: 91, longitude: 8
+        ), defaults: defaults), [valid])
+        XCTAssertEqual(RecentDestinationStore.record(.init(
+            name: "   ", subtitle: "", latitude: 50, longitude: 8
+        ), defaults: defaults), [valid])
+
+        DriveFavoriteStore.save([
+            .init(name: "Büro", subtitle: "Mainz", latitude: 50, longitude: 8),
+            .init(name: "Ungültig", subtitle: "", latitude: 50, longitude: 181),
+            .init(name: " ", subtitle: "", latitude: 50, longitude: 8),
+        ], defaults: defaults)
+        XCTAssertEqual(DriveFavoriteStore.load(defaults: defaults).map(\.name), ["Büro"])
+    }
+
     func testFavoritesRoundTripForPhoneAndCarPlay() {
         let suite = "DriveFavoriteTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
