@@ -663,6 +663,15 @@ enum NavigationSpeechInterruptionPolicy {
                                                    hasSpeechWork: Bool) -> Bool {
         confirmedOffRoute && navigationActive && hasSpeechWork
     }
+
+    static func shouldRetryManeuverAfterInterruption(
+        navigationActive: Bool,
+        voiceGuidance: Bool,
+        guidanceReliable: Bool,
+        hasUsableLocation: Bool
+    ) -> Bool {
+        navigationActive && voiceGuidance && guidanceReliable && hasUsableLocation
+    }
 }
 
 struct NavigationInitialManeuver: Equatable {

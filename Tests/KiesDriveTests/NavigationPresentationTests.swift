@@ -144,6 +144,25 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: true))
     }
 
+    func testSpeechRetriesCurrentManeuverImmediatelyAfterInterruptionEnds() {
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
+            navigationActive: false, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
+            navigationActive: true, voiceGuidance: false,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: false, hasUsableLocation: true
+        ))
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(

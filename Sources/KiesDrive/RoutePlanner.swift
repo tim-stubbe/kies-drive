@@ -3133,12 +3133,32 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             cancelCurrentSpeechWork()
         case .ended:
             audioSessionInterrupted = false
+            retryCurrentManeuverAfterAudioInterruption()
         @unknown default:
             audioSessionInterrupted = true
             cancelCurrentSpeechWork()
         }
     }
     #endif
+
+    private func retryCurrentManeuverAfterAudioInterruption() {
+        let settings = DriveSettings.shared
+        guard NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
+            navigationActive: isNavigating,
+            voiceGuidance: settings.voiceGuidance,
+            guidanceReliable: isManeuverGuidanceReliable,
+            hasUsableLocation: lastAcceptedNavigationLocation != nil
+        ), let location = lastAcceptedNavigationLocation,
+           let progress = liveNavigationProgress(at: location) else { return }
+        updateNextManeuver(using: progress)
+        let speed = NavigationGuidanceSpeedPolicy.effective(
+            current: NavigationMotionPolicy.reliableSpeed(for: location),
+            previous: lastReliableGuidanceSpeedMps,
+            previousAt: lastReliableGuidanceSpeedAt,
+            now: location.timestamp
+        )
+        announce(progress, guidanceSpeedMps: speed)
+    }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didStart utterance: AVSpeechUtterance) {
