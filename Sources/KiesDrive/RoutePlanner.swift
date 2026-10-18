@@ -3833,7 +3833,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             unlimitedMotorwayFraction: unlimitedFraction,
             typicalUnlimitedSpeedKmh: 130,
             toll: settings.avoidTolls ? researchedAvoidingToll : researchedStandardToll,
-            breakCandidates: candidates
+            breakCandidates: candidates,
+            installedRouteStartProgress: distanceProgress
         )]
         if !isRemainingRoutePlan, let comparisonRoute,
            abs(comparisonRoute.distance - mainDistance) > 100 || abs(comparisonRoute.expectedTravelTime - mainTime) > 60 {

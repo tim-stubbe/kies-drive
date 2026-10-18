@@ -16,6 +16,35 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertTrue(plan.note.contains("allen Pflichtpunkten und Routenvorgaben"))
     }
 
+    func testRemainingRouteKeepsUnverifiedStopsAheadOnInstalledGeometry() throws {
+        let route = RoutePlanningInput(
+            id: "remaining", title: "Reststrecke", distanceMetres: 400_000,
+            mapKitExpectedTravelTime: 5 * 3600,
+            unlimitedMotorwayFraction: 0, typicalUnlimitedSpeedKmh: 130,
+            toll: .unknown(reason: "Test"), breakCandidates: [],
+            installedRouteStartProgress: 0.6
+        )
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 8, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, initialFuelFraction: 0.35
+        )
+        let result = try XCTUnwrap(RouteComparison(
+            fuelModel: .init(), breakPlanner: .init()
+        ).compare(
+            routes: [route], scenarios: [.target(130)], vehicle: vehicle,
+            alreadyDrivenSinceBreak: 90 * 60
+        ).results.first)
+
+        let fuelStop = try XCTUnwrap(result.fuelStops.first)
+        XCTAssertNil(fuelStop.candidate)
+        XCTAssertGreaterThan(fuelStop.insertionRouteProgress, 0.6)
+        XCTAssertTrue(PlannedRouteStopVisibilityPolicy.isAhead(
+            fuelStop.insertionRouteProgress, current: 0.6
+        ))
+        let plannedBreak = try XCTUnwrap(result.breaks.first)
+        XCTAssertGreaterThanOrEqual(plannedBreak.insertionRouteProgress, 0.6)
+    }
+
     func testTwoRealRoutesDoNotClaimComparisonIsUnavailable() {
         func route(_ id: String) -> RoutePlanningInput {
             .init(id: id, title: id, distanceMetres: 100_000,

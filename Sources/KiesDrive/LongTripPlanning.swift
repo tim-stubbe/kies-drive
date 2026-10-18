@@ -666,9 +666,10 @@ struct PlannedBreak: Identifiable, Equatable {
     let duration: TimeInterval
     let routeProgress: Double
     let explanation: String
+    var installedRouteProgress: Double? = nil
 
     var insertionRouteProgress: Double {
-        candidate?.installedRouteProgress ?? routeProgress
+        candidate?.installedRouteProgress ?? installedRouteProgress ?? routeProgress
     }
 }
 
@@ -678,9 +679,10 @@ struct PlannedFuelStop: Identifiable, Equatable {
     let afterDistanceMetres: Double
     let routeProgress: Double
     let explanation: String
+    var installedRouteProgress: Double? = nil
 
     var insertionRouteProgress: Double {
-        candidate?.installedRouteProgress ?? routeProgress
+        candidate?.installedRouteProgress ?? installedRouteProgress ?? routeProgress
     }
 }
 
@@ -1437,6 +1439,10 @@ struct RoutePlanningInput {
     let typicalUnlimitedSpeedKmh: Double
     let toll: TollCost
     let breakCandidates: [BreakCandidate]
+    /// Absolute progress where this planning slice begins on the installed
+    /// route. Zero for a preview; greater than zero when planning only the
+    /// remaining part of an active journey.
+    var installedRouteStartProgress: Double = 0
 }
 
 struct RouteScenarioResult: Identifiable, Equatable {
@@ -1553,15 +1559,19 @@ struct RouteComparison {
             (timing.limitedDistance, limitedAverageSpeed),
             (timing.unlimitedDistance, unlimitedAverageSpeed)
         ], profile: vehicle)
-        let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
-                                             consumptionLPer100km: routeFuel.averageConsumptionLPer100km,
-                                             vehicle: vehicle, candidates: route.breakCandidates)
+        let fuelStops = fuelStopPlanner.plan(
+            distanceMetres: route.distanceMetres,
+            consumptionLPer100km: routeFuel.averageConsumptionLPer100km,
+            vehicle: vehicle, candidates: route.breakCandidates
+        ).map { installedFuelStop($0, routeStartProgress: route.installedRouteStartProgress) }
         // Prefer one useful stop over a rest break and a fuel stop a few
         // minutes apart. The normal pause window still applies, so a distant
         // station is never pulled forward merely to combine the two jobs.
-        let breaks = breakPlanner.plan(drivingTime: drivingTime, candidates: route.breakCandidates,
-                                       plannedFuelStops: fuelStops,
-                                       alreadyDrivenSinceBreak: alreadyDrivenSinceBreak)
+        let breaks = breakPlanner.plan(
+            drivingTime: drivingTime, candidates: route.breakCandidates,
+            plannedFuelStops: fuelStops,
+            alreadyDrivenSinceBreak: alreadyDrivenSinceBreak
+        ).map { installedBreak($0, routeStartProgress: route.installedRouteStartProgress) }
         let selectedCandidates = (breaks.compactMap(\.candidate) + fuelStops.compactMap(\.candidate))
             .reduce(into: [String: BreakCandidate]()) { candidates, candidate in
                 candidates[candidate.id] = candidate
@@ -1596,6 +1606,40 @@ struct RouteComparison {
             fuel: fuel, toll: route.toll, breaks: breaks, fuelStops: fuelStops,
             unlimitedFraction: fraction, plannedStopDetourMetres: detourDistance,
             additionalFuelStopTime: additionalFuelStopTime
+        )
+    }
+
+    private func installedProgress(relative: Double, routeStartProgress: Double) -> Double {
+        let start = min(1, max(0, routeStartProgress))
+        return min(1, max(start, start + min(1, max(0, relative)) * (1 - start)))
+    }
+
+    private func installedFuelStop(_ stop: PlannedFuelStop,
+                                   routeStartProgress: Double) -> PlannedFuelStop {
+        guard stop.candidate == nil else { return stop }
+        return .init(
+            id: stop.id, candidate: nil,
+            afterDistanceMetres: stop.afterDistanceMetres,
+            routeProgress: stop.routeProgress,
+            explanation: stop.explanation,
+            installedRouteProgress: installedProgress(
+                relative: stop.routeProgress, routeStartProgress: routeStartProgress
+            )
+        )
+    }
+
+    private func installedBreak(_ plannedBreak: PlannedBreak,
+                                routeStartProgress: Double) -> PlannedBreak {
+        guard plannedBreak.candidate == nil else { return plannedBreak }
+        return .init(
+            id: plannedBreak.id, candidate: nil,
+            afterDriving: plannedBreak.afterDriving,
+            duration: plannedBreak.duration,
+            routeProgress: plannedBreak.routeProgress,
+            explanation: plannedBreak.explanation,
+            installedRouteProgress: installedProgress(
+                relative: plannedBreak.routeProgress, routeStartProgress: routeStartProgress
+            )
         )
     }
 }
