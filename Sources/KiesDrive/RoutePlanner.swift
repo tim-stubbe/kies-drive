@@ -207,6 +207,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var offlineNeedsInitialPositionMatch = false
     private var offlineDeviationWarningActive = false
     private var arrivalStrikes = 0
+    private var arrivalCandidateSince: Date?
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
     private var breakDetourLoadGeneration = UUID()
@@ -2028,6 +2029,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         diagnosticManeuverInstruction = nil
         resetDeviationTracking()
         arrivalStrikes = 0
+        arrivalCandidateSince = nil
         lastAcceptedNavigationLocation = nil
         lastReliableGuidanceSpeedMps = nil
         lastReliableGuidanceSpeedAt = nil
@@ -2072,16 +2074,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             hasOpenRequiredWaypoints: hasOpenRequiredWaypoints
         ) else {
             arrivalStrikes = 0
+            arrivalCandidateSince = nil
             return false
         }
         if NavigationArrivalPolicy.isArrivalFix(location, destination: coordinate) {
+            if arrivalStrikes == 0 { arrivalCandidateSince = location.timestamp }
             arrivalStrikes += 1
         } else {
             arrivalStrikes = 0
+            arrivalCandidateSince = nil
         }
-        guard arrivalStrikes >= NavigationArrivalPolicy.requiredConsecutiveFixes else { return false }
+        guard arrivalStrikes >= NavigationArrivalPolicy.requiredConsecutiveFixes,
+              NavigationArrivalPolicy.hasSettled(
+                since: arrivalCandidateSince, at: location.timestamp
+              ) else { return false }
 
         arrivalStrikes = 0
+        arrivalCandidateSince = nil
         closeOutstandingManeuverDiagnostic(reason: .arrival)
         finishUsageSession()
         invalidateNavigationAsyncWork()

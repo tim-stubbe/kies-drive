@@ -1458,6 +1458,13 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationArrivalPolicy.mayCompleteTrip(
             hasOpenRequiredWaypoints: true
         ), "Arrival must not silently skip a mandatory pass or user-selected stop")
+        let firstFix = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(NavigationArrivalPolicy.hasSettled(
+            since: firstFix, at: firstFix.addingTimeInterval(3.9)
+        ), "A short buffered GPS burst must not complete the trip")
+        XCTAssertTrue(NavigationArrivalPolicy.hasSettled(
+            since: firstFix, at: firstFix.addingTimeInterval(4)
+        ))
     }
 
     func testAccountLoginResponseDecodesServerSession() throws {

@@ -858,6 +858,7 @@ enum NavigationGuidanceSpeedPolicy {
 
 enum NavigationArrivalPolicy {
     static let requiredConsecutiveFixes = 3
+    static let requiredStableDuration: TimeInterval = 4
 
     static func mayCompleteTrip(hasOpenRequiredWaypoints: Bool) -> Bool {
         !hasOpenRequiredWaypoints
@@ -870,6 +871,12 @@ enum NavigationArrivalPolicy {
         let radius = max(35, location.horizontalAccuracy * 1.5)
         return location.distance(from: CLLocation(latitude: destination.latitude,
                                                   longitude: destination.longitude)) <= radius
+    }
+
+    static func hasSettled(since firstFix: Date?, at currentFix: Date) -> Bool {
+        guard let firstFix else { return false }
+        let duration = currentFix.timeIntervalSince(firstFix)
+        return duration >= requiredStableDuration
     }
 }
 
