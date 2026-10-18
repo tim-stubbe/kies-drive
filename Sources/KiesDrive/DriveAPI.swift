@@ -247,7 +247,9 @@ enum DriveAPI {
         let body = try JSONEncoder().encode(TollSearchRequest(
             origin: origin, destination: destination, via: via, avoidTolls: avoidTolls
         ))
-        let payload = try await data(for: try request(path: "/api/navigation/toll-search", method: "POST", body: body))
+        var tollRequest = try request(path: "/api/navigation/toll-search", method: "POST", body: body)
+        tollRequest.timeoutInterval = TollLookupRequestPolicy.timeout
+        let payload = try await data(for: tollRequest)
         let result = try JSONDecoder().decode(TollSearchResponse.self, from: payload)
         if let evidence = TollEvidenceValidator.validate(
             status: result.status, amount: result.amount, currency: result.currency,

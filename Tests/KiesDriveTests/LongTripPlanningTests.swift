@@ -147,6 +147,10 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollLookupHasBoundedTransportDeadline() {
+        XCTAssertEqual(TollLookupRequestPolicy.timeout, 20)
+    }
+
     func testTollRouteIdentityChangesForMaterialRerouteToSameDestination() {
         let destination = CLLocationCoordinate2D(latitude: 50.01, longitude: 8.35)
         let direct = TollRouteIdentityPolicy.identity(

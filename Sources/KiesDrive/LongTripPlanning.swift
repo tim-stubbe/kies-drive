@@ -133,6 +133,13 @@ enum TollLookupCachePolicy {
     }
 }
 
+enum TollLookupRequestPolicy {
+    /// The standalone server bounds SearXNG at 15 seconds. Give transport a
+    /// small response margin, but never inherit URLSession's much longer
+    /// default while the trip comparison waits for a complete variant pair.
+    static let timeout: TimeInterval = 20
+}
+
 struct TollRouteDescriptor: Sendable {
     let routeID: String
     let distanceMetres: Double
