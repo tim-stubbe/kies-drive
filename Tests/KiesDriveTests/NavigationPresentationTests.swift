@@ -2146,6 +2146,25 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertNil(DriveUsageSegmentPolicy.segment(previous: start, current: late))
     }
 
+    func testDriveUsageDoesNotCountWholeStoppedIntervalWhenMovementJustResumed() throws {
+        let start = CLLocation(
+            coordinate: .init(latitude: 49.8, longitude: 8.3), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 0,
+            timestamp: Date(timeIntervalSince1970: 1_000)
+        )
+        let resumed = CLLocation(
+            coordinate: .init(latitude: 49.80009, longitude: 8.3), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 10,
+            timestamp: Date(timeIntervalSince1970: 1_060)
+        )
+        let segment = try XCTUnwrap(DriveUsageSegmentPolicy.segment(
+            previous: start, current: resumed
+        ))
+        XCTAssertGreaterThan(segment.distanceMetres, 9)
+        XCTAssertLessThan(segment.movingTime, 2)
+        XCTAssertNotEqual(segment.movingTime, 60)
+    }
+
     func testDriveUsageStatisticsAccumulateTrips() {
         var statistics = DriveUsageStatistics()
         statistics.recordTrip(distanceMetres: 12_500, movingTime: 3_600,

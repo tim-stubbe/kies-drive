@@ -228,7 +228,17 @@ enum DriveUsageSegmentPolicy {
 
         let accuracyAllowance = max(0, previous.horizontalAccuracy) + max(0, current.horizontalAccuracy)
         guard distance <= max(350, elapsed * 80 + accuracyAllowance) else { return nil }
-        return (distance, elapsed)
+        // If geometry says the vehicle was effectively stationary but the
+        // newest fix already reports driving speed, the movement began near
+        // the end of this sample interval (for example after a red light or
+        // foreground resume). Counting the whole gap inflates driving hours.
+        let movingTime: TimeInterval
+        if inferredSpeed < 1.5, measuredSpeed >= 1.5 {
+            movingTime = min(elapsed, max(1, distance / measuredSpeed))
+        } else {
+            movingTime = elapsed
+        }
+        return (distance, movingTime)
     }
 }
 
