@@ -1133,6 +1133,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationLocationPolicy.accepts(next, after: first, now: now))
     }
 
+    func testLocationDiagnosticThrottleRetainsARealFailureBurst() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(NavigationLocationDiagnosticPolicy.shouldLog(
+            lastLoggedAt: nil, now: start
+        ))
+        XCTAssertFalse(NavigationLocationDiagnosticPolicy.shouldLog(
+            lastLoggedAt: start, now: start.addingTimeInterval(19)
+        ))
+        XCTAssertTrue(NavigationLocationDiagnosticPolicy.shouldLog(
+            lastLoggedAt: start, now: start.addingTimeInterval(20)
+        ))
+        XCTAssertTrue(NavigationLocationDiagnosticPolicy.shouldLog(
+            lastLoggedAt: start, now: start.addingTimeInterval(-1)
+        ), "A clock correction must not suppress diagnostics indefinitely")
+    }
+
     func testArrivalRequiresAccurateSlowFixNearDestination() {
         let destination = CLLocationCoordinate2D(latitude: 50, longitude: 8)
         let nearAndSlow = CLLocation(coordinate: destination, altitude: 0,

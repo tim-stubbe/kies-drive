@@ -1286,8 +1286,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             for: location, after: lastAcceptedNavigationLocation, now: evaluationDate,
             maximumAge: maximumLocationAge
         ) {
-            if lastLocationRejectionLoggedAt.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
-                lastLocationRejectionLoggedAt = Date()
+            if NavigationLocationDiagnosticPolicy.shouldLog(
+                lastLoggedAt: lastLocationRejectionLoggedAt,
+                now: evaluationDate
+            ) {
+                lastLocationRejectionLoggedAt = evaluationDate
                 DriveDiagnosticStore.append(.locationRejected,
                                             detail: DriveDiagnosticDetail.navigationSample(
                                                 rejection, location: location
@@ -1636,6 +1639,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lastAcceptedNavigationLocation = nil
         lastReliableGuidanceSpeedMps = nil
         lastReliableGuidanceSpeedAt = nil
+        lastLocationRejectionLoggedAt = nil
         consecutiveRerouteFailures = 0
         offlineNeedsInitialPositionMatch = false
         offlineDeviationWarningActive = false

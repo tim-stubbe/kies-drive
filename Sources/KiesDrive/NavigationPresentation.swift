@@ -573,6 +573,16 @@ enum NavigationLocationPolicy {
     }
 }
 
+enum NavigationLocationDiagnosticPolicy {
+    static let minimumLogInterval: TimeInterval = 20
+
+    static func shouldLog(lastLoggedAt: Date?, now: Date) -> Bool {
+        guard let lastLoggedAt else { return true }
+        let elapsed = now.timeIntervalSince(lastLoggedAt)
+        return elapsed < 0 || elapsed >= minimumLogInterval
+    }
+}
+
 /// Core Location may batch several fixes after a tunnel, a locked display or
 /// a short background interval. Guidance must consume those fixes in temporal
 /// order; using only the last value can jump across a junction and lose both
