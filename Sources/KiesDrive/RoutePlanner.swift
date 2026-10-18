@@ -13,6 +13,11 @@ private enum SpeedLimitLoadOutcome {
     case superseded
 }
 
+private enum BreakDetourLoadOutcome {
+    case measurement(String, CLLocationDistance?)
+    case superseded
+}
+
 private extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }
@@ -4513,7 +4518,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
         }()
         var measurements: [String: CLLocationDistance] = [:]
-        await withTaskGroup(of: (String, CLLocationDistance?).self) { group in
+        var measurementCount = 0
+        var loadWasSuperseded = false
+        await withTaskGroup(of: BreakDetourLoadOutcome.self) { group in
             for candidate in candidates {
                 guard let projection = RouteGeometryProgress.nearestProgress(
                     of: candidate.coordinate, on: routeCoordinates,
@@ -4524,18 +4531,52 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 group.addTask { [weak self] in
                     let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
                     let distance = await self?.drivingDetour(through: item, anchors: anchors)
-                    return (candidate.id, distance)
+                    return .measurement(candidate.id, distance)
+                }
+                measurementCount += 1
+            }
+            if measurementCount > 0 {
+                group.addTask { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                        guard !Task.isCancelled else { break }
+                        guard let self else { return .superseded }
+                        if !(await self.isCurrentBreakDetourLoad(
+                            routeGeneration: routeGeneration,
+                            loadGeneration: generation
+                        )) { return .superseded }
+                    }
+                    return .superseded
                 }
             }
-            for await (id, distance) in group {
-                if let distance, distance <= 20_000 { measurements[id] = distance }
+            var remainingMeasurements = measurementCount
+            while remainingMeasurements > 0, let outcome = await group.next() {
+                switch outcome {
+                case .measurement(let id, let distance):
+                    remainingMeasurements -= 1
+                    if let distance, distance <= 20_000 { measurements[id] = distance }
+                case .superseded:
+                    loadWasSuperseded = true
+                    group.cancelAll()
+                    return
+                }
             }
+            group.cancelAll()
         }
+        guard !loadWasSuperseded else { return }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: breakDetourLoadGeneration
         ) else { return }
         measuredBreakDetours = measurements
+    }
+
+    private func isCurrentBreakDetourLoad(routeGeneration: UUID,
+                                          loadGeneration: UUID) -> Bool {
+        RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: loadGeneration, currentRequest: breakDetourLoadGeneration
+        )
     }
 
     /// Finds real rest areas and motorway service locations near the route so
