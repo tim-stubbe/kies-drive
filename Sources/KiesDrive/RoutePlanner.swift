@@ -208,6 +208,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var arrivalStrikes = 0
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
+    private var breakDetourLoadGeneration = UUID()
     private var stopPlanningGeneration = UUID()
     private var speedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
@@ -469,6 +470,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeCalculationGeneration = UUID()
         stationLoadGeneration = UUID()
         breakCandidateLoadGeneration = UUID()
+        breakDetourLoadGeneration = UUID()
         speedLimitLoadGeneration = UUID()
         tollLoadGeneration = UUID()
         routeSearchGeneration = UUID()
@@ -3282,7 +3284,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// forward route exit), independent of the provider result count.
     private func measureBreakCandidateDetours() async {
         let routeGeneration = routeCalculationGeneration
-        let generation = breakCandidateLoadGeneration
+        let generation = UUID()
+        breakDetourLoadGeneration = generation
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         let candidates = breakCandidates(along: legs, useMeasuredDetours: false)
         var measurements: [String: CLLocationDistance] = [:]
@@ -3305,7 +3308,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
-            request: generation, currentRequest: breakCandidateLoadGeneration
+            request: generation, currentRequest: breakDetourLoadGeneration
         ) else { return }
         measuredBreakDetours = measurements
     }
