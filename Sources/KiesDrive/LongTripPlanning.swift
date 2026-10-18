@@ -545,6 +545,27 @@ enum DrivingRestPolicy {
     }
 }
 
+enum NavigationBreakReminderPolicy {
+    enum Stage: Int, Hashable, CaseIterable { case plan, soon, due }
+
+    static let planningTime: TimeInterval = 90 * 60
+    static let soonTime: TimeInterval = 110 * 60
+    static let dueTime: TimeInterval = 120 * 60
+
+    static func stage(continuousDriving: TimeInterval,
+                      remainingTravelTime: TimeInterval,
+                      delivered: Set<Stage>) -> Stage? {
+        let driven = max(0, continuousDriving)
+        let remaining = max(0, remainingTravelTime)
+        if driven >= dueTime, !delivered.contains(.due) { return .due }
+        if driven >= soonTime, driven + remaining > dueTime,
+           !delivered.contains(.soon) { return .soon }
+        if driven >= planningTime, driven + remaining > dueTime,
+           !delivered.contains(.plan) { return .plan }
+        return nil
+    }
+}
+
 struct DrivingRestStateStore {
     let defaults: UserDefaults
     var key = "drive.longTrip.drivingRestState"

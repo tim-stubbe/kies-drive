@@ -368,6 +368,30 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 900)
     }
 
+    func testBreakReminderStagesOnlyWhenJourneyCrossesDrivingLimit() {
+        XCTAssertNil(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 90 * 60, remainingTravelTime: 30 * 60, delivered: []
+        ), "Arriving exactly at the limit must not create an unnecessary stop warning")
+        XCTAssertEqual(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 90 * 60, remainingTravelTime: 31 * 60, delivered: []
+        ), .plan)
+        XCTAssertEqual(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 110 * 60, remainingTravelTime: 11 * 60, delivered: [.plan]
+        ), .soon)
+        XCTAssertEqual(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 120 * 60, remainingTravelTime: 60, delivered: [.plan, .soon]
+        ), .due)
+    }
+
+    func testBreakReminderNeverRepeatsDeliveredStage() {
+        XCTAssertNil(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 95 * 60, remainingTravelTime: 60 * 60, delivered: [.plan]
+        ))
+        XCTAssertEqual(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 111 * 60, remainingTravelTime: 60 * 60, delivered: [.plan]
+        ), .soon)
+    }
+
     func testDrivingRestPolicyDoesNotTreatUnknownGapAsObservedBreak() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 25_000)

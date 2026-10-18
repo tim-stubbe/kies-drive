@@ -944,6 +944,11 @@ struct DriveContentView: View {
                 Label("Gespeicherte Route · offline", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
                     .font(.caption.weight(.semibold)).opacity(0.9)
             }
+            if let reminder = planner.breakReminderText {
+                Label(reminder, systemImage: "cup.and.saucer.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.kiesBrass)
+            }
             if let followingInstruction {
                 Divider().overlay(.white.opacity(0.2))
                 HStack(spacing: 12) {

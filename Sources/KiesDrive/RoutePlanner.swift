@@ -133,6 +133,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var remainingDistanceMetres: CLLocationDistance = 0
     @Published var remainingTravelTime: TimeInterval = 0
     @Published var hasArrived = false
+    @Published var breakReminderText: String?
     @Published private(set) var usageStatistics = DriveUsageStatisticsStore.load()
     @Published private(set) var isUsingOfflineGuidance = false
     private var comparisonRoute: MKRoute?
@@ -196,6 +197,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
     private var lastLongTripPlanRefreshAt: Date?
+    private var deliveredBreakReminderStages: Set<NavigationBreakReminderPolicy.Stage> = []
 
     private enum DestinationSearchOutcome {
         case results([MKMapItem])
@@ -340,6 +342,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeLockStore.clearFinished()
         drivingRestState = DrivingRestState()
         drivingRestStore.clear()
+        deliveredBreakReminderStages = []
+        breakReminderText = nil
         drivingFuelState = DrivingFuelState()
         drivingFuelStore.clear()
     }
@@ -376,6 +380,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if drivingRestState.tripID != lock.id {
             drivingRestState = DrivingRestState(tripID: lock.id)
             drivingRestStore.save(drivingRestState)
+            deliveredBreakReminderStages = []
+            breakReminderText = nil
         }
         if drivingFuelState.tripID != lock.id {
             drivingFuelState = DrivingFuelState(
@@ -1134,6 +1140,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingFuelStore.save(drivingFuelState)
         }
         if detectArrival(at: location, settings: settings) { return }
+        updateBreakReminder(settings: settings)
         if isUsingOfflineGuidance {
             updateOfflineProgress(at: location, guidanceSpeedMps: guidanceSpeed, settings: settings)
         } else if let progress = liveNavigationProgress(at: location) {
@@ -1153,6 +1160,38 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }) ?? true) {
             lastLongTripPlanRefreshAt = evaluationDate
             buildLongTripPlan(settings: settings)
+        }
+    }
+
+    private func updateBreakReminder(settings: DriveSettings) {
+        guard drivingRestState.continuousDriving > 0 else {
+            deliveredBreakReminderStages = []
+            breakReminderText = nil
+            return
+        }
+        let remaining = remainingTravelTime > 0 ? remainingTravelTime : totalTravelTime
+        guard let stage = NavigationBreakReminderPolicy.stage(
+            continuousDriving: drivingRestState.continuousDriving,
+            remainingTravelTime: remaining,
+            delivered: deliveredBreakReminderStages
+        ) else { return }
+        deliveredBreakReminderStages.insert(stage)
+        let plannedName = longTripPlan?.results.first?.breaks.first?.candidate?.name
+        let text: String
+        switch stage {
+        case .plan:
+            text = plannedName.map { "In etwa 30 Minuten Pause bei \($0) einplanen." }
+                ?? "In etwa 30 Minuten eine Pause einplanen."
+        case .soon:
+            text = plannedName.map { "Bitte in etwa 10 Minuten bei \($0) Pause einlegen." }
+                ?? "Bitte in etwa 10 Minuten eine Pause einlegen."
+        case .due:
+            text = "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen."
+        }
+        breakReminderText = text
+        if settings.voiceGuidance {
+            // A break reminder must never interrupt an immediate turn cue.
+            _ = speak(text, priority: .status)
         }
     }
 
