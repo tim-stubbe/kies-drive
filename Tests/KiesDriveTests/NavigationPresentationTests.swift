@@ -836,6 +836,26 @@ final class NavigationPresentationTests: XCTestCase {
         ]))
     }
 
+    func testRestoredOfflineRouteSeedsDistanceAndUpcomingFromRemainingStepsOnly() throws {
+        let cachedSteps = [
+            (instruction: "Alte Abfahrt", distance: 700.0),
+            (instruction: "", distance: 420.0),
+            (instruction: "Rechts auf die A66", distance: 900.0),
+            (instruction: "Links halten Richtung Wiesbaden", distance: 600.0),
+        ]
+
+        let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(
+            steps: Array(cachedSteps.dropFirst())
+        ))
+
+        XCTAssertEqual(seed.instruction, "Rechts auf die A66")
+        XCTAssertEqual(seed.distance, 420, accuracy: 0.001)
+        XCTAssertEqual(seed.upcomingInstructions, [
+            "Rechts auf die A66", "Links halten Richtung Wiesbaden"
+        ])
+        XCTAssertFalse(seed.upcomingInstructions.contains("Alte Abfahrt"))
+    }
+
     func testCarPlayGuidanceUsesOnlyRealRouteInstructions() {
         XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
             upcoming: [" Rechts abbiegen ", "", "Links halten", "Ausfahrt nehmen"],

@@ -1595,8 +1595,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         hasArrived = false
         remainingDistanceMetres = cache.legs.reduce(0) { $0 + $1.distance }
         remainingTravelTime = cache.legs.reduce(0) { $0 + $1.travelTime }
-        nextManeuverInstruction = cachedGuidanceSteps.dropFirst(navigationStepCursor)
-            .first(where: { !$0.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.instruction
+        let remainingGuidance = cachedGuidanceSteps.dropFirst(navigationStepCursor).map {
+            (instruction: $0.instruction, distance: $0.distance)
+        }
+        if let seed = NavigationInitialManeuverPolicy.seed(steps: remainingGuidance) {
+            nextManeuverInstruction = seed.instruction
+            nextManeuverDistance = seed.distance
+            upcomingManeuverInstructions = seed.upcomingInstructions
+        } else {
+            nextManeuverInstruction = "Dem Straßenverlauf bis zum Ziel folgen"
+            nextManeuverDistance = remainingDistanceMetres
+            upcomingManeuverInstructions = ["Dem Straßenverlauf bis zum Ziel folgen"]
+        }
         lastAnnouncement = "Offline-Route wiederhergestellt"
         DriveDiagnosticStore.append(.navigationStarted, detail: "Offline · \(cache.destinationName)")
         return true
