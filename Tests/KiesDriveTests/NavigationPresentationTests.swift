@@ -540,6 +540,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.destinationLabel, "Neufahrn")
     }
 
+    func testMotorwayJunctionVariantsProduceCompactExitLabels() {
+        XCTAssertEqual(
+            NavigationManeuverPresentation(
+                "Anschlussstelle 12 rechts Richtung Wiesbaden, danach links halten"
+            ).exitLabel,
+            "Ausfahrt 12"
+        )
+        let spaced = NavigationManeuverPresentation(
+            "Ausfahrt 69 A rechts Richtung Neufahrn, danach der A9 folgen"
+        )
+        XCTAssertEqual(spaced.exitLabel, "Ausfahrt 69A")
+        XCTAssertEqual(spaced.destinationLabel, "Neufahrn")
+    }
+
     func testManeuverUsesFirstActionWhenInstructionMentionsFollowingTurn() {
         XCTAssertEqual(
             NavigationManeuverPresentation("Links halten, danach rechts abbiegen").direction,

@@ -198,11 +198,12 @@ struct NavigationManeuverPresentation: Equatable {
         else if lower.contains("wenden") || lower.contains("u-turn") { direction = .uTurn }
         else { direction = Self.firstDirection(in: lower) }
 
-        let pattern = #"(?i)(?:Ausfahrt|Exit)\s+([0-9]+[a-z]?)"#
+        let pattern = #"(?i:Ausfahrt|Exit|Anschlussstelle)\s+([0-9]+(?:[A-Za-z]|-[A-Za-z0-9]+|\s+[A-Z])?)"#
         if let regex = try? NSRegularExpression(pattern: pattern),
            let match = regex.firstMatch(in: instruction, range: NSRange(instruction.startIndex..., in: instruction)),
            let range = Range(match.range(at: 1), in: instruction) {
-            exitLabel = "Ausfahrt \(instruction[range])"
+            let number = instruction[range].replacingOccurrences(of: " ", with: "")
+            exitLabel = "Ausfahrt \(number.uppercased())"
         } else {
             exitLabel = nil
         }
@@ -253,6 +254,12 @@ struct NavigationManeuverPresentation: Equatable {
 
     private static func cleanedDestination(_ raw: String) -> String {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let separator = value.range(
+            of: #"(?i)\s*[,;]\s*(?:dann|danach|anschließend)\b"#,
+            options: .regularExpression
+        ) {
+            value = String(value[..<separator.lowerBound])
+        }
         let patterns = [
             #"(?i)\s+auf\s+(?:die|der|den)?\s*(?:A|B|E|L|K)\s?[0-9]{1,4}[a-z]?(?:\s+fahren)?$"#,
             #"(?i)\s+(?:nehmen|fahren|folgen|weiterfahren|abbiegen)$"#,
