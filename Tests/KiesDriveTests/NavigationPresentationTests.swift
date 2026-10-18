@@ -1867,6 +1867,16 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRouteOptionScopeKeepsWaypointRulesOutOfGlobalPreferences() {
+        XCTAssertNil(RouteOptionScopePolicy.waypointID("  "))
+        XCTAssertTrue(RouteOptionScopePolicy.mutatesGlobalSettings(waypointID: nil))
+        XCTAssertTrue(RouteOptionScopePolicy.mutatesGlobalSettings(waypointID: ""))
+        XCTAssertEqual(RouteOptionScopePolicy.waypointID("  slovenia  "), "slovenia")
+        XCTAssertFalse(RouteOptionScopePolicy.mutatesGlobalSettings(
+            waypointID: "slovenia"
+        ))
+    }
+
     func testAsyncGuidanceWorkCannotSurviveStopOrNewSession() {
         let session = UUID()
         let work = UUID()

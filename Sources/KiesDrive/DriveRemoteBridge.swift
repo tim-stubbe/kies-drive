@@ -157,13 +157,12 @@ final class DriveRemoteBridge {
                 throw DriveRemoteError.routeUnavailable
             }
         case "set_route_options":
-            if let value = command.arguments["avoid_tolls"]?.bool { settings.avoidTolls = value }
-            if let value = command.arguments["avoid_highways"]?.bool { settings.avoidHighways = value }
-            planner.updateLockedRouteOptions(
+            guard await planner.updateRouteOptionsAndRecalculate(
                 waypointID: command.arguments["waypoint_id"]?.string,
                 avoidTolls: command.arguments["avoid_tolls"]?.bool,
-                avoidHighways: command.arguments["avoid_highways"]?.bool)
-            guard await planner.recalculateCurrentRoute(from: current, settings: settings) else {
+                avoidHighways: command.arguments["avoid_highways"]?.bool,
+                from: current, settings: settings
+            ) else {
                 throw DriveRemoteError.routeUnavailable
             }
         case "set_destination":

@@ -2047,13 +2047,21 @@ struct DriveSettingsView: View {
     }
 
     private func applyRouteOptions() {
-        planner.updateLockedRouteOptions(
-            waypointID: nil, avoidTolls: settings.avoidTolls,
-            avoidHighways: settings.avoidHighways
-        )
         guard !planner.legs.isEmpty,
-              let current = LocationService.shared.location?.coordinate else { return }
-        Task { await planner.recalculateCurrentRoute(from: current, settings: settings) }
+              let current = LocationService.shared.location?.coordinate else {
+            planner.updateLockedRouteOptions(
+                waypointID: nil, avoidTolls: settings.avoidTolls,
+                avoidHighways: settings.avoidHighways
+            )
+            return
+        }
+        Task {
+            await planner.updateRouteOptionsAndRecalculate(
+                waypointID: nil, avoidTolls: settings.avoidTolls,
+                avoidHighways: settings.avoidHighways,
+                from: current, settings: settings
+            )
+        }
     }
 
     private func usageDistance(_ metres: CLLocationDistance) -> String {

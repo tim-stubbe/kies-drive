@@ -212,6 +212,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var speedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
+    private var routeOptionMutationGeneration = UUID()
     /// Volatile identity for MapKit route objects. Unlike the offline cache,
     /// live `MKRoute` values cannot be persisted, but they still must never be
     /// resumed for a different destination after a failed recalculation.
@@ -653,6 +654,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     func updateLockedRouteOptions(waypointID: String?, avoidTolls: Bool?, avoidHighways: Bool?) {
+        routeOptionMutationGeneration = UUID()
         routeLockStore.update { lock in
             if let waypointID, let index = lock.waypoints.firstIndex(where: { $0.id == waypointID }) {
                 var options = lock.waypoints[index].optionsAfter ?? lock.defaultOptions
@@ -665,6 +667,53 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
         }
         activeRouteLock = routeLockStore.activeLock
+    }
+
+    /// Applies remote/user route preferences as one transaction. A failed
+    /// MapKit calculation restores the previous lock and global settings as
+    /// long as no newer edit or waypoint progress has superseded this one.
+    @discardableResult
+    func updateRouteOptionsAndRecalculate(
+        waypointID rawWaypointID: String?, avoidTolls: Bool?, avoidHighways: Bool?,
+        from start: CLLocationCoordinate2D, settings: DriveSettings
+    ) async -> Bool {
+        let waypointID = RouteOptionScopePolicy.waypointID(rawWaypointID)
+        if let waypointID,
+           routeLockStore.activeLock?.waypoints.contains(where: { $0.id == waypointID }) != true {
+            errorMessage = "Der angegebene Routenabschnitt wurde nicht gefunden."
+            return false
+        }
+        let previousLock = routeLockStore.activeLock
+        let previousSettings = (avoidTolls: settings.avoidTolls,
+                                avoidHighways: settings.avoidHighways)
+        let mutationGeneration = UUID()
+        if RouteOptionScopePolicy.mutatesGlobalSettings(waypointID: waypointID) {
+            if let avoidTolls { settings.avoidTolls = avoidTolls }
+            if let avoidHighways { settings.avoidHighways = avoidHighways }
+        }
+        updateLockedRouteOptions(
+            waypointID: waypointID, avoidTolls: avoidTolls, avoidHighways: avoidHighways
+        )
+        routeOptionMutationGeneration = mutationGeneration
+        let mutatedLock = routeLockStore.activeLock
+        let mutatedSettings = (avoidTolls: settings.avoidTolls,
+                               avoidHighways: settings.avoidHighways)
+        guard await recalculateCurrentRoute(from: start, settings: settings) else {
+            guard mutationGeneration == routeOptionMutationGeneration else { return false }
+            if RouteMutationRollbackPolicy.shouldRollback(
+                current: routeLockStore.activeLock, mutated: mutatedLock
+            ) {
+                routeLockStore.replace(with: previousLock)
+                activeRouteLock = previousLock
+            }
+            if settings.avoidTolls == mutatedSettings.avoidTolls,
+               settings.avoidHighways == mutatedSettings.avoidHighways {
+                settings.avoidTolls = previousSettings.avoidTolls
+                settings.avoidHighways = previousSettings.avoidHighways
+            }
+            return false
+        }
+        return true
     }
 
     /// Recalculates user- or remote-edited options without allowing a delayed

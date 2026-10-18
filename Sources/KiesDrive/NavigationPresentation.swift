@@ -1384,6 +1384,17 @@ enum DestinationActivationRollbackPolicy {
     }
 }
 
+enum RouteOptionScopePolicy {
+    static func waypointID(_ value: String?) -> String? {
+        let cleaned = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    static func mutatesGlobalSettings(waypointID: String?) -> Bool {
+        Self.waypointID(waypointID) == nil
+    }
+}
+
 /// Slow route enrichment (fuel, amenities, speed limits and tolls) may only
 /// publish while both its route and its own request are still current.
 enum RouteEnrichmentPublicationPolicy {
