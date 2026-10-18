@@ -556,7 +556,36 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             self.activeCarPlaySearch = nil
             var mapped: [ObjectIdentifier: MKMapItem] = [:]
-            let items = (response?.mapItems ?? []).prefix(8).map { mapItem in
+            let origin = LocationService.shared.location
+            let ordered = (response?.mapItems ?? []).sorted { lhs, rhs in
+                let lhsRelevance = DestinationSearchRankingPolicy.relevanceScore(
+                    query: query, name: lhs.name, title: lhs.placemark.title
+                )
+                let rhsRelevance = DestinationSearchRankingPolicy.relevanceScore(
+                    query: query, name: rhs.name, title: rhs.placemark.title
+                )
+                if lhsRelevance != rhsRelevance { return lhsRelevance < rhsRelevance }
+                guard let origin else { return (lhs.name ?? "") < (rhs.name ?? "") }
+                return origin.distance(from: CLLocation(
+                    latitude: lhs.placemark.coordinate.latitude,
+                    longitude: lhs.placemark.coordinate.longitude
+                )) < origin.distance(from: CLLocation(
+                    latitude: rhs.placemark.coordinate.latitude,
+                    longitude: rhs.placemark.coordinate.longitude
+                ))
+            }
+            var unique: [MKMapItem] = []
+            for mapItem in ordered where unique.count < 8 {
+                guard !unique.contains(where: { existing in
+                    DestinationSearchRankingPolicy.isDuplicate(
+                        name: mapItem.name, coordinate: mapItem.placemark.coordinate,
+                        existingName: existing.name,
+                        existingCoordinate: existing.placemark.coordinate
+                    )
+                }) else { continue }
+                unique.append(mapItem)
+            }
+            let items = unique.map { mapItem in
                 let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
                     .compactMap { $0 }.joined(separator: ", ")
                 let item = CPListItem(text: mapItem.name ?? "Ziel",
