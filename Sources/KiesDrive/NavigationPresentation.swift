@@ -2343,7 +2343,8 @@ enum OfflineGuidanceEngine {
         guard coordinates.count > 1 else {
             return .init(distanceFromRoute: .greatestFiniteMagnitude,
                          remainingOnStep: .greatestFiniteMagnitude,
-                         stepDistance: stepDistance)
+                         stepDistance: stepDistance,
+                         hasUsableGeometry: false)
         }
         let point = MKMapPoint(coordinate)
         let route = coordinates.map(MKMapPoint.init)

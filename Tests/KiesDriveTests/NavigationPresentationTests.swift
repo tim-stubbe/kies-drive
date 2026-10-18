@@ -1091,6 +1091,30 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(progress.followingManeuverDistance ?? -1, 111, accuracy: 0.1)
     }
 
+    func testOfflineGuidanceSkipsEmptyRestoredTransitionGeometry() throws {
+        let points = [
+            CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000),
+            CLLocationCoordinate2D(latitude: 50.0010, longitude: 8.0000),
+            CLLocationCoordinate2D(latitude: 50.0020, longitude: 8.0000),
+        ]
+        let steps = [
+            OfflineGuidanceStep(instruction: "", distance: 0, coordinates: []),
+            OfflineGuidanceStep(instruction: "", distance: 111, coordinates: [points[0], points[1]]),
+            OfflineGuidanceStep(
+                instruction: "Rechts abbiegen", distance: 111,
+                coordinates: [points[1], points[2]]
+            ),
+        ]
+
+        let progress = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: points[0], currentIndex: 0, steps: steps, transitionRadius: 12
+        ))
+
+        XCTAssertEqual(progress.currentStepIndex, 1)
+        XCTAssertEqual(progress.instruction, "Rechts abbiegen")
+        XCTAssertTrue(progress.distanceToManeuver.isFinite)
+    }
+
     func testAnnouncementStagesAdaptToRoadSpeed() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 120), .early)
         XCTAssertNil(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 50))
