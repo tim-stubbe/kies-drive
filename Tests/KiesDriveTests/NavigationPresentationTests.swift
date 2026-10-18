@@ -493,6 +493,24 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testDenseFollowingManeuverIsIncludedFromFinalCueOnward() {
+        XCTAssertFalse(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .prepare, followingDistance: 180
+        ))
+        XCTAssertTrue(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .final, followingDistance: 180
+        ))
+        XCTAssertTrue(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .now, followingDistance: 450
+        ))
+        XCTAssertFalse(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .now, followingDistance: 451
+        ))
+        XCTAssertFalse(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .now, followingDistance: .infinity
+        ))
+    }
+
     func testOfflineGuidanceMeasuresDistanceBetweenCloseManeuvers() throws {
         let points = [
             CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000),

@@ -328,6 +328,20 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     }
 }
 
+enum NavigationChainedManeuverPolicy {
+    static let maximumFollowingDistance: CLLocationDistance = 450
+
+    static func shouldIncludeFollowingManeuver(
+        at stage: NavigationAnnouncementStage,
+        followingDistance: CLLocationDistance?
+    ) -> Bool {
+        guard stage == .final || stage == .now,
+              let followingDistance, followingDistance.isFinite,
+              followingDistance >= 0 else { return false }
+        return followingDistance <= maximumFollowingDistance
+    }
+}
+
 enum NavigationSpeechPriority: Int, Equatable {
     case status
     case maneuver

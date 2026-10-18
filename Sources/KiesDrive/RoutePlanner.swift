@@ -1749,7 +1749,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // earlier stages complete as well so they cannot be spoken afterwards.
         let spokenDistance: CLLocationDistance = stage == .now ? min(progress.distance, 35) : progress.distance
         let following = progress.upcomingInstructions.dropFirst().first
-        let speech = stage == .now
+        let includeFollowing = NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: stage, followingDistance: progress.followingManeuverDistance
+        )
+        let speech = includeFollowing
             ? NavigationSpeechFormatter.spokenText(
                 progress.maneuver.step.instructions, distance: spokenDistance,
                 then: following, followingDistance: progress.followingManeuverDistance
