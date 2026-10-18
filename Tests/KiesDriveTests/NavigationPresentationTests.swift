@@ -1527,6 +1527,8 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testSpeechPriorityProtectsImmediateManeuverFromStatusMessage() {
         XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.early), .maneuver)
+        XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.prepare), .maneuver)
+        XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.final), .critical)
         XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.now), .critical)
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.hasActiveWork(
             isSpeaking: false, hasQueuedUtterance: true
@@ -1548,7 +1550,7 @@ final class NavigationPresentationTests: XCTestCase {
         ))
         XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldInterrupt(
             active: .critical, incoming: .critical
-        ), "A following immediate turn must not cut the current decisive cue in half")
+        ), "A following final or immediate turn must not cut a decisive cue in half")
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
             active: .maneuver, incoming: .maneuver
         ), "A later preparation stage must be able to supersede an unfinished earlier stage")

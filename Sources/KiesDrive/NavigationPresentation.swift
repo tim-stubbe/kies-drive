@@ -680,7 +680,10 @@ enum NavigationSpeechPriority: Int, Equatable {
     case critical
 
     static func forAnnouncementStage(_ stage: NavigationAnnouncementStage) -> Self {
-        stage == .now ? .critical : .maneuver
+        // The final distance cue is already decisive guidance, not merely a
+        // preparation. Protect the complete sentence just like the immediate
+        // cue so a close following exit cannot cut it off halfway through.
+        stage == .final || stage == .now ? .critical : .maneuver
     }
 }
 
@@ -745,11 +748,11 @@ enum NavigationSpeechInterruptionPolicy {
 
     static func shouldInterrupt(active: NavigationSpeechPriority,
                                 incoming: NavigationSpeechPriority) -> Bool {
-        // Never cut one decisive "Jetzt" cue in half with the next one at a
-        // tight interchange. The second maneuver remains unclaimed and is
-        // retried on the next location fix; the first utterance often already
-        // contains its "Danach" preview. Route replacement and confirmed
-        // departure use their explicit cancellation paths instead.
+        // Never cut one decisive final/"Jetzt" cue in half with the next one
+        // at a tight interchange. The second maneuver remains unclaimed and
+        // is retried as soon as the speech channel is free; the first sentence
+        // often already contains its "Danach" preview. Route replacement and
+        // confirmed departure use their explicit cancellation paths instead.
         if active == .critical && incoming == .critical { return false }
         return incoming.rawValue >= active.rawValue
     }
