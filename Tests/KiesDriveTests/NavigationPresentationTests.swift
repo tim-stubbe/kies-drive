@@ -741,6 +741,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testConfirmedDeviationCancelsUnsafeOldRouteSpeech() {
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldCancelForConfirmedDeviation(
+            confirmedOffRoute: true, navigationActive: true, hasSpeechWork: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldCancelForConfirmedDeviation(
+            confirmedOffRoute: false, navigationActive: true, hasSpeechWork: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldCancelForConfirmedDeviation(
+            confirmedOffRoute: true, navigationActive: false, hasSpeechWork: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldCancelForConfirmedDeviation(
+            confirmedOffRoute: true, navigationActive: true, hasSpeechWork: false
+        ))
+    }
+
     func testManeuverAnnouncementRemainsRetryableUntilSpeechActuallyStarts() {
         XCTAssertTrue(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
             .prepare, delivered: [], pending: []

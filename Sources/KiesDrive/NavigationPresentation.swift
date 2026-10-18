@@ -479,6 +479,12 @@ enum NavigationSpeechInterruptionPolicy {
                                                 hasSpeechWork: Bool) -> Bool {
         navigationActive && hasSpeechWork
     }
+
+    static func shouldCancelForConfirmedDeviation(confirmedOffRoute: Bool,
+                                                   navigationActive: Bool,
+                                                   hasSpeechWork: Bool) -> Bool {
+        confirmedOffRoute && navigationActive && hasSpeechWork
+    }
 }
 
 struct NavigationInitialManeuver: Equatable {

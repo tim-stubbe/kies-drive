@@ -2182,12 +2182,30 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// result is ready. At that exact commit boundary, however, spoken work
     /// from the old route becomes unsafe and must not finish over the new map.
     private func cancelSpeechForRouteReplacementIfNeeded() {
-        let hasSpeechWork = synthesizer.isSpeaking || activeUtterance != nil ||
-            !pendingManeuverSpeech.isEmpty || !activeManeuverSpeech.isEmpty
+        let currentlyHasSpeechWork = hasSpeechWork
         guard NavigationSpeechInterruptionPolicy.shouldCancelForRouteReplacement(
-            navigationActive: isNavigating, hasSpeechWork: hasSpeechWork
+            navigationActive: isNavigating, hasSpeechWork: currentlyHasSpeechWork
         ) else { return }
 
+        cancelCurrentSpeechWork()
+    }
+
+    private func cancelSpeechForConfirmedDeviationIfNeeded() {
+        guard NavigationSpeechInterruptionPolicy.shouldCancelForConfirmedDeviation(
+            confirmedOffRoute: !isManeuverGuidanceReliable,
+            navigationActive: isNavigating,
+            hasSpeechWork: hasSpeechWork
+        ) else { return }
+
+        cancelCurrentSpeechWork()
+    }
+
+    private var hasSpeechWork: Bool {
+        synthesizer.isSpeaking || activeUtterance != nil ||
+            !pendingManeuverSpeech.isEmpty || !activeManeuverSpeech.isEmpty
+    }
+
+    private func cancelCurrentSpeechWork() {
         let replacedUtterance = activeUtterance
         synthesizer.stopSpeaking(at: .immediate)
         pendingManeuverSpeech = [:]
@@ -2347,6 +2365,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
               ) else { return }
         isManeuverGuidanceReliable = false
+        // A confirmed departure invalidates the current maneuver immediately.
+        // Do not let a queued or audible instruction from the abandoned road
+        // finish while MapKit is still calculating its replacement.
+        cancelSpeechForConfirmedDeviationIfNeeded()
         resetDeviationTracking()
         lastRerouteAt = Date()
         let sessionGeneration = navigationSessionGeneration
