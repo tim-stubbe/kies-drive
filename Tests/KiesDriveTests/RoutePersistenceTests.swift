@@ -4,6 +4,22 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testCompletedLockedStationCannotReturnFromTransientState() {
+        XCTAssertEqual(RouteWaypointRoutingPolicy.source(
+            hasActiveLock: true,
+            remainingLockedWaypointCount: 0,
+            transientStationCount: 1
+        ), .direct)
+    }
+
+    func testUnlockedStationStillCreatesMultiLegRoute() {
+        XCTAssertEqual(RouteWaypointRoutingPolicy.source(
+            hasActiveLock: false,
+            remainingLockedWaypointCount: 0,
+            transientStationCount: 1
+        ), .transientStations)
+    }
+
     func testFreshPublicInstallationHasNoPersonalRouteLock() {
         let suite = "FreshPublicRouteLock-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

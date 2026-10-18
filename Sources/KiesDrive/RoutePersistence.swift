@@ -362,6 +362,25 @@ enum RouteWaypointProgressPolicy {
     }
 }
 
+enum RouteWaypointRoutingPolicy {
+    enum Source: Equatable {
+        case direct
+        case persistedLock
+        case transientStations
+    }
+
+    /// Once a trip lock exists it is the authoritative waypoint source. A
+    /// station retained in transient UI state must never reappear after its
+    /// locked waypoint was completed.
+    static func source(hasActiveLock: Bool, remainingLockedWaypointCount: Int,
+                       transientStationCount: Int) -> Source {
+        if hasActiveLock {
+            return remainingLockedWaypointCount > 0 ? .persistedLock : .direct
+        }
+        return transientStationCount > 0 ? .transientStations : .direct
+    }
+}
+
 enum RouteWaypointOptionsPolicy {
     /// Returns the rules for the segment that starts at the current trip
     /// position. A visited route constraint changes the active rules until a

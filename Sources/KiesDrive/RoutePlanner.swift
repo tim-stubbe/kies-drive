@@ -1078,7 +1078,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             let computedAlternatives: [MKRoute]
             let computedComparison: MKRoute?
             let shouldLoadComparison: Bool
-            if viaStations.isEmpty && lockedWaypoints.isEmpty {
+            let waypointSource = RouteWaypointRoutingPolicy.source(
+                hasActiveLock: lock != nil,
+                remainingLockedWaypointCount: lockedWaypoints.count,
+                transientStationCount: viaStations.count
+            )
+            if waypointSource == .direct {
                 let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
                 guard calculationGeneration == routeCalculationGeneration else { return false }
                 // A strict trip corridor may reject every MapKit alternative.
@@ -1096,7 +1101,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             } else {
                 // MapKit kennt keine mehrgliedrigen Routen als ein einziges Objekt.
                 // Daher Teilstrecken sequentiell (Start→wp1→wp2→…→Ziel) berechnen.
-                let waypoints: [MKMapItem] = lockedWaypoints.isEmpty
+                let waypoints: [MKMapItem] = waypointSource == .transientStations
                     ? viaStations.map {
                         let item = MKMapItem(placemark: MKPlacemark(coordinate: $0.coordinate))
                         item.name = $0.brand.isEmpty ? $0.name : $0.brand
@@ -1146,6 +1151,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     )
                 }
                 activeRouteLock = routeLockStore.activeLock
+                viaStations.removeAll { newlyPassed.contains($0.id) }
             }
             cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
