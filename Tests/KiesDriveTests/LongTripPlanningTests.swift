@@ -389,6 +389,39 @@ final class LongTripPlanningTests: XCTestCase {
         )
     }
 
+    func testSpeedScenarioComparisonUsesSameRouteAndToleratesDecodedSpeedNoise() {
+        let routeA = RoutePlanningInput(
+            id: "a", title: "Schnellste Route", distanceMetres: 500_000,
+            mapKitExpectedTravelTime: 18_000, unlimitedMotorwayFraction: 0.4,
+            typicalUnlimitedSpeedKmh: 130, toll: .unknown(reason: "test"), breakCandidates: []
+        )
+        let routeB = RoutePlanningInput(
+            id: "b", title: "Mautfreie Route", distanceMetres: 520_000,
+            mapKitExpectedTravelTime: 19_000, unlimitedMotorwayFraction: 0.2,
+            typicalUnlimitedSpeedKmh: 130, toll: .noToll(source: "test"), breakCandidates: []
+        )
+        let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
+            routes: [routeA, routeB],
+            scenarios: [.target(150.000_01), .target(199.999_99)],
+            vehicle: .init()
+        )
+
+        let comparison = SpeedScenarioComparisonPolicy.comparison(
+            in: plan, configuredSpeed: 150, referenceSpeed: 200
+        )
+
+        XCTAssertEqual(comparison?.baseline.routeTitle, "Schnellste Route")
+        XCTAssertEqual(comparison?.alternative.routeTitle, "Schnellste Route")
+        XCTAssertEqual(comparison?.eligibleDistanceMetres ?? 0, 200_000, accuracy: 1)
+    }
+
+    func testSpeedScenarioComparisonIsHiddenWhenConfiguredSpeedIsReference() {
+        let plan = LongTripPlan(createdAt: Date(), results: [], note: "")
+        XCTAssertNil(SpeedScenarioComparisonPolicy.comparison(
+            in: plan, configuredSpeed: 200.000_01, referenceSpeed: 200
+        ))
+    }
+
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {
         let candidates = [
             BreakCandidate(id: "closed", name: "Closed", coordinate: .init(latitude: 0, longitude: 0), progress: 0.34, detourMetres: 50, isOpen: false),

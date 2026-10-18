@@ -1039,6 +1039,41 @@ struct LongTripPlan: Equatable {
     let note: String
 }
 
+struct SpeedScenarioComparison: Equatable {
+    let baseline: RouteScenarioResult
+    let alternative: RouteScenarioResult
+
+    var delta: RouteComparisonDelta {
+        RouteComparisonDelta(from: baseline, to: alternative)
+    }
+
+    var eligibleDistanceMetres: Double {
+        baseline.distanceMetres * min(1, max(0, baseline.unlimitedFraction))
+    }
+}
+
+enum SpeedScenarioComparisonPolicy {
+    /// Finds two speed scenarios for the same physical route. A tolerance is
+    /// intentional: settings can later come from sliders, remote commands or
+    /// decoded server values and must not disappear because of floating-point
+    /// representation noise.
+    static func comparison(in plan: LongTripPlan,
+                           configuredSpeed: Double,
+                           referenceSpeed: Double = 200) -> SpeedScenarioComparison? {
+        let tolerance = 0.1
+        guard abs(configuredSpeed - referenceSpeed) > tolerance,
+              let baseline = plan.results.first(where: {
+                  abs($0.scenario.targetSpeedKmh - configuredSpeed) <= tolerance
+              }),
+              let alternative = plan.results.first(where: {
+                  $0.routeTitle == baseline.routeTitle &&
+                      abs($0.scenario.targetSpeedKmh - referenceSpeed) <= tolerance
+              }),
+              baseline.id != alternative.id else { return nil }
+        return .init(baseline: baseline, alternative: alternative)
+    }
+}
+
 struct RouteComparison {
     let fuelModel: FuelModel
     let breakPlanner: BreakPlanner

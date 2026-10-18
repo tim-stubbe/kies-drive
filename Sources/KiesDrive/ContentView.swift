@@ -1686,16 +1686,21 @@ struct DriveContentView: View {
 
     @ViewBuilder
     private func comparisonSummary(_ plan: LongTripPlan) -> some View {
-        let configured = plan.results.first { $0.scenario.targetSpeedKmh == settings.targetSpeedKmh }
-        let fast = configured.flatMap { base in
-            plan.results.first { $0.routeTitle == base.routeTitle && $0.scenario.targetSpeedKmh == 200 }
-        }
-        if let configured, let fast, configured.id != fast.id {
-            let delta = RouteComparisonDelta(from: configured, to: fast)
+        if let comparison = SpeedScenarioComparisonPolicy.comparison(
+            in: plan, configuredSpeed: settings.targetSpeedKmh
+        ) {
+            let delta = comparison.delta
+            let baseSpeed = Int(comparison.baseline.scenario.targetSpeedKmh.rounded())
+            let alternativeSpeed = Int(comparison.alternative.scenario.targetSpeedKmh.rounded())
+            let eligibleKilometres = comparison.eligibleDistanceMetres / 1_000
+            let eligiblePercent = Int((comparison.baseline.unlimitedFraction * 100).rounded())
             VStack(alignment: .leading, spacing: 4) {
-                Text("200 statt \(Int(settings.targetSpeedKmh)) km/h").font(.headline)
-                Text("\(signedTime(delta.timeDifference)) · \(signed(delta.fuelDifferenceLitres, unit: "l")) · \(signed(delta.fuelCostDifference, unit: "€"))")
-                Text("Nur für als unbegrenzt erkannte, geeignete Abschnitte gerechnet.").font(.caption).foregroundStyle(.secondary)
+                Text("\(alternativeSpeed) statt \(baseSpeed) km/h").font(.headline)
+                Text("Fahrzeit \(signedTime(delta.timeDifference)) · Verbrauch \(signed(delta.fuelDifferenceLitres, unit: "l"))")
+                Text("Kraftstoffkosten \(signed(delta.fuelCostDifference, unit: "€"))")
+                Text("Wirkt nur auf ca. \(eligibleKilometres, format: .number.precision(.fractionLength(0))) km (\(eligiblePercent) %) erkannte, geeignete Abschnitte ohne Tempolimit. Verkehr und alle übrigen Straßen bleiben in der ETA berücksichtigt.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
 
