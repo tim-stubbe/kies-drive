@@ -1149,6 +1149,32 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(events.last?.kind, .arrivalReached)
     }
 
+    func testBoundedDiagnosticsRetainEarlySafetyFailureAndRecoveryOnLongTrip() throws {
+        let start = DriveDiagnosticEvent(kind: .navigationStarted, detail: "Urlaubsfahrt")
+        let failure = DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Kurz kein Netz")
+        let recovery = DriveDiagnosticEvent(kind: .rerouteSucceeded, detail: "Route wieder da")
+        let missed = DriveDiagnosticEvent(kind: .maneuverFinalCueMissed, detail: "Ausfahrt")
+        var events = [start, failure, recovery, missed]
+        events += (0..<140).map {
+            DriveDiagnosticEvent(kind: .maneuverAnnounced, detail: "Manöver \($0)")
+        }
+        events.append(.init(kind: .arrivalReached, detail: "Ziel"))
+
+        let bounded = DriveDiagnosticStore.bounded(events)
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: bounded))
+
+        XCTAssertEqual(bounded.count, 100)
+        XCTAssertEqual(bounded.first?.kind, .navigationStarted)
+        XCTAssertTrue(bounded.contains { $0.id == failure.id })
+        XCTAssertTrue(bounded.contains { $0.id == recovery.id })
+        XCTAssertTrue(bounded.contains { $0.id == missed.id })
+        XCTAssertEqual(summary.rerouteFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+        XCTAssertEqual(summary.missedFinalCues, 1)
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(bounded.last?.kind, .arrivalReached)
+    }
+
     func testDiagnosticReportIsReadableAndContainsNoInventedLocationTrail() {
         let event = DriveDiagnosticEvent(
             kind: .maneuverFinalCueMissed,

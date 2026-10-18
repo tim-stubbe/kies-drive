@@ -242,7 +242,7 @@ enum DriveUsageSegmentPolicy {
     }
 }
 
-enum DriveDiagnosticKind: String, Codable {
+enum DriveDiagnosticKind: String, Codable, Hashable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
@@ -281,6 +281,13 @@ struct DriveDiagnosticEvent: Codable, Identifiable, Equatable {
 enum DriveDiagnosticStore {
     private static let key = "drive.diagnostics.v1"
     private static let maximumCount = 100
+    private static let maximumPriorityCount = 30
+
+    private static let priorityKinds: Set<DriveDiagnosticKind> = [
+        .rerouteRequested, .rerouteSucceeded, .rerouteFailed, .routeRejoined,
+        .maneuverFinalCueMissed, .speechDeliveryFailed,
+        .offlineRouteDeparture, .offlineRouteRejoined,
+    ]
 
     static func load(defaults: UserDefaults = .standard) -> [DriveDiagnosticEvent] {
         guard let data = defaults.data(forKey: key) else { return [] }
@@ -291,18 +298,25 @@ enum DriveDiagnosticStore {
         var events = load(defaults: defaults)
         events.append(.init(kind: kind, detail: detail))
         if events.count > maximumCount {
-            let latestStart = events.last(where: { $0.kind == .navigationStarted })
-            events = Array(events.suffix(maximumCount))
-            // A long navigation can produce more than 100 maneuver events.
-            // Retain its start marker so the bounded log still yields a
-            // complete latest-session summary after arrival.
-            if let latestStart,
-               !events.contains(where: { $0.id == latestStart.id }) {
-                events.removeFirst()
-                events.insert(latestStart, at: 0)
-            }
+            events = bounded(events)
         }
         if let data = try? JSONEncoder().encode(events) { defaults.set(data, forKey: key) }
+    }
+
+    static func bounded(_ events: [DriveDiagnosticEvent]) -> [DriveDiagnosticEvent] {
+        guard events.count > maximumCount else { return events }
+        let latestStartIndex = events.lastIndex { $0.kind == .navigationStarted }
+        let session = latestStartIndex.map { events[$0...] } ?? events[...]
+        let priority = session.filter { priorityKinds.contains($0.kind) }
+            .suffix(maximumPriorityCount)
+        var retained = Set(priority.map(\.id))
+        if let latestStartIndex { retained.insert(events[latestStartIndex].id) }
+        for event in events.reversed() where retained.count < maximumCount {
+            retained.insert(event.id)
+        }
+        // Filtering the original array retains chronological order even for
+        // events sharing the same timestamp.
+        return events.filter { retained.contains($0.id) }
     }
 
     static func clear(defaults: UserDefaults = .standard) { defaults.removeObject(forKey: key) }
