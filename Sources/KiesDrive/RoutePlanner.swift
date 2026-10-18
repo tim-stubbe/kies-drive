@@ -337,6 +337,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
     private var routeOptionMutationGeneration = UUID()
+    private struct RouteStopMutationSnapshot {
+        let lock: ActiveRouteLock?
+        let stations: [FuelStation]
+        let searchResults: [RouteSearchResult]
+        let searchQuery: String
+    }
+    private var routeStopMutationGeneration = UUID()
+    private var routeStopMutationSnapshot: RouteStopMutationSnapshot?
     /// Volatile identity for MapKit route objects. Unlike the offline cache,
     /// live `MKRoute` values cannot be persisted, but they still must never be
     /// resumed for a different destination after a failed recalculation.
@@ -1444,9 +1452,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
-        let previousLock = routeLockStore.activeLock
-        let previousSearchResults = routeSearchResults
-        let previousSearchQuery = routeSearchQuery
+        let candidateRollback = RouteStopMutationSnapshot(
+            lock: routeLockStore.activeLock,
+            stations: viaStations,
+            searchResults: routeSearchResults,
+            searchQuery: routeSearchQuery
+        )
         // A user may add a stop while merely previewing a calculated route,
         // before tapping Start. Materialise the lock here so the action never
         // appears to succeed while silently doing nothing.
@@ -1493,6 +1504,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 return false
             }
         }
+        // Only a request that will actually mutate the route may supersede an
+        // in-flight mutation. A duplicate/behind tap must not steal rollback
+        // ownership from the calculation already running for the first tap.
+        let mutationGeneration = UUID()
+        routeStopMutationGeneration = mutationGeneration
+        let rollback = RouteMutationBaselinePolicy.choose(
+            existing: routeStopMutationSnapshot,
+            current: candidateRollback
+        )
+        routeStopMutationSnapshot = rollback
+        defer {
+            if mutationGeneration == routeStopMutationGeneration {
+                routeStopMutationSnapshot = nil
+            }
+        }
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: stopName,
                              coordinate: coordinate,
                              knownProgress: selectedProgress,
@@ -1505,13 +1531,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             navigationSession: navigationSession
         )
         guard succeeded else {
+            guard mutationGeneration == routeStopMutationGeneration else { return false }
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
             ) else { return false }
-            routeLockStore.replace(with: previousLock)
-            activeRouteLock = previousLock
-            routeSearchQuery = previousSearchQuery
-            routeSearchResults = previousSearchResults
+            routeLockStore.replace(with: rollback.lock)
+            activeRouteLock = rollback.lock
+            viaStations = rollback.stations
+            routeSearchQuery = rollback.searchQuery
+            routeSearchResults = rollback.searchResults
             isSearchingAlongRoute = false
             return false
         }

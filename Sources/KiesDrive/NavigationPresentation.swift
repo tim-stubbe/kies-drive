@@ -41,6 +41,12 @@ enum DestinationActivationBaselinePolicy {
     }
 }
 
+enum RouteMutationBaselinePolicy {
+    static func choose<Value>(existing: Value?, current: @autoclosure () -> Value) -> Value {
+        existing ?? current()
+    }
+}
+
 enum DestinationSearchRankingPolicy {
     static func relevanceScore(query: String, name: String?, title: String?) -> Double {
         let query = normalised(query)

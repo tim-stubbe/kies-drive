@@ -95,6 +95,17 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(secondTap, "Original route")
     }
 
+    func testRapidRouteStopChangesKeepOriginalRollbackBaseline() {
+        let original = RouteMutationBaselinePolicy.choose(
+            existing: Optional<[String]>.none, current: ["required-pass"]
+        )
+        let secondTap = RouteMutationBaselinePolicy.choose(
+            existing: Optional(original), current: ["required-pass", "first-in-flight-stop"]
+        )
+
+        XCTAssertEqual(secondTap, ["required-pass"])
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(
