@@ -192,6 +192,17 @@ def decode_remote_state(payload: str | None) -> dict[str, Any]:
     return decoded if isinstance(decoded, dict) else {}
 
 
+def active_route_remote_view(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "active_route": state.get("active_route"),
+        "route_lock": state.get("route_lock"),
+        "navigation_active": state.get("navigation_active", False),
+        "on_route": state.get("on_route"),
+        "rerouting": state.get("rerouting", False),
+        "offline_guidance_active": state.get("offline_guidance_active", False),
+    }
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "kies-drive"}
@@ -942,7 +953,8 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
                 row = conn.execute("SELECT payload,updated_at FROM user_state WHERE user_id=?", (user["id"],)).fetchone()
                 state = decode_remote_state(row["payload"] if row else None)
                 keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
-                value = {"active_route": state.get("active_route"), "route_lock": state.get("route_lock")} if name == "get_active_route" else state.get(keys.get(name, ""))
+                value = active_route_remote_view(state) if name == "get_active_route" \
+                    else state.get(keys.get(name, ""))
                 observed_at, age, live = remote_state_freshness(
                     state, row["updated_at"] if row else None
                 )

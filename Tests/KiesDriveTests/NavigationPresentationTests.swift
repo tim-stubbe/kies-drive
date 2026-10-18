@@ -912,7 +912,8 @@ final class NavigationPresentationTests: XCTestCase {
             headingDegrees: 180, speedKmh: 90,
             activeRoute: .init(destination: "Hochheim", distanceMetres: 1_000, travelTimeSeconds: 60),
             nextManeuver: .init(instruction: "Rechts abbiegen", distanceMetres: 120), routeLock: nil,
-            navigationActive: true, recordedAt: Date(timeIntervalSince1970: 1))
+            navigationActive: true, onRoute: true, rerouting: false,
+            offlineGuidanceActive: false, recordedAt: Date(timeIntervalSince1970: 1))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as? [String: Any])
 
         XCTAssertEqual(object["heading_degrees"] as? Double, 180)
@@ -922,6 +923,9 @@ final class NavigationPresentationTests: XCTestCase {
         let maneuver = try XCTUnwrap(object["next_maneuver"] as? [String: Any])
         XCTAssertEqual(maneuver["distance_metres"] as? Double, 120)
         XCTAssertEqual(object["navigation_active"] as? Bool, true)
+        XCTAssertEqual(object["on_route"] as? Bool, true)
+        XCTAssertEqual(object["rerouting"] as? Bool, false)
+        XCTAssertEqual(object["offline_guidance_active"] as? Bool, false)
         XCTAssertNil(object["headingDegrees"])
     }
 
@@ -951,6 +955,7 @@ final class NavigationPresentationTests: XCTestCase {
             location: nil, headingDegrees: nil, speedKmh: nil,
             activeRoute: nil, nextManeuver: nil,
             routeLock: .init(lock), navigationActive: true,
+            onRoute: true, rerouting: false, offlineGuidanceActive: false,
             recordedAt: Date(timeIntervalSince1970: 3)
         )
 

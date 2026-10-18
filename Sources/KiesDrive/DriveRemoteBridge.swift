@@ -53,6 +53,9 @@ struct DriveRemoteState: Encodable {
     let nextManeuver: Maneuver?
     let routeLock: RouteLock?
     let navigationActive: Bool
+    let onRoute: Bool?
+    let rerouting: Bool
+    let offlineGuidanceActive: Bool
     let recordedAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -63,6 +66,9 @@ struct DriveRemoteState: Encodable {
         case nextManeuver = "next_maneuver"
         case routeLock = "route_lock"
         case navigationActive = "navigation_active"
+        case onRoute = "on_route"
+        case rerouting
+        case offlineGuidanceActive = "offline_guidance_active"
         case recordedAt = "recorded_at"
     }
 }
@@ -210,11 +216,16 @@ final class DriveRemoteBridge {
                 distanceMetres: planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance,
                 travelTimeSeconds: planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime
             ) : nil,
-            nextManeuver: (planner.nextManeuverInstruction ?? planner.nextInstruction).map {
-                .init(instruction: $0, distanceMetres: planner.nextManeuverDistance)
-            },
+            nextManeuver: planner.isManeuverGuidanceReliable
+                ? (planner.nextManeuverInstruction ?? planner.nextInstruction).map {
+                    .init(instruction: $0, distanceMetres: planner.nextManeuverDistance)
+                } : nil,
             routeLock: planner.activeRouteLock.map(DriveRemoteState.RouteLock.init),
-            navigationActive: planner.isNavigating, recordedAt: Date()
+            navigationActive: planner.isNavigating,
+            onRoute: planner.isNavigating ? planner.isManeuverGuidanceReliable : nil,
+            rerouting: planner.isRecalculating,
+            offlineGuidanceActive: planner.isUsingOfflineGuidance,
+            recordedAt: Date()
         )
         do {
             try await DriveAPI.publishRemoteState(state)

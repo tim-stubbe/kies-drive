@@ -461,6 +461,23 @@ def test_remote_state_payload_is_bounded_and_mcp_safe():
         assert exc.status_code == 413
 
 
+def test_active_route_mcp_view_exposes_navigation_reliability():
+    state = {
+        "active_route": {"destination": "Hochheim"},
+        "route_lock": {"title": "Kroatien"},
+        "navigation_active": True,
+        "on_route": False,
+        "rerouting": True,
+        "offline_guidance_active": False,
+    }
+    view = main.active_route_remote_view(state)
+
+    assert view["navigation_active"] is True
+    assert view["on_route"] is False
+    assert view["rerouting"] is True
+    assert view["offline_guidance_active"] is False
+
+
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
     verification = {}
