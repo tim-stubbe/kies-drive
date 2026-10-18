@@ -1357,29 +1357,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         })?.routeProgress
         let selectedProgress = knownRouteProgress ?? searchedProgress
         if isNavigating, let selectedProgress {
-            let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
-            let projectedProgress = RouteGeometryProgress.nearestProgress(
-                of: start, on: routeCoordinates,
-                progressRange: currentRouteProgressSearchRange
-            )?.progress
-            let installedProgress = RouteSearchPolicy.installedRouteProgress(
-                totalDistance: totalDistance,
-                remainingDistance: remainingDistanceMetres,
-                navigationActive: true
-            )
-            let currentProgress = RouteSearchPolicy.currentProgress(
-                // Reconcile both signals exactly as the search did. At a
-                // cloverleaf or route crossing, the geometrically nearest
-                // visit may be behind the car even though distance progress
-                // already proves that visit was completed.
-                projected: RouteSearchPolicy.installedProgress(
-                    projected: projectedProgress,
-                    distanceEstimate: installedProgress
-                ),
-                persisted: activeRouteLock?.lastRouteProgress ??
-                    routeLockStore.activeLock?.lastRouteProgress,
-                navigationActive: true
-            )
+            let currentProgress = currentInstalledRouteProgress(from: start)
             guard RouteSearchPolicy.isAhead(
                 candidateProgress: selectedProgress,
                 currentProgress: currentProgress,
@@ -1426,6 +1404,30 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // seamlessly without a second "Route gestartet" announcement or an
         // unnecessary second navigation reset.
         return true
+    }
+
+    /// Reconciles map matching and distance remaining for every UI path that
+    /// can insert a stop. Search results, station pins and planned breaks must
+    /// all use the same forward-only cursor at motorway crossings.
+    private func currentInstalledRouteProgress(from coordinate: CLLocationCoordinate2D) -> Double {
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
+        let projectedProgress = RouteGeometryProgress.nearestProgress(
+            of: coordinate, on: routeCoordinates,
+            progressRange: currentRouteProgressSearchRange
+        )?.progress
+        let distanceProgress = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: totalDistance,
+            remainingDistance: remainingDistanceMetres,
+            navigationActive: isNavigating
+        )
+        return RouteSearchPolicy.currentProgress(
+            projected: RouteSearchPolicy.installedProgress(
+                projected: projectedProgress, distanceEstimate: distanceProgress
+            ),
+            persisted: activeRouteLock?.lastRouteProgress ??
+                routeLockStore.activeLock?.lastRouteProgress,
+            navigationActive: isNavigating
+        )
     }
 
     var removableRouteStops: [LockedWaypoint] {
@@ -3763,10 +3765,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             activeRouteLock = routeLockStore.activeLock
         } else {
-            viaStations.append(station)
-            if routeLockStore.activeLock == nil { persistActiveTrip() }
             let knownProgress = breakCandidates(along: legs)
                 .first(where: { $0.id == station.id })?.progress
+            if isNavigating {
+                guard let knownProgress, RouteSearchPolicy.isAhead(
+                    candidateProgress: knownProgress,
+                    currentProgress: currentInstalledRouteProgress(from: start),
+                    totalRouteDistance: totalDistance
+                ) else {
+                    errorMessage = "Diese Tankstelle liegt inzwischen hinter dir."
+                    return false
+                }
+            }
+            viaStations.append(station)
+            if routeLockStore.activeLock == nil { persistActiveTrip() }
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate, knownProgress: knownProgress,
@@ -3797,6 +3809,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                          settings: DriveSettings) async -> Bool {
         guard let candidate = plannedBreak.candidate else {
             errorMessage = "Für diesen geplanten Stopp ist kein Ort verfügbar."
+            return false
+        }
+        if isNavigating, !RouteSearchPolicy.isAhead(
+            candidateProgress: plannedBreak.routeProgress,
+            currentProgress: currentInstalledRouteProgress(from: start),
+            totalRouteDistance: totalDistance
+        ) {
+            errorMessage = "Dieser geplante Stopp liegt inzwischen hinter dir."
             return false
         }
         if let station = stations.first(where: { $0.id == candidate.id }) {
