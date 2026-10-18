@@ -254,7 +254,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Shared by the phone UI and CarPlay so both surfaces operate on the
     /// same route, stops and long-trip plan.
     static let shared = RoutePlanner()
-    @Published var destinationText = ""
+    @Published var destinationText = "" {
+        didSet {
+            guard destinationText != oldValue else { return }
+            // Text-field edits happen independently of the explicit search
+            // button. Invalidate and cancel immediately so results for the
+            // old address neither consume MapKit work nor remain tappable
+            // under the new query while it is still being entered.
+            destinationSearchGeneration = UUID()
+            activeDestinationSearches.forEach { $0.cancel() }
+            activeDestinationSearches = []
+            suggestions = []
+        }
+    }
     @Published var suggestions: [MKMapItem] = []
     @Published var destination: MKMapItem?
     @Published var viaStations: [FuelStation] = []
