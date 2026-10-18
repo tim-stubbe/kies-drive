@@ -2479,9 +2479,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 DriveDiagnosticStore.append(
                     .rerouteSucceeded, detail: "Online-Route nach Offline-Fahrt wiederhergestellt"
                 )
-                if settings.voiceGuidance {
-                    self.announceRecalculatedRoute(at: location)
-                }
+                self.presentRecalculatedRoute(
+                    at: NavigationReroutePresentationPolicy.location(
+                        trigger: location, latest: self.lastAcceptedNavigationLocation
+                    ),
+                    voiceGuidance: settings.voiceGuidance
+                )
             }
         }
 
@@ -3680,11 +3683,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 isManeuverGuidanceReliable = true
                 onRouteRecoveryFixCount = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
-                if settings.voiceGuidance {
-                    announceRecalculatedRoute(at: NavigationReroutePresentationPolicy.location(
+                presentRecalculatedRoute(
+                    at: NavigationReroutePresentationPolicy.location(
                         trigger: location, latest: lastAcceptedNavigationLocation
-                    ))
-                }
+                    ),
+                    voiceGuidance: settings.voiceGuidance
+                )
             } else {
                 consecutiveRerouteFailures += 1
                 DriveDiagnosticStore.append(.rerouteFailed,
@@ -3699,16 +3703,24 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
     }
 
-    /// A successful reroute must never end acoustically with only the earlier
-    /// "wird neu berechnet" status. Publish and speak the first usable
-    /// instruction immediately; when the next maneuver is still far away,
-    /// confirm completion without manufacturing an early turn cue.
-    private func announceRecalculatedRoute(at location: CLLocation) {
+    /// A successful reroute must publish its first usable instruction
+    /// immediately on every surface. With voice enabled it must also never end
+    /// acoustically with only the earlier "wird neu berechnet" status; when
+    /// the next maneuver is still far away, confirm completion without
+    /// manufacturing an early turn cue.
+    private func presentRecalculatedRoute(at location: CLLocation,
+                                          voiceGuidance: Bool) {
         guard let progress = liveNavigationProgress(at: location) else {
-            _ = speak("Die neue Route ist bereit.", priority: .status)
+            if voiceGuidance {
+                _ = speak("Die neue Route ist bereit.", priority: .status)
+            }
             return
         }
+        // Phone, CarPlay and MCP must all see the corrected maneuver
+        // immediately. Voice guidance is only an audio preference and must
+        // never delay the visible route state until another GPS callback.
         updateNextManeuver(using: progress)
+        guard voiceGuidance else { return }
         let speed = NavigationGuidanceSpeedPolicy.effective(
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,
