@@ -336,7 +336,12 @@ struct DriveContentView: View {
                     Spacer()
                     Button("Hinzufügen") {
                         guard let start = location.location?.coordinate else { return }
-                        Task { await planner.addRouteStop(item, from: start, settings: settings) }
+                        Task {
+                            await planner.addRouteStop(
+                                item, from: start, settings: settings,
+                                knownRouteProgress: result.routeProgress
+                            )
+                        }
                     }.buttonStyle(.bordered).tint(Color.kiesForest)
                 }
             }
@@ -1221,7 +1226,12 @@ struct DriveContentView: View {
                             Spacer()
                             Button("Hinzufügen", systemImage: "plus.circle.fill") {
                                 guard let start = location.location?.coordinate else { return }
-                                Task { await planner.addRouteStop(item, from: start, settings: settings) }
+                                Task {
+                                    await planner.addRouteStop(
+                                        item, from: start, settings: settings,
+                                        knownRouteProgress: result.routeProgress
+                                    )
+                                }
                             }
                         }
                     }
