@@ -2317,12 +2317,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ) }
         }
         guard !expiredPending.isEmpty || !expiredActive.isEmpty else { return }
-        for identifier in expiredPending.keys { pendingManeuverSpeech.removeValue(forKey: identifier) }
-        for identifier in expiredActive.keys { activeManeuverSpeech.removeValue(forKey: identifier) }
+        let claim = expiredActive.values.first?.first ?? expiredPending.values.first?.first
         // Remove the stale queued utterance from AVSpeechSynthesizer as well;
         // otherwise it could start after the retry and produce a duplicate.
-        synthesizer.stopSpeaking(at: .immediate)
-        let claim = expiredActive.values.first?.first ?? expiredPending.values.first?.first
+        // Clean all local ownership synchronously because the exact failure
+        // being handled here may also mean `didCancel` never arrives.
+        cancelCurrentSpeechWork()
         DriveDiagnosticStore.append(
             .speechDeliveryFailed,
             detail: DriveDiagnosticDetail.navigationSample(
@@ -2386,12 +2386,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
            ) {
             return false
         }
+        // Supersede the old utterance before activating the new audio session.
+        // AVSpeechSynthesizer can omit or delay `didCancel` across Bluetooth,
+        // Siri and phone-call route changes; retaining its old claim would
+        // later cancel the new instruction when the timeout audit runs.
+        if hasActiveSpeechWork { cancelCurrentSpeechWork() }
         #if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try? audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         #endif
-        if hasActiveSpeechWork { synthesizer.stopSpeaking(at: .immediate) }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.preferredGermanVoice()
         utterance.rate = 0.48

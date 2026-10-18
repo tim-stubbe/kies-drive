@@ -760,6 +760,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
             active: .maneuver, incoming: .critical
         ))
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
+            active: .maneuver, incoming: .maneuver
+        ), "A later preparation stage must be able to supersede an unfinished earlier stage")
     }
 
     func testCommittedReplacementRouteCancelsEveryOldSpokenManeuver() {
