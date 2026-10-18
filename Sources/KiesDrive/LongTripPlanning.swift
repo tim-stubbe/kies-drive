@@ -1064,6 +1064,18 @@ enum NavigationFuelReminderSpeechDeliveryPolicy {
         guard let completedKey else { return false }
         return pendingKey == completedKey
     }
+
+    static func isRelevant(pendingKey: String?, stops: [PlannedFuelStop],
+                           currentProgress: Double) -> Bool {
+        guard let pendingKey, currentProgress.isFinite else { return false }
+        return stops.contains { stop in
+            PlannedRouteStopVisibilityPolicy.isAhead(
+                stop.insertionRouteProgress, current: currentProgress
+            ) && NavigationFuelReminderPolicy.Stage.allCases.contains { stage in
+                NavigationFuelReminderPolicy.key(stopID: stop.id, stage: stage) == pendingKey
+            }
+        }
+    }
 }
 
 enum DrivingFuelPolicy {

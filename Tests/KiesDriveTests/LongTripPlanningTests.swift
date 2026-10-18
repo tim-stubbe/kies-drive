@@ -118,6 +118,28 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testPendingFuelSpeechMustStillBelongToAheadStopAfterReroute() {
+        let stop = PlannedFuelStop(
+            id: "fuel-stop", candidate: nil,
+            afterDistanceMetres: 180_000, routeProgress: 0.65,
+            explanation: "Geplanter Tankstopp"
+        )
+        let key = NavigationFuelReminderPolicy.key(stopID: stop.id, stage: .soon)
+
+        XCTAssertTrue(NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
+            pendingKey: key, stops: [stop], currentProgress: 0.4
+        ))
+        XCTAssertFalse(NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
+            pendingKey: key, stops: [], currentProgress: 0.4
+        ), "A stop removed by rerouting must never be announced")
+        XCTAssertFalse(NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
+            pendingKey: key, stops: [stop], currentProgress: 0.8
+        ), "A stop already passed while speech was interrupted must never be announced")
+        XCTAssertFalse(NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
+            pendingKey: "different-stop:1", stops: [stop], currentProgress: 0.4
+        ))
+    }
+
     func testPendingBreakSpeechClearsOnlyAfterMatchingCompletion() {
         let plan = NavigationBreakReminderPolicy.Stage.plan.rawValue
         XCTAssertFalse(NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(

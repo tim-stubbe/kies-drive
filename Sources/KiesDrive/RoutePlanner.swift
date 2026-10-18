@@ -2055,6 +2055,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             fuelReminderText = nil
             return
         }
+        let currentProgress = currentInstalledRouteProgress
+        if drivingFuelState.pendingSpokenReminderKey != nil,
+           !NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
+                pendingKey: drivingFuelState.pendingSpokenReminderKey,
+                stops: result.fuelStops, currentProgress: currentProgress
+           ) {
+            drivingFuelState.pendingSpokenReminderKey = nil
+            drivingFuelState.pendingSpokenReminderText = nil
+            drivingFuelStore.save(drivingFuelState)
+        }
         if DriveSettings.shared.voiceGuidance,
            let key = drivingFuelState.pendingSpokenReminderKey,
            let text = drivingFuelState.pendingSpokenReminderText {
@@ -2068,7 +2078,6 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingFuelState.pendingSpokenReminderText = nil
             drivingFuelStore.save(drivingFuelState)
         }
-        let currentProgress = currentInstalledRouteProgress
         guard let stop = result.fuelStops
             .filter({ PlannedRouteStopVisibilityPolicy.isAhead(
                 $0.insertionRouteProgress, current: currentProgress
