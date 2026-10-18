@@ -217,6 +217,15 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A corrected device clock must not freeze the CarPlay camera")
     }
 
+    func testCarPlayOverviewUsesAThinnerRouteWithoutWeakeningFollowMode() {
+        XCTAssertEqual(CarPlayRouteLinePolicy.width(isOverview: false), 7)
+        XCTAssertEqual(CarPlayRouteLinePolicy.width(isOverview: true), 4.5)
+        XCTAssertLessThan(
+            CarPlayRouteLinePolicy.width(isOverview: true),
+            CarPlayRouteLinePolicy.width(isOverview: false)
+        )
+    }
+
     func testLocationBatchKeepsUsefulFixesBeforeBadTrailingSample() {
         let now = Date(timeIntervalSince1970: 2_000)
         func location(_ secondsAgo: TimeInterval, latitude: Double,

@@ -235,6 +235,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private func followVehicle() {
         cameraMode = .follow
         lastCameraUpdateAt = nil
+        refreshRouteStroke()
         mapView?.setUserTrackingMode(.followWithHeading, animated: true)
     }
 
@@ -243,9 +244,17 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let polylines = visibleRoutePolylines
         guard !polylines.isEmpty else { return }
         cameraMode = .overview
+        refreshRouteStroke()
         mapView.setUserTrackingMode(.none, animated: false)
         let rect = polylines.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
         mapView.setVisibleMapRect(rect, edgePadding: .init(top: 90, left: 55, bottom: 90, right: 55), animated: true)
+    }
+
+    private func refreshRouteStroke() {
+        guard let mapView else { return }
+        for overlay in mapView.overlays {
+            mapView.renderer(for: overlay)?.setNeedsDisplay()
+        }
     }
 
     private func showDestinationsAndStops() {
@@ -946,7 +955,7 @@ extension CarPlaySceneDelegate: MKMapViewDelegate {
         guard let polyline = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
         let renderer = MKPolylineRenderer(polyline: polyline)
         renderer.strokeColor = .systemBlue
-        renderer.lineWidth = 7
+        renderer.lineWidth = CarPlayRouteLinePolicy.width(isOverview: cameraMode == .overview)
         renderer.lineCap = .round
         renderer.lineJoin = .round
         return renderer

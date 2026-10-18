@@ -828,6 +828,15 @@ enum CarPlayCameraUpdatePolicy {
     }
 }
 
+enum CarPlayRouteLinePolicy {
+    /// A seven-point route is easy to follow in the driving camera but hides
+    /// junction geometry and even small towns in the full-trip overview.
+    /// Keep the overview legible without making active guidance look faint.
+    static func width(isOverview: Bool) -> CGFloat {
+        isOverview ? 4.5 : 7
+    }
+}
+
 enum NavigationLocationAuthorizationPolicy {
     /// iOS commonly answers the first "Always" request with When-In-Use.
     /// Ask for the background upgrade only when guidance actually begins, so
