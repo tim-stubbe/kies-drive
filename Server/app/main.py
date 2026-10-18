@@ -792,7 +792,12 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
                 "q": query, "format": "json", "language": "de-DE", "safesearch": 1,
             })
             response.raise_for_status()
-            results = response.json().get("results", [])
+            search_payload = response.json()
+            if not isinstance(search_payload, dict):
+                raise TypeError("SearXNG response is not an object")
+            results = search_payload.get("results", [])
+            if not isinstance(results, list):
+                raise TypeError("SearXNG results are not a list")
     except (httpx.HTTPError, ValueError, TypeError) as exc:
         raise HTTPException(502, "SearXNG ist gerade nicht erreichbar.") from exc
     sources = [{

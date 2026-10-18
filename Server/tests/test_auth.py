@@ -195,6 +195,41 @@ def test_unofficial_toll_evidence_must_be_current():
     ) is None
 
 
+def test_toll_search_rejects_malformed_searxng_json(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return ["valid JSON, wrong shape"]
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setenv("SEARXNG_URL", "http://searxng:8080")
+    monkeypatch.setattr(main, "current_user", lambda authorization: {"id": 1})
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+
+    response = TestClient(main.app).post(
+        "/api/navigation/toll-search",
+        json={"origin": "Split", "destination": "Hochheim", "via": ["Wurzenpass"]},
+        headers={"Authorization": "Bearer test"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "SearXNG ist gerade nicht erreichbar."
+
+
 def test_verification_email_can_be_resent_without_account_disclosure(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "auth.db"))
     sent = []
