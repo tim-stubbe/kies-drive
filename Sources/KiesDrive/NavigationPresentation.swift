@@ -1985,6 +1985,8 @@ enum OfflineRouteRecoveryPolicy {
 }
 
 enum OfflineInitialPositionMatchPolicy {
+    static let requiredConsecutiveMatches = 3
+
     /// The first cached-route match is authoritative only inside the same
     /// accuracy/speed-aware corridor used by deviation detection. A far-away
     /// cached GPS fix must not consume full-route recovery before the first
@@ -1998,6 +2000,10 @@ enum OfflineInitialPositionMatchPolicy {
             horizontalAccuracy: horizontalAccuracy,
             speedMetresPerSecond: speedMetresPerSecond
         )
+    }
+
+    static func isConfirmed(consecutiveMatches: Int) -> Bool {
+        consecutiveMatches >= requiredConsecutiveMatches
     }
 }
 

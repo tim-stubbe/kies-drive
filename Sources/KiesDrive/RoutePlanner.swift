@@ -374,6 +374,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastLocationRejectionLoggedAt: Date?
     private var lastOfflineRecoveryAttempt: Date?
     private var offlineNeedsInitialPositionMatch = false
+    private var offlineInitialMatchStepIndex: Int?
     private var offlineDeviationWarningActive = false
     private var arrivalStrikes = 0
     private var arrivalCandidateSince: Date?
@@ -2508,6 +2509,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
         )
         offlineNeedsInitialPositionMatch = true
+        offlineInitialMatchStepIndex = nil
         lastOfflineRecoveryAttempt = Date()
         beginNavigationSession()
         // The persisted cursor is only an estimate until a fresh GPS fix
@@ -2626,15 +2628,35 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             horizontalAccuracy: location.horizontalAccuracy,
             speedMetresPerSecond: reliableSpeed
         ) || isWrongWay
-        if offlineNeedsInitialPositionMatch,
-           OfflineInitialPositionMatchPolicy.isReliable(
+        if offlineNeedsInitialPositionMatch {
+            let reliableInitialMatch = OfflineInitialPositionMatchPolicy.isReliable(
                 distanceFromRoute: progress.distanceFromRoute,
                 horizontalAccuracy: location.horizontalAccuracy,
                 speedMetresPerSecond: reliableSpeed,
                 wrongWay: isWrongWay
-           ) {
-            offlineNeedsInitialPositionMatch = false
-            isManeuverGuidanceReliable = true
+            )
+            if reliableInitialMatch {
+                if offlineInitialMatchStepIndex == progress.currentStepIndex {
+                    onRouteRecoveryFixCount += 1
+                } else {
+                    offlineInitialMatchStepIndex = progress.currentStepIndex
+                    onRouteRecoveryFixCount = 1
+                }
+                guard OfflineInitialPositionMatchPolicy.isConfirmed(
+                    consecutiveMatches: onRouteRecoveryFixCount
+                ) else {
+                    // Keep every surface in the neutral "Position wird
+                    // bestimmt" state until the same road segment is stable.
+                    return
+                }
+                offlineNeedsInitialPositionMatch = false
+                offlineInitialMatchStepIndex = nil
+                onRouteRecoveryFixCount = 0
+                isManeuverGuidanceReliable = true
+            } else {
+                offlineInitialMatchStepIndex = nil
+                onRouteRecoveryFixCount = 0
+            }
         }
         let isDeparting = NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: progress.distanceFromRoute,
@@ -2835,6 +2857,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         consecutiveRerouteFailures = 0
         onRouteRecoveryFixCount = 0
         offlineNeedsInitialPositionMatch = false
+        offlineInitialMatchStepIndex = nil
         offlineDeviationWarningActive = false
         isManeuverGuidanceReliable = true
         lastLongTripPlanRefreshAt = nil

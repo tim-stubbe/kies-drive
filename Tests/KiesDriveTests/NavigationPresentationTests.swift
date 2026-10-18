@@ -3252,6 +3252,10 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testOfflineInitialRecoveryWaitsForPositionInsideRouteCorridor() {
+        XCTAssertEqual(OfflineInitialPositionMatchPolicy.requiredConsecutiveMatches, 3)
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.isConfirmed(consecutiveMatches: 1))
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.isConfirmed(consecutiveMatches: 2))
+        XCTAssertTrue(OfflineInitialPositionMatchPolicy.isConfirmed(consecutiveMatches: 3))
         XCTAssertFalse(OfflineInitialPositionMatchPolicy.isReliable(
             distanceFromRoute: 2_000, horizontalAccuracy: 20,
             speedMetresPerSecond: 25
