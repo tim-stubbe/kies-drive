@@ -2047,7 +2047,7 @@ struct DriveSettingsView: View {
         )
         guard !planner.legs.isEmpty,
               let current = LocationService.shared.location?.coordinate else { return }
-        Task { await planner.calculate(from: current, settings: settings) }
+        Task { await planner.recalculateCurrentRoute(from: current, settings: settings) }
     }
 
     private func usageDistance(_ metres: CLLocationDistance) -> String {

@@ -620,6 +620,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteLock = routeLockStore.activeLock
     }
 
+    /// Recalculates user- or remote-edited options without allowing a delayed
+    /// MapKit result to outlive the navigation session that requested it.
+    @discardableResult
+    func recalculateCurrentRoute(from start: CLLocationCoordinate2D,
+                                 settings: DriveSettings) async -> Bool {
+        let navigationSession = isNavigating ? navigationSessionGeneration : nil
+        return await calculate(
+            from: start, settings: settings,
+            navigationSession: navigationSession
+        )
+    }
+
     func replaceRouteLockForRemoteDestination(waypoints: [LockedWaypoint] = []) {
         guard let destination else { return }
         let coordinate = destination.placemark.coordinate

@@ -161,7 +161,7 @@ final class DriveRemoteBridge {
                 waypointID: command.arguments["waypoint_id"]?.string,
                 avoidTolls: command.arguments["avoid_tolls"]?.bool,
                 avoidHighways: command.arguments["avoid_highways"]?.bool)
-            await planner.calculate(from: current, settings: settings)
+            await planner.recalculateCurrentRoute(from: current, settings: settings)
         case "set_destination":
             let item: MKMapItem
             if let lat = command.arguments["latitude"]?.number,
