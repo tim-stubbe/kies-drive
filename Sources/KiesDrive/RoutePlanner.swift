@@ -458,13 +458,30 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     func confirmFullTank(settings: DriveSettings) {
+        confirmFuelLevel(1, settings: settings)
+    }
+
+    func confirmFuelLevel(_ fraction: Double, settings: DriveSettings) {
         guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else { return }
         drivingFuelState = DrivingFuelPolicy.confirmed(
-            drivingFuelState, tripID: tripID, fraction: 1,
+            drivingFuelState, tripID: tripID, fraction: min(1, max(0, fraction)),
             location: lastAcceptedNavigationLocation
         )
         drivingFuelStore.save(drivingFuelState)
         buildLongTripPlan(settings: settings)
+    }
+
+    func estimatedFuelFraction(settings: DriveSettings) -> Double {
+        guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else {
+            return min(1, max(0, settings.departureFuelPercent / 100))
+        }
+        return DrivingFuelPolicy.estimatedFraction(
+            drivingFuelState,
+            tripID: tripID,
+            tankCapacityLitres: settings.tankCapacityL,
+            consumptionLPer100km: settings.consumptionLPer100km,
+            fallback: settings.departureFuelPercent / 100
+        )
     }
 
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position

@@ -1681,6 +1681,8 @@ struct DriveSettingsView: View {
     @StateObject private var offlineMaps = OfflineMapPackageStore.shared
     @State private var showOfflineMapImporter = false
     @State private var offlineMapImportError: String?
+    @State private var currentFuelPercent = 100.0
+    @State private var fuelLevelWasConfirmed = false
 
     fileprivate enum ConnectionStatus {
         case idle, testing, success, failed(String)
@@ -1789,6 +1791,23 @@ struct DriveSettingsView: View {
                     )
                     .onChange(of: settings.departureFuelPercent) { _, _ in
                         planner.refreshLongTripPlan(settings: settings)
+                    }
+                    if planner.isNavigating || planner.activeRouteLock != nil {
+                        Stepper(
+                            "Tankstand jetzt: \(Int(currentFuelPercent)) %",
+                            value: $currentFuelPercent, in: 0...100, step: 5
+                        )
+                        Button {
+                            planner.confirmFuelLevel(currentFuelPercent / 100, settings: settings)
+                            currentFuelPercent = planner.estimatedFuelFraction(settings: settings) * 100
+                            fuelLevelWasConfirmed = true
+                        } label: {
+                            Label(
+                                fuelLevelWasConfirmed ? "Tankstand übernommen" : "Aktuellen Tankstand übernehmen",
+                                systemImage: fuelLevelWasConfirmed ? "checkmark.circle.fill" : "fuelpump"
+                            )
+                        }
+                        .accessibilityHint("Berechnet Reichweite und Tankstopps ab dem aktuellen Standort neu")
                     }
                     LabeledContent("Kraftstoffpreis") {
                         TextField("€/l", value: $settings.fuelPricePerLitre, format: .number.precision(.fractionLength(2)))
@@ -1906,6 +1925,9 @@ struct DriveSettingsView: View {
             .navigationTitle("Einstellungen")
             .toolbar { Button("Fertig") { dismiss() } }
             .task { accountProfile = try? await DriveAPI.account() }
+            .onAppear {
+                currentFuelPercent = planner.estimatedFuelFraction(settings: settings) * 100
+            }
             .sheet(isPresented: $showTwoFactorSetup, onDismiss: {
                 Task { accountProfile = try? await DriveAPI.account() }
             }) { TwoFactorSetupView() }

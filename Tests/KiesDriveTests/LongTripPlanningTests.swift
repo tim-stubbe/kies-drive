@@ -603,6 +603,19 @@ final class LongTripPlanningTests: XCTestCase {
         ), 1)
     }
 
+    func testDrivingFuelPolicyAcceptsPartialTankCorrection() {
+        let tripID = UUID()
+        let state = DrivingFuelPolicy.confirmed(
+            .init(), tripID: tripID, fraction: 0.45, location: nil
+        )
+
+        XCTAssertEqual(state.observedFuelFraction, 0.45, accuracy: 0.001)
+        XCTAssertEqual(DrivingFuelPolicy.estimatedFraction(
+            state, tripID: tripID, tankCapacityLitres: 50,
+            consumptionLPer100km: 8, fallback: 1
+        ), 0.45, accuracy: 0.001)
+    }
+
     func testDrivingFuelPolicyDoesNotInventDistanceAcrossUnknownGap() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 50_000)
