@@ -4,6 +4,21 @@ import CoreLocation
 
 @MainActor
 final class OfflineMapPackageTests: XCTestCase {
+    func testOfflineOverviewDoesNotOverrideManualZoomOnEveryUpdate() {
+        XCTAssertTrue(OfflineMapCameraPolicy.shouldFitOverview(
+            showsOverview: true, showedOverviewPreviously: false, routeGeometryChanged: false
+        ))
+        XCTAssertFalse(OfflineMapCameraPolicy.shouldFitOverview(
+            showsOverview: true, showedOverviewPreviously: true, routeGeometryChanged: false
+        ))
+        XCTAssertTrue(OfflineMapCameraPolicy.shouldFitOverview(
+            showsOverview: true, showedOverviewPreviously: true, routeGeometryChanged: true
+        ))
+        XCTAssertFalse(OfflineMapCameraPolicy.shouldFitOverview(
+            showsOverview: false, showedOverviewPreviously: true, routeGeometryChanged: true
+        ))
+    }
+
     private var root: URL!
     private var source: URL!
     private var defaults: UserDefaults!

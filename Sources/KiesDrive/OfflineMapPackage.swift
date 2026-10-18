@@ -36,6 +36,13 @@ enum OfflineMapCoveragePolicy {
     }
 }
 
+enum OfflineMapCameraPolicy {
+    static func shouldFitOverview(showsOverview: Bool, showedOverviewPreviously: Bool,
+                                  routeGeometryChanged: Bool) -> Bool {
+        showsOverview && (!showedOverviewPreviously || routeGeometryChanged)
+    }
+}
+
 enum OfflineTileCoordinatePolicy {
     static func isValid(z: Int, x: Int, y: Int) -> Bool {
         guard (0...22).contains(z), x >= 0, y >= 0 else { return false }

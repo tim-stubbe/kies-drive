@@ -87,6 +87,7 @@ private final class LocalXYZTileOverlay: MKTileOverlay {
 private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
     private var packageID: String?
     private var lastOverview = false
+    private var lastRouteSignature: String?
 
     func update(_ mapView: MKMapView, package: InstalledOfflineMapPackage, routes: [MKPolyline],
                 currentLocation: CLLocation?, destination: MKMapItem?, followsLocation: Bool,
@@ -107,7 +108,16 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
             mapView.addAnnotation(pin)
         }
 
-        if showsRouteOverview, (!lastOverview || routes.count > 0) {
+        let routeSignature = routes.map { route in
+            let rect = route.boundingMapRect
+            return "\(route.pointCount):\(rect.origin.x):\(rect.origin.y):\(rect.size.width):\(rect.size.height)"
+        }.joined(separator: "|")
+        let routeGeometryChanged = routeSignature != lastRouteSignature
+        if OfflineMapCameraPolicy.shouldFitOverview(
+            showsOverview: showsRouteOverview,
+            showedOverviewPreviously: lastOverview,
+            routeGeometryChanged: routeGeometryChanged
+        ) {
             let rect = routes.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
             if !rect.isNull, !rect.isEmpty {
                 mapView.setVisibleMapRect(rect, edgePadding: .init(top: 150, left: 45, bottom: 210, right: 45), animated: lastOverview)
@@ -126,6 +136,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
                                                 longitudeDelta: bounds.east - bounds.west)), animated: false)
         }
         lastOverview = showsRouteOverview
+        lastRouteSignature = routeSignature
     }
 
     func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
