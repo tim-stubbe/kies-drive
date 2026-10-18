@@ -1662,6 +1662,30 @@ enum NavigationStepSelectionPolicy {
             let headingMatches = NavigationCourseMatchingPolicy.isPlausible(
                 next.courseDifferenceDegrees
             )
+            // Some MapKit routes encode the actual turn as an instruction-only
+            // marker with no polyline between the incoming and outgoing road.
+            // Keep that marker protected while approaching, but once the car
+            // has reached the end of the incoming geometry and is clearly on
+            // the road after it, cross the marker atomically. Otherwise the
+            // infinite geometry sentinel can freeze guidance at the junction
+            // for the rest of the trip.
+            if next.hasManeuverInstruction, !next.hasUsableGeometry,
+               metrics.indices.contains(successorIndex + 1) {
+                let outgoingIndex = successorIndex + 1
+                let outgoing = metrics[outgoingIndex]
+                let outgoingHeadingMatches = NavigationCourseMatchingPolicy.isPlausible(
+                    outgoing.courseDifferenceDegrees
+                )
+                let reachedInstructionOnlyJunction = active.hasUsableGeometry &&
+                    active.remainingOnStep <= radius &&
+                    outgoing.hasUsableGeometry &&
+                    outgoing.distanceFromRoute <= radius * 1.5 &&
+                    outgoingHeadingMatches
+                if reachedInstructionOnlyJunction {
+                    selected = outgoingIndex
+                    continue
+                }
+            }
             let reachedJunction = active.remainingOnStep <= radius &&
                 next.distanceFromRoute <= radius * 1.5 && headingMatches
             // A parallel ramp can be much closer than the active motorway

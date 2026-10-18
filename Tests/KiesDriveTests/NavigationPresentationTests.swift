@@ -3077,6 +3077,43 @@ final class NavigationPresentationTests: XCTestCase {
         ), 0, "A real maneuver must not disappear merely because MapKit omitted its geometry")
     }
 
+    func testStepSelectionCompletesGeometryFreeManeuverAtJunction() {
+        let approaching = [
+            NavigationStepMetric(
+                distanceFromRoute: 5, remainingOnStep: 40, stepDistance: 300
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false,
+                hasManeuverInstruction: true
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: 7, remainingOnStep: 500, stepDistance: 500,
+                courseDifferenceDegrees: 4
+            ),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: approaching, transitionRadius: 10
+        ), 0, "The instruction-only turn must remain active before the junction")
+
+        var afterTurn = approaching
+        afterTurn[0] = NavigationStepMetric(
+            distanceFromRoute: 12, remainingOnStep: 6, stepDistance: 300
+        )
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: afterTurn, transitionRadius: 10
+        ), 2, "Once on the outgoing road, guidance must not freeze on missing geometry")
+
+        afterTurn[2] = NavigationStepMetric(
+            distanceFromRoute: 7, remainingOnStep: 500, stepDistance: 500,
+            courseDifferenceDegrees: 150
+        )
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: afterTurn, transitionRadius: 10
+        ), 0, "An opposing nearby road must not complete the maneuver")
+    }
+
     func testStepSelectionDoesNotDropFinalCueBeforeJunctionWithCoarseGPS() {
         let beforeJunction = [
             NavigationStepMetric(distanceFromRoute: 7, remainingOnStep: 22),
