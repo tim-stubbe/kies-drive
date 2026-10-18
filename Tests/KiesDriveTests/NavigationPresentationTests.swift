@@ -3809,6 +3809,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(shortlist.map(\.name), ["Early best", "Middle", "Later"])
     }
 
+    func testRouteSearchShortlistKeepsExactMatchBeforeCloserWeakResult() {
+        let candidates = [
+            (name: "generic", progress: 0.40, distance: 40.0, relevance: 8.0),
+            (name: "mcdonalds", progress: 0.405, distance: 140.0, relevance: 0.0),
+        ]
+
+        let shortlist = RouteSearchPolicy.diverseShortlist(
+            candidates, maximum: 1,
+            progress: { $0.progress }, airDistance: { $0.distance },
+            queryRelevance: { $0.relevance }
+        )
+
+        XCTAssertEqual(shortlist.map(\.name), ["mcdonalds"])
+    }
+
     func testRouteSearchShortlistHonoursRequestLimitAndEmptyLimit() {
         let candidates = (0..<10).map { (progress: Double($0) / 10, distance: Double($0)) }
         XCTAssertEqual(RouteSearchPolicy.diverseShortlist(

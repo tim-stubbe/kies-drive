@@ -1436,7 +1436,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // can trigger provider throttling.
         let shortlist = RouteSearchPolicy.diverseShortlist(
             candidates, maximum: 6,
-            progress: { $0.progress }, airDistance: { $0.airDistance }
+            progress: { $0.progress }, airDistance: { $0.airDistance },
+            queryRelevance: {
+                DestinationSearchRankingPolicy.relevanceScore(
+                    query: cleanQuery,
+                    name: $0.item.name,
+                    title: $0.item.placemark.title
+                )
+            }
         )
         let remainingRouteDistance = isNavigating && remainingDistanceMetres > 0
             ? remainingDistanceMetres : totalDistance

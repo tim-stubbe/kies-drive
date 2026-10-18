@@ -2425,7 +2425,8 @@ enum RouteSearchPolicy {
     static func diverseShortlist<C>(_ candidates: [C], maximum: Int,
                                     minimumProgressSeparation: Double = 0.015,
                                     progress: (C) -> Double,
-                                    airDistance: (C) -> CLLocationDistance) -> [C] {
+                                    airDistance: (C) -> CLLocationDistance,
+                                    queryRelevance: (C) -> Double = { _ in 0 }) -> [C] {
         guard maximum > 0 else { return [] }
         let separation = max(0, minimumProgressSeparation)
         let sorted = candidates.sorted {
@@ -2445,7 +2446,17 @@ enum RouteSearchPolicy {
             }
         }
         return clusters.compactMap { cluster in
-            cluster.min { airDistance($0) < airDistance($1) }
+            cluster.min {
+                let lhsRelevance = queryRelevance($0)
+                let rhsRelevance = queryRelevance($1)
+                let lhsScore = lhsRelevance.isFinite && lhsRelevance >= 0
+                    ? lhsRelevance : .greatestFiniteMagnitude
+                let rhsScore = rhsRelevance.isFinite && rhsRelevance >= 0
+                    ? rhsRelevance : .greatestFiniteMagnitude
+                return lhsScore == rhsScore
+                    ? airDistance($0) < airDistance($1)
+                    : lhsScore < rhsScore
+            }
         }
         .prefix(maximum)
         .map { $0 }
