@@ -75,6 +75,9 @@ def test_toll_source_must_match_destination_or_required_via_point():
         "Graz nach Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass",
         "Split", "Hochheim am Main", ["Wurzenpass"]
     )
+    assert main.toll_source_matches_route(
+        "Ulm nach Rom: Gesamtmaut 22 EUR", "Ulm", "Rom", []
+    )
 
 
 def test_toll_evidence_requires_official_or_independent_corroboration():

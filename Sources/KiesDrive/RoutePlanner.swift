@@ -2274,7 +2274,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                        destinationCoordinate.longitude) + "|" + via.joined(separator: "|")
         let generation = UUID()
         tollLoadGeneration = generation
-        let origin = String(format: "%.4f, %.4f", start.latitude, start.longitude)
+        // Search evidence normally names towns, not raw coordinates. Resolve
+        // only the coarse locality/region/country so the provider can verify
+        // both endpoints without sending the user's street address.
+        let origin = await tollOriginLabel(for: start)
+            ?? String(format: "%.4f, %.4f", start.latitude, start.longitude)
         var results: [TollLookupBatchItem] = []
         var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
         for avoidTolls in [false, true] {
@@ -2326,6 +2330,36 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }
         }
+    }
+
+    private func tollOriginLabel(for coordinate: CLLocationCoordinate2D) async -> String? {
+        let geocoder = CLGeocoder()
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let placemark = await withTaskGroup(of: CLPlacemark?.self) { group in
+            group.addTask {
+                try? await geocoder.reverseGeocodeLocation(
+                    location, preferredLocale: Locale(identifier: "de_DE")
+                ).first
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            geocoder.cancelGeocode()
+            return first
+        }
+        guard let placemark else { return nil }
+        let components = [placemark.locality, placemark.administrativeArea, placemark.isoCountryCode]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let unique = components.reduce(into: [String]()) { result, component in
+            if !result.contains(where: { $0.caseInsensitiveCompare(component) == .orderedSame }) {
+                result.append(component)
+            }
+        }
+        return unique.isEmpty ? nil : unique.joined(separator: ", ")
     }
 
     private func setResearchedToll(_ toll: TollCost, avoidTolls: Bool) {

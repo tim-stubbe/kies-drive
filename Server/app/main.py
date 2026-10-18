@@ -502,11 +502,12 @@ def toll_source_matches_route(text: str, origin: str, destination: str,
                               via: list[str]) -> bool:
     """Require both route endpoints and every mandatory via point in evidence."""
     haystack = text.casefold()
+    stop_words = {"der", "die", "das", "den", "dem", "von", "nach", "via", "und", "the"}
     groups = [
         {
             token.casefold()
-            for token in re.findall(r"[\wÀ-ÿ-]{4,}", label)
-            if not token.isdigit()
+            for token in re.findall(r"[\wÀ-ÿ-]{3,}", label)
+            if not token.isdigit() and token.casefold() not in stop_words
         }
         for label in [origin, destination, *via]
     ]
