@@ -1715,14 +1715,27 @@ enum OfflineGuidanceEngine {
                          allowsFullRecovery: Bool = false,
                          courseDegrees: Double? = nil) -> OfflineGuidanceProgress? {
         guard !steps.isEmpty else { return nil }
-        let metrics = steps.map {
-            geometryMetric(
-                from: coordinate, on: $0.coordinates,
-                stepDistance: $0.distance, courseDegrees: courseDegrees
+        let cursor = min(max(0, currentIndex), steps.count - 1)
+        var metrics = steps.map {
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: $0.distance
+            )
+        }
+        let evaluationIndices = allowsFullRecovery
+            ? steps.indices
+            : NavigationStepSelectionPolicy.metricEvaluationIndices(
+                current: cursor, stepCount: steps.count
+            )
+        for index in evaluationIndices {
+            metrics[index] = geometryMetric(
+                from: coordinate, on: steps[index].coordinates,
+                stepDistance: steps[index].distance, courseDegrees: courseDegrees
             )
         }
         let selected = NavigationStepSelectionPolicy.selectedIndex(
-            current: min(max(0, currentIndex), steps.count - 1), metrics: metrics,
+            current: cursor, metrics: metrics,
             transitionRadius: transitionRadius,
             allowsFullRecovery: allowsFullRecovery
         )
