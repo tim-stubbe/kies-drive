@@ -1193,6 +1193,7 @@ struct NavigationStepMetric: Equatable {
     let distanceFromRoute: CLLocationDistance
     let remainingOnStep: CLLocationDistance
     let stepDistance: CLLocationDistance
+    let hasUsableGeometry: Bool
     /// Difference between the car's trustworthy course and the local route
     /// segment. `nil` deliberately keeps distance-only matching while stopped
     /// or when Core Location cannot provide a useful course.
@@ -1200,11 +1201,13 @@ struct NavigationStepMetric: Equatable {
 
     init(distanceFromRoute: CLLocationDistance, remainingOnStep: CLLocationDistance,
          stepDistance: CLLocationDistance = 0,
-         courseDifferenceDegrees: Double? = nil) {
+         courseDifferenceDegrees: Double? = nil,
+         hasUsableGeometry: Bool = true) {
         self.distanceFromRoute = distanceFromRoute
         self.remainingOnStep = remainingOnStep
         self.stepDistance = stepDistance
         self.courseDifferenceDegrees = courseDifferenceDegrees
+        self.hasUsableGeometry = hasUsableGeometry
     }
 }
 
@@ -1312,7 +1315,8 @@ enum NavigationStepSelectionPolicy {
             }) {
                 return earliestPlausible
             }
-            if let nearest = metrics.indices.dropFirst(current).filter({
+            if metrics[current].hasUsableGeometry,
+               let nearest = metrics.indices.dropFirst(current).filter({
                 NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }).min(by: {
                 metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
@@ -1331,7 +1335,8 @@ enum NavigationStepSelectionPolicy {
             }) {
                 return earliestPlausible
             }
-            if let recovered = recovery.filter({
+            if metrics[current].hasUsableGeometry,
+               let recovered = recovery.filter({
                 NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }).min(by: {
                 metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
@@ -1358,7 +1363,16 @@ enum NavigationStepSelectionPolicy {
             let clearlyPastStep = active.distanceFromRoute > 60 &&
                 next.distanceFromRoute + 30 < active.distanceFromRoute &&
                 next.distanceFromRoute <= 45 && headingMatches && nearActiveStepEnd
-            guard reachedJunction || clearlyPastStep else { break }
+            // MapKit occasionally inserts an empty, zero-distance transition
+            // step between two usable roads. It cannot be map-matched and its
+            // infinite sentinel values would otherwise freeze the maneuver
+            // cursor forever. Advance only onto a nearby, directionally
+            // plausible successor; never skip ahead merely because geometry
+            // is missing.
+            let unusableTransition = !active.hasUsableGeometry &&
+                active.stepDistance <= 0 &&
+                next.distanceFromRoute <= max(45, radius * 1.5) && headingMatches
+            guard reachedJunction || clearlyPastStep || unusableTransition else { break }
             selected += 1
         }
         return selected

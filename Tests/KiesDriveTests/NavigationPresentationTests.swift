@@ -2230,6 +2230,39 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 10), 1)
     }
 
+    func testStepSelectionSkipsOnlyPlausibleEmptyMapKitTransition() {
+        let usableSuccessor = [
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false
+            ),
+            NavigationStepMetric(distanceFromRoute: 8, remainingOnStep: 600),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: usableSuccessor, transitionRadius: 10
+        ), 1)
+
+        let distantSuccessor = [
+            usableSuccessor[0],
+            NavigationStepMetric(distanceFromRoute: 180, remainingOnStep: 600),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: distantSuccessor, transitionRadius: 10
+        ), 0, "Missing geometry alone must never skip onto a distant road")
+
+        let opposingSuccessor = [
+            usableSuccessor[0],
+            NavigationStepMetric(
+                distanceFromRoute: 8, remainingOnStep: 600,
+                courseDifferenceDegrees: 150
+            ),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: opposingSuccessor, transitionRadius: 10
+        ), 0, "Missing geometry must not snap guidance onto opposing traffic")
+    }
+
     func testStepSelectionDoesNotDropFinalCueBeforeJunctionWithCoarseGPS() {
         let beforeJunction = [
             NavigationStepMetric(distanceFromRoute: 7, remainingOnStep: 22),

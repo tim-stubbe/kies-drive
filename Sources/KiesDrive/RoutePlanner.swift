@@ -3669,7 +3669,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 ? MKMapPoint(coordinate).distance(to: polyline.points()[0])
                 : CLLocationDistance.greatestFiniteMagnitude
             return .init(distanceFromRoute: distance, remainingOnStep: distance,
-                         stepDistance: stepDistance)
+                         stepDistance: stepDistance,
+                         hasUsableGeometry: polyline.pointCount == 1)
         }
         let target = MKMapPoint(coordinate)
         let points = polyline.points()
