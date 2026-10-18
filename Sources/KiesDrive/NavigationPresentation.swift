@@ -1894,8 +1894,9 @@ enum OfflineInitialPositionMatchPolicy {
     /// trustworthy post-launch location arrives.
     static func isReliable(distanceFromRoute: CLLocationDistance,
                            horizontalAccuracy: CLLocationAccuracy,
-                           speedMetresPerSecond: Double) -> Bool {
-        !NavigationDeviationPolicy.isOutsideCorridor(
+                           speedMetresPerSecond: Double,
+                           wrongWay: Bool = false) -> Bool {
+        !wrongWay && !NavigationDeviationPolicy.isOutsideCorridor(
             distanceFromRoute: distanceFromRoute,
             horizontalAccuracy: horizontalAccuracy,
             speedMetresPerSecond: speedMetresPerSecond

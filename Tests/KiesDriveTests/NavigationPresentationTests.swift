@@ -3076,6 +3076,10 @@ final class NavigationPresentationTests: XCTestCase {
             distanceFromRoute: 35, horizontalAccuracy: 10,
             speedMetresPerSecond: 12
         ))
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.isReliable(
+            distanceFromRoute: 20, horizontalAccuracy: 8,
+            speedMetresPerSecond: 18, wrongWay: true
+        ), "A nearby road match in the opposite direction must not revive cached guidance")
     }
 
     func testOfflineRecoveryPublishesOnlyACommittedActiveOnlineRoute() {

@@ -2565,7 +2565,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
            OfflineInitialPositionMatchPolicy.isReliable(
                 distanceFromRoute: progress.distanceFromRoute,
                 horizontalAccuracy: location.horizontalAccuracy,
-                speedMetresPerSecond: reliableSpeed
+                speedMetresPerSecond: reliableSpeed,
+                wrongWay: isWrongWay
            ) {
             offlineNeedsInitialPositionMatch = false
             isManeuverGuidanceReliable = true
