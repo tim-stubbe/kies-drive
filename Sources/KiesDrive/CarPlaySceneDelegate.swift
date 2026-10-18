@@ -90,6 +90,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let map = MKMapView(frame: .zero)
             map.translatesAutoresizingMaskIntoConstraints = false
             map.showsUserLocation = true
+            map.mapType = CarPlayMapAppearancePolicy.mapType(
+                for: DriveSettings.shared.mapAppearance
+            )
             map.userTrackingMode = .followWithHeading
             map.delegate = self
             controller.view.addSubview(map)
@@ -241,6 +244,14 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 self?.audioMapButton?.image = UIImage(
                     systemName: enabled ? "speaker.wave.2.fill" : "speaker.slash.fill"
                 )
+            }
+            .store(in: &cancellables)
+
+        DriveSettings.shared.$mapAppearance
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] appearance in
+                self?.mapView?.mapType = CarPlayMapAppearancePolicy.mapType(for: appearance)
             }
             .store(in: &cancellables)
 

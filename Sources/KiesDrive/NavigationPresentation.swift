@@ -160,6 +160,15 @@ enum CarPlayAlertPresentationPolicy {
     }
 }
 
+enum CarPlayMapAppearancePolicy {
+    static func mapType(for appearance: DriveMapAppearance) -> MKMapType {
+        switch appearance {
+        case .standard: .standard
+        case .hybrid: .hybrid
+        }
+    }
+}
+
 enum CarPlayListPriorityPolicy {
     static func allocation(groupCounts: [Int], maximum: Int = 12) -> [Int] {
         var remaining = max(0, maximum)

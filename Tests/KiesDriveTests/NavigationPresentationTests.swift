@@ -2106,6 +2106,17 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(CarPlayRouteOptionPresentationPolicy.symbol(enabled: false), "circle")
     }
 
+    func testCarPlayUsesTheSameMapAppearanceAsThePhone() {
+        XCTAssertEqual(
+            CarPlayMapAppearancePolicy.mapType(for: .standard),
+            MKMapType.standard
+        )
+        XCTAssertEqual(
+            CarPlayMapAppearancePolicy.mapType(for: .hybrid),
+            MKMapType.hybrid
+        )
+    }
+
     func testCachedFuelPriceIsNeverPresentedAsCurrent() {
         XCTAssertEqual(
             FuelStationPricePresentationPolicy.compact(price: 1.899, cached: false),
