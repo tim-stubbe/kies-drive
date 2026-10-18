@@ -3916,7 +3916,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
             if settings.voiceGuidance {
                 _ = self.speak(
-                    "Die Neuberechnung dauert zu lange. Die bisherige Route bleibt aktiv.",
+                    NavigationRerouteFailureSpeechPolicy.text(timedOut: true),
                     priority: .status
                 )
             }
@@ -3965,7 +3965,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                             detail: errorMessage ?? "Keine nutzbare neue Route")
                 if settings.voiceGuidance {
                     _ = speak(
-                        "Die Route konnte gerade nicht neu berechnet werden. Die bisherige Route bleibt aktiv.",
+                        NavigationRerouteFailureSpeechPolicy.text(timedOut: false),
                         priority: .status
                     )
                 }

@@ -286,6 +286,16 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testFailedRerouteSpeechNeverClaimsOldGuidanceIsActive() {
+        let timeout = NavigationRerouteFailureSpeechPolicy.text(timedOut: true)
+        let failure = NavigationRerouteFailureSpeechPolicy.text(timedOut: false)
+
+        XCTAssertTrue(timeout.contains("Fahrhinweise sind vorübergehend pausiert"))
+        XCTAssertTrue(failure.contains("Fahrhinweise sind vorübergehend pausiert"))
+        XCTAssertFalse(timeout.contains("Route bleibt aktiv"))
+        XCTAssertFalse(failure.contains("Route bleibt aktiv"))
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(

@@ -2066,6 +2066,15 @@ enum NavigationRerouteWatchdogPolicy {
     }
 }
 
+enum NavigationRerouteFailureSpeechPolicy {
+    static func text(timedOut: Bool) -> String {
+        if timedOut {
+            return "Die Neuberechnung dauert zu lange. Fahrhinweise sind vorübergehend pausiert. Bitte sicher weiterfahren."
+        }
+        return "Die Route konnte gerade nicht neu berechnet werden. Fahrhinweise sind vorübergehend pausiert. Bitte sicher weiterfahren."
+    }
+}
+
 enum NavigationReroutePresentationPolicy {
     /// MapKit can take several seconds to replace a route while the vehicle
     /// keeps moving. Seed the new maneuver card and speech from the newest
