@@ -501,7 +501,9 @@ def explicit_no_toll(text: str) -> bool:
 def toll_source_matches_route(text: str, origin: str, destination: str,
                               via: list[str]) -> bool:
     """Require both route endpoints and every mandatory via point in evidence."""
-    haystack = text.casefold()
+    haystack_tokens = {
+        token.casefold() for token in re.findall(r"[\wÀ-ÿ-]{3,}", text)
+    }
     stop_words = {
         "der", "die", "das", "den", "dem", "von", "nach", "via", "und", "the",
         "am", "an", "auf", "bei", "route", "strecke", "straße", "strasse",
@@ -519,7 +521,7 @@ def toll_source_matches_route(text: str, origin: str, destination: str,
             if not token.isdigit() and token.casefold() not in stop_words
         ]
         identities.append(tokens[0] if tokens else None)
-    return bool(identities) and all(identity and identity in haystack
+    return bool(identities) and all(identity and identity in haystack_tokens
                                     for identity in identities)
 
 

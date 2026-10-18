@@ -80,6 +80,9 @@ def test_toll_source_must_match_destination_or_required_via_point():
         "Ulm nach Rom: Gesamtmaut 22 EUR", "Ulm", "Rom", []
     )
     assert not main.toll_source_matches_route(
+        "Ulm nach Stromberg: Gesamtmaut 22 EUR", "Ulm", "Rom", []
+    )
+    assert not main.toll_source_matches_route(
         "Split nach Frankfurt am Main über Wurzenpass Gesamtmaut: 27,40 EUR",
         "Split, Kroatien", "Hochheim am Main", ["Wurzenpass (B109)"]
     )
