@@ -511,6 +511,30 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOnlineAndOfflineManeuverSpeechShareDenseTurnWording() {
+        XCTAssertEqual(
+            NavigationManeuverSpeechPolicy.text(
+                instruction: "Rechts abbiegen", distance: 90, stage: .final,
+                followingInstruction: "Links halten", followingDistance: 180
+            ),
+            "In 100 Metern, Rechts abbiegen. Danach, Links halten."
+        )
+        XCTAssertEqual(
+            NavigationManeuverSpeechPolicy.text(
+                instruction: "Rechts abbiegen", distance: 90, stage: .prepare,
+                followingInstruction: "Links halten", followingDistance: 180
+            ),
+            "In 100 Metern, Rechts abbiegen."
+        )
+        XCTAssertEqual(
+            NavigationManeuverSpeechPolicy.text(
+                instruction: "Rechts abbiegen", distance: 70, stage: .now,
+                followingInstruction: "Links halten", followingDistance: 180
+            ),
+            "Jetzt, Rechts abbiegen. Danach, Links halten."
+        )
+    }
+
     func testOfflineGuidanceMeasuresDistanceBetweenCloseManeuvers() throws {
         let points = [
             CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000),

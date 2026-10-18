@@ -342,6 +342,24 @@ enum NavigationChainedManeuverPolicy {
     }
 }
 
+enum NavigationManeuverSpeechPolicy {
+    static func text(instruction: String, distance: CLLocationDistance,
+                     stage: NavigationAnnouncementStage,
+                     followingInstruction: String?,
+                     followingDistance: CLLocationDistance?) -> String {
+        let spokenDistance = stage == .now ? min(distance, 35) : distance
+        guard NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: stage, followingDistance: followingDistance
+        ) else {
+            return NavigationSpeechFormatter.spokenText(instruction, distance: spokenDistance)
+        }
+        return NavigationSpeechFormatter.spokenText(
+            instruction, distance: spokenDistance,
+            then: followingInstruction, followingDistance: followingDistance
+        )
+    }
+}
+
 enum NavigationSpeechPriority: Int, Equatable {
     case status
     case maneuver

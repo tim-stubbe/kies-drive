@@ -1478,14 +1478,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard NavigationAnnouncementDeliveryPolicy.shouldAttempt(
             stage, delivered: completed, pending: pendingStages(for: key)
         ) else { return }
-        let spokenDistance = stage == .now ? min(progress.distanceToManeuver, 35) : progress.distanceToManeuver
         let following = progress.upcomingInstructions.dropFirst().first
-        let speech = stage == .now
-            ? NavigationSpeechFormatter.spokenText(
-                progress.instruction, distance: spokenDistance,
-                then: following, followingDistance: progress.followingManeuverDistance
-            )
-            : NavigationSpeechFormatter.spokenText(progress.instruction, distance: spokenDistance)
+        let speech = NavigationManeuverSpeechPolicy.text(
+            instruction: progress.instruction,
+            distance: progress.distanceToManeuver,
+            stage: stage,
+            followingInstruction: following,
+            followingDistance: progress.followingManeuverDistance
+        )
         _ = speak(
             speech, priority: .forAnnouncementStage(stage),
             maneuverClaim: .init(key: key, stage: stage, instruction: progress.instruction,
@@ -1771,17 +1771,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         // If a sparse GPS update lands directly in the immediate zone, mark
         // earlier stages complete as well so they cannot be spoken afterwards.
-        let spokenDistance: CLLocationDistance = stage == .now ? min(progress.distance, 35) : progress.distance
         let following = progress.upcomingInstructions.dropFirst().first
-        let includeFollowing = NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
-            at: stage, followingDistance: progress.followingManeuverDistance
+        let speech = NavigationManeuverSpeechPolicy.text(
+            instruction: progress.maneuver.step.instructions,
+            distance: progress.distance,
+            stage: stage,
+            followingInstruction: following,
+            followingDistance: progress.followingManeuverDistance
         )
-        let speech = includeFollowing
-            ? NavigationSpeechFormatter.spokenText(
-                progress.maneuver.step.instructions, distance: spokenDistance,
-                then: following, followingDistance: progress.followingManeuverDistance
-            )
-            : NavigationSpeechFormatter.spokenText(progress.maneuver.step.instructions, distance: spokenDistance)
         _ = speak(
             speech, priority: .forAnnouncementStage(stage),
             maneuverClaim: .init(
