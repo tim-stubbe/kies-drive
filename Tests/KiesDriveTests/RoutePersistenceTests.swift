@@ -504,6 +504,39 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertNil(RouteLockStore(defaults: defaults).activeLock)
     }
 
+    func testCorruptPrimaryRecoversPreviousActiveTripCheckpoint() throws {
+        let suite = "RoutePersistenceRecovery.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RouteLockStore(defaults: defaults)
+        var lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        store.save(lock)
+        lock.title = "Aktualisierter Titel"
+        store.save(lock)
+        defaults.set(Data("not-json".utf8), forKey: "drive.activeRouteLock.v1")
+
+        let recovered = RouteLockStore(defaults: defaults).activeLock
+
+        XCTAssertEqual(recovered?.id, lock.id)
+        XCTAssertEqual(recovered?.title, "Kroatien")
+        XCTAssertEqual(recovered?.waypoints.count, 2)
+    }
+
+    func testCompletedTripNeverFallsBackToActiveCheckpoint() throws {
+        let suite = "RoutePersistenceCompletedRecovery.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RouteLockStore(defaults: defaults)
+        var lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        store.save(lock)
+        lock.title = "Checkpoint"
+        store.save(lock)
+        store.finish()
+
+        XCTAssertNil(RouteLockStore(defaults: defaults).activeLock)
+        XCTAssertNil(defaults.data(forKey: "drive.activeRouteLock.v1.backup"))
+    }
+
     func testRestoreMarksOnlyWaypointsAlreadyPassedInsideCorridor() {
         let lock = ActiveRouteLock(
             id: UUID(), title: "Nordfahrt", destinationName: "Ziel",

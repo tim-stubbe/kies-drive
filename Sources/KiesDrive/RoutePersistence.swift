@@ -357,15 +357,38 @@ final class RouteLockStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let key = "drive.activeRouteLock.v1"
+    private let backupKey = "drive.activeRouteLock.v1.backup"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        activeLock = Self.decode(defaults.data(forKey: key))
+        let primary = defaults.data(forKey: key)
+        if let decoded = Self.decodeAny(primary) {
+            // A valid completed/cancelled primary is authoritative. Never
+            // revive its older active backup after an intentional finish.
+            activeLock = decoded.isActive ? decoded : nil
+        } else {
+            activeLock = Self.decodeActive(defaults.data(forKey: backupKey))
+        }
     }
 
     func save(_ lock: ActiveRouteLock) {
+        guard let data = try? JSONEncoder().encode(lock) else { return }
+        if lock.isActive {
+            if let previousData = defaults.data(forKey: key),
+               let previous = Self.decodeAny(previousData),
+               previous.isActive, previous.id == lock.id {
+                defaults.set(previousData, forKey: backupKey)
+            } else {
+                // A backup from another journey must never replace this one.
+                defaults.removeObject(forKey: backupKey)
+            }
+            defaults.set(data, forKey: key)
+        } else {
+            // Commit the terminal state first, then remove recovery data.
+            defaults.set(data, forKey: key)
+            defaults.removeObject(forKey: backupKey)
+        }
         activeLock = lock
-        if let data = try? JSONEncoder().encode(lock) { defaults.set(data, forKey: key) }
     }
 
     /// Restores a transaction snapshot. Used when adding/removing a stop made
@@ -374,6 +397,7 @@ final class RouteLockStore: ObservableObject {
         guard let lock else {
             activeLock = nil
             defaults.removeObject(forKey: key)
+            defaults.removeObject(forKey: backupKey)
             return
         }
         save(lock)
@@ -394,12 +418,16 @@ final class RouteLockStore: ObservableObject {
         guard activeLock?.isActive != true else { return }
         activeLock = nil
         defaults.removeObject(forKey: key)
+        defaults.removeObject(forKey: backupKey)
     }
 
-    private static func decode(_ data: Data?) -> ActiveRouteLock? {
-        guard let data, let lock = try? JSONDecoder().decode(ActiveRouteLock.self, from: data), lock.isActive else {
-            return nil
-        }
+    private static func decodeAny(_ data: Data?) -> ActiveRouteLock? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(ActiveRouteLock.self, from: data)
+    }
+
+    private static func decodeActive(_ data: Data?) -> ActiveRouteLock? {
+        guard let lock = decodeAny(data), lock.isActive else { return nil }
         return lock
     }
 }
