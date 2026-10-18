@@ -277,6 +277,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Tempolimits entlang der Route, parallel zu `speedLimitPoints` indiziert.
     private var speedLimitPoints: [CLLocationCoordinate2D] = []
     private var speedLimits: [SpeedLimitResult] = []
+    private var comparisonSpeedLimitPoints: [CLLocationCoordinate2D] = []
+    private var comparisonSpeedLimits: [SpeedLimitResult] = []
 
     private let synthesizer = AVSpeechSynthesizer()
     private var activeUtterance: AVSpeechUtterance?
@@ -334,6 +336,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var breakDetourLoadGeneration = UUID()
     private var stopPlanningGeneration = UUID()
     private var speedLimitLoadGeneration = UUID()
+    private var comparisonSpeedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
     private var routeOptionMutationGeneration = UUID()
@@ -503,6 +506,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         amenityBreakCandidates = []
         speedLimitPoints = []
         speedLimits = []
+        comparisonSpeedLimitPoints = []
+        comparisonSpeedLimits = []
         speedWarning = false
         researchedStandardToll = .unknown(reason: "Maut für die gewählte Route wird geprüft.")
         researchedAvoidingToll = .unknown(reason: "Mautfreie Alternative wird geprüft.")
@@ -645,6 +650,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         breakCandidateLoadGeneration = UUID()
         breakDetourLoadGeneration = UUID()
         speedLimitLoadGeneration = UUID()
+        comparisonSpeedLimitLoadGeneration = UUID()
         tollLoadGeneration = UUID()
         routeSearchGeneration = UUID()
         activeRouteSearches.forEach { $0.cancel() }
@@ -661,6 +667,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         measuredBreakDetours = [:]
         speedLimitPoints = []
         speedLimits = []
+        comparisonSpeedLimitPoints = []
+        comparisonSpeedLimits = []
         routeSearchResults = []
         isSearchingAlongRoute = false
         longTripPlan = nil
@@ -1864,6 +1872,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             amenityBreakCandidates = []
             speedLimitPoints = []
             speedLimits = []
+            comparisonSpeedLimitPoints = []
+            comparisonSpeedLimits = []
             speedWarning = false
             researchedStandardToll = .unknown(reason: "Maut für die neue Route wird geprüft.")
             researchedAvoidingToll = .unknown(reason: "Mautfreie Alternative wird geprüft.")
@@ -1903,6 +1913,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                         stillEligible: self.viaStations.isEmpty && !hasOpenRequiredWaypoints
                     ) else { return }
                     self.comparisonRoute = comparison
+                    self.buildLongTripPlan(settings: settings)
+                    await self.loadComparisonSpeedLimits()
+                    guard calculationGeneration == self.routeCalculationGeneration else { return }
                     self.buildLongTripPlan(settings: settings)
                     // Even a failed comparison finishes ownership of this
                     // enrichment pass. Load once now so the standard route
@@ -3699,18 +3712,58 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Fehler hier werden bewusst nicht als `errorMessage` angezeigt, damit ein
     /// überlasteter Overpass-Dienst nicht die restliche Routenplanung blockiert.
     func loadSpeedLimits() async {
-        guard !legs.isEmpty else { speedLimitPoints = []; speedLimits = []; return }
+        guard !legs.isEmpty else {
+            speedLimitPoints = []
+            speedLimits = []
+            comparisonSpeedLimitPoints = []
+            comparisonSpeedLimits = []
+            return
+        }
         let routeGeneration = routeCalculationGeneration
         let generation = UUID()
         speedLimitLoadGeneration = generation
         let points = legs.flatMap { sample($0.polyline, maximum: 80) }
-        let limits = (try? await DriveAPI.speedLimits(along: points)) ?? []
+        let comparisonPoints = comparisonRoute.map {
+            sample($0.polyline, maximum: 80)
+        } ?? []
+        async let mainLimits = fetchSpeedLimits(along: points)
+        async let alternativeLimits = fetchSpeedLimits(along: comparisonPoints)
+        let (limits, loadedComparisonLimits) = await (mainLimits, alternativeLimits)
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: speedLimitLoadGeneration
         ) else { return }
         speedLimitPoints = points
         speedLimits = limits
+        if !comparisonPoints.isEmpty {
+            comparisonSpeedLimitPoints = comparisonPoints
+            comparisonSpeedLimits = loadedComparisonLimits
+        }
+    }
+
+    private func fetchSpeedLimits(along points: [CLLocationCoordinate2D]) async
+        -> [SpeedLimitResult] {
+        guard !points.isEmpty else { return [] }
+        return (try? await DriveAPI.speedLimits(along: points)) ?? []
+    }
+
+    private func loadComparisonSpeedLimits() async {
+        guard let comparisonRoute else {
+            comparisonSpeedLimitPoints = []
+            comparisonSpeedLimits = []
+            return
+        }
+        let routeGeneration = routeCalculationGeneration
+        let generation = UUID()
+        comparisonSpeedLimitLoadGeneration = generation
+        let points = sample(comparisonRoute.polyline, maximum: 80)
+        let limits = await fetchSpeedLimits(along: points)
+        guard RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: generation, currentRequest: comparisonSpeedLimitLoadGeneration
+        ) else { return }
+        comparisonSpeedLimitPoints = points
+        comparisonSpeedLimits = limits
     }
 
     /// Aktuelles Tempolimit für den nächstgelegenen abgetasteten Routenpunkt
@@ -3779,12 +3832,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )]
         if !isRemainingRoutePlan, let comparisonRoute,
            abs(comparisonRoute.distance - mainDistance) > 100 || abs(comparisonRoute.expectedTravelTime - mainTime) > 60 {
+            let comparisonUnlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
+                points: comparisonSpeedLimitPoints,
+                limits: comparisonSpeedLimits
+            )
             inputs.append(.init(
                 id: settings.avoidTolls ? "standard" : "toll-avoiding",
                 title: settings.avoidTolls ? "Schnellste Route" : "Maut vermeiden",
                 distanceMetres: comparisonRoute.distance,
                 mapKitExpectedTravelTime: comparisonRoute.expectedTravelTime,
-                unlimitedMotorwayFraction: 0,
+                unlimitedMotorwayFraction: comparisonUnlimitedFraction,
                 typicalUnlimitedSpeedKmh: 130,
                 toll: settings.avoidTolls ? researchedStandardToll : researchedAvoidingToll,
                 breakCandidates: breakCandidates(along: [comparisonRoute])
