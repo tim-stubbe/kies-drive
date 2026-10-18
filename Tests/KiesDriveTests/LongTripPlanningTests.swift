@@ -242,6 +242,29 @@ final class LongTripPlanningTests: XCTestCase {
                                            "candidate-9", "candidate-12", "candidate-15"])
     }
 
+    func testBreakCandidateShortlistRedistributesAcrossRemainingJourney() {
+        let candidates = (0..<6).map { index in
+            let progress = 0.52 + Double(index) * 0.09
+            return BreakCandidate(
+                id: "remaining-\(index)", name: "Halt \(index)", coordinate: .init(),
+                progress: progress, timeProgress: progress,
+                detourMetres: 100, isOpen: true
+            )
+        }
+
+        let wholeRouteBuckets = BreakCandidateSelectionPolicy.shortlist(candidates, maximum: 6)
+        let remainingRouteBuckets = BreakCandidateSelectionPolicy.shortlist(
+            candidates, maximum: 6,
+            startingDistanceProgress: 0.5,
+            startingTimeProgress: 0.5
+        )
+
+        XCTAssertLessThan(wholeRouteBuckets.count, candidates.count)
+        XCTAssertEqual(remainingRouteBuckets.count, candidates.count,
+                       "Useful stops must remain distributed after substantial trip progress")
+        XCTAssertEqual(Set(remainingRouteBuckets.map(\.id)), Set(candidates.map(\.id)))
+    }
+
     func testBreakCandidateShortlistPrefersUsefulOpenFuelStop() {
         let closed = BreakCandidate(id: "closed", name: "Closed", coordinate: .init(),
                                     progress: 0.4, detourMetres: 10, isOpen: false,

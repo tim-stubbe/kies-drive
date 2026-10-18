@@ -409,7 +409,12 @@ enum BreakCandidateSelectionPolicy {
     /// Long routes can contain hundreds of nearby places. Keep one useful
     /// candidate per route section so the UI stays small and only a bounded
     /// number of real driving-detour requests is needed.
-    static func shortlist(_ candidates: [BreakCandidate], maximum: Int = 6) -> [BreakCandidate] {
+    static func shortlist(
+        _ candidates: [BreakCandidate],
+        maximum: Int = 6,
+        startingDistanceProgress: Double = 0,
+        startingTimeProgress: Double = 0
+    ) -> [BreakCandidate] {
         guard maximum > 0 else { return [] }
         let unique = candidates.reduce(into: [String: BreakCandidate]()) { result, candidate in
             if let existing = result[candidate.id] {
@@ -418,8 +423,27 @@ enum BreakCandidateSelectionPolicy {
                 result[candidate.id] = candidate
             }
         }
-        let buckets = Dictionary(grouping: unique.values) {
-            min(maximum - 1, max(0, Int(min(0.999_999, max(0, $0.timeProgress ?? $0.progress)) * Double(maximum))))
+        let distanceStart = min(1, max(0, startingDistanceProgress))
+        let timeStart = min(1, max(0, startingTimeProgress))
+        let buckets = Dictionary(grouping: unique.values) { candidate in
+            let rawProgress: Double
+            let start: Double
+            if let timeProgress = candidate.timeProgress {
+                rawProgress = timeProgress
+                start = timeStart
+            } else {
+                rawProgress = candidate.progress
+                start = distanceStart
+            }
+            // During active guidance the candidates still retain coordinates
+            // in the installed full-route space. Redistribute them across the
+            // remaining journey; otherwise every place after (for example)
+            // 70% falls into only the final two whole-route buckets and useful
+            // later pause/fuel options are discarded before planning begins.
+            let remainingProgress = (rawProgress - start) / max(0.000_001, 1 - start)
+            return min(maximum - 1, max(0, Int(
+                min(0.999_999, max(0, remainingProgress)) * Double(maximum)
+            )))
         }
         return buckets.keys.sorted().compactMap { bucket in
             buckets[bucket]?.min(by: isPreferred)

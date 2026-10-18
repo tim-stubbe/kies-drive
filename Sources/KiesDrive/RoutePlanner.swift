@@ -4209,6 +4209,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 totalDistance: totalDistance
             )
         }()
+        let startingDistanceProgress = isNavigating && totalDistance > 0 && remainingDistanceMetres >= 0
+            ? min(1, max(0, 1 - remainingDistanceMetres / totalDistance)) : 0
+        let startingTimeProgress = isNavigating && totalTravelTime > 0 && remainingTravelTime >= 0
+            ? min(1, max(0, 1 - remainingTravelTime / totalTravelTime)) : 0
         let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
             guard let projection = RouteGeometryProgress.nearestProgress(
                 of: station.coordinate, on: routeCoordinates, progressRange: projectionRange
@@ -4237,7 +4241,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                          detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[candidate.id] == nil,
                          isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel)
         }
-        return BreakCandidateSelectionPolicy.shortlist(fuelCandidates + amenities)
+        return BreakCandidateSelectionPolicy.shortlist(
+            fuelCandidates + amenities,
+            startingDistanceProgress: startingDistanceProgress,
+            startingTimeProgress: startingTimeProgress
+        )
     }
 
     /// Measures only the already shortlisted stops. Six candidates mean at
