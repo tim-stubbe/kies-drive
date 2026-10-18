@@ -949,6 +949,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             let computedLegs: [MKRoute]
             let computedAlternatives: [MKRoute]
             let computedComparison: MKRoute?
+            let shouldLoadComparison: Bool
             if viaStations.isEmpty && lockedWaypoints.isEmpty {
                 let routes = try await computeRoutes(from: startItem, to: destination, settings: settings, alternates: true)
                 guard calculationGeneration == routeCalculationGeneration else { return false }
@@ -958,14 +959,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 guard let firstRoute = routes.first else { throw DriveAPIError.invalidData }
                 computedAlternatives = routes
                 computedLegs = [firstRoute]
-                // Request the opposite toll preference for an honest route-level
-                // distance/time comparison. MapKit exposes no toll price; that
-                // remains explicitly unknown until a verified provider responds.
-                computedComparison = try? await computeRoutes(
-                    from: startItem, to: destination, settings: settings,
-                    alternates: false, avoidTollsOverride: !settings.avoidTolls
-                ).first
-                guard calculationGeneration == routeCalculationGeneration else { return false }
+                // The opposite toll preference is useful enrichment, not a
+                // prerequisite for driving. Publish the primary route first
+                // and fetch the comparison below without holding the screen's
+                // loading state for another network round trip.
+                computedComparison = nil
+                shouldLoadComparison = true
             } else {
                 // MapKit kennt keine mehrgliedrigen Routen als ein einziges Objekt.
                 // Daher Teilstrecken sequentiell (Start→wp1→wp2→…→Ziel) berechnen.
@@ -998,6 +997,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 computedLegs = newLegs
                 computedAlternatives = []
                 computedComparison = nil
+                shouldLoadComparison = false
             }
             guard calculationGeneration == routeCalculationGeneration,
                   lock?.id == routeLockStore.activeLock?.id,
@@ -1040,6 +1040,27 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // when it was started by a now-superseded foreground request and
             // this replacement calculation intentionally ran in background.
             isLoading = false
+            if shouldLoadComparison {
+                Task { [weak self] in
+                    guard let self else { return }
+                    let comparison = try? await self.computeRoutes(
+                        from: startItem, to: destination, settings: settings,
+                        alternates: false, avoidTollsOverride: !settings.avoidTolls
+                    ).first
+                    let activeLock = self.routeLockStore.activeLock
+                    let visited = Set(activeLock?.visitedWaypointIDs ?? [])
+                    let hasOpenRequiredWaypoints = activeLock?.waypoints.contains {
+                        $0.required && !visited.contains($0.id)
+                    } ?? false
+                    guard RouteComparisonPublicationPolicy.mayPublish(
+                        requestRoute: calculationGeneration,
+                        currentRoute: self.routeCalculationGeneration,
+                        stillEligible: self.viaStations.isEmpty && !hasOpenRequiredWaypoints
+                    ) else { return }
+                    self.comparisonRoute = comparison
+                    self.buildLongTripPlan(settings: settings)
+                }
+            }
             Task { [weak self] in
                 guard let self else { return }
                 await self.loadStations(fuel: settings.fuel)

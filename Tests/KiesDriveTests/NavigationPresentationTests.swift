@@ -1494,6 +1494,19 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRouteComparisonPublishesOnlyForCurrentEligibleRoute() {
+        let route = UUID()
+        XCTAssertTrue(RouteComparisonPublicationPolicy.mayPublish(
+            requestRoute: route, currentRoute: route, stillEligible: true
+        ))
+        XCTAssertFalse(RouteComparisonPublicationPolicy.mayPublish(
+            requestRoute: route, currentRoute: UUID(), stillEligible: true
+        ))
+        XCTAssertFalse(RouteComparisonPublicationPolicy.mayPublish(
+            requestRoute: route, currentRoute: route, stillEligible: false
+        ))
+    }
+
     func testRouteSearchRejectsExcessiveOrInvalidDrivingDetours() {
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(4_500))
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(20_000))

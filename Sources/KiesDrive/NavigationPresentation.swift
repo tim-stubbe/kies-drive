@@ -32,6 +32,13 @@ enum DestinationSearchCompletionPolicy {
     }
 }
 
+enum RouteComparisonPublicationPolicy {
+    static func mayPublish(requestRoute: UUID, currentRoute: UUID,
+                           stillEligible: Bool) -> Bool {
+        requestRoute == currentRoute && stillEligible
+    }
+}
+
 enum CarPlayAlertPresentationPolicy {
     static func titleVariants(for message: String) -> [String] {
         let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
