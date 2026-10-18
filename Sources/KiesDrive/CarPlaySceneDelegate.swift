@@ -155,6 +155,15 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
+        planner.$fuelReminderText
+            .removeDuplicates()
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] reminder in
+                self?.presentFuelReminder(reminder)
+            }
+            .store(in: &cancellables)
+
         DriveSettings.shared.$voiceGuidance
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -772,6 +781,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             titleVariants: variants,
             subtitleVariants: nil,
             image: UIImage(systemName: "cup.and.saucer.fill"),
+            primaryAction: acknowledge,
+            secondaryAction: nil,
+            duration: 8
+        )
+        mapTemplate.present(navigationAlert: alert, animated: true)
+    }
+
+    private func presentFuelReminder(_ message: String) {
+        guard RoutePlanner.shared.isNavigating, let mapTemplate else { return }
+        let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        let acknowledge = CPAlertAction(title: "OK", style: .default) { _ in }
+        let alert = CPNavigationAlert(
+            titleVariants: [cleaned, "Tankstopp einplanen"],
+            subtitleVariants: nil,
+            image: UIImage(systemName: "fuelpump.fill"),
             primaryAction: acknowledge,
             secondaryAction: nil,
             duration: 8

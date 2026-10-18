@@ -263,6 +263,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var remainingTravelTime: TimeInterval = 0
     @Published var hasArrived = false
     @Published var breakReminderText: String?
+    @Published var fuelReminderText: String?
     @Published private(set) var usageStatistics = DriveUsageStatisticsStore.load()
     @Published private(set) var isUsingOfflineGuidance = false
     @Published private(set) var isManeuverGuidanceReliable = true
@@ -593,6 +594,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         drivingRestState = DrivingRestState()
         drivingRestStore.clear()
         breakReminderText = nil
+        fuelReminderText = nil
         drivingFuelState = DrivingFuelState()
         drivingFuelStore.clear()
     }
@@ -670,6 +672,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingRestStore.save(drivingRestState)
             deliveredBreakReminderStages = []
             breakReminderText = nil
+            fuelReminderText = nil
         }
         if drivingFuelState.tripID != lock.id {
             drivingFuelState = DrivingFuelState(
@@ -1941,6 +1944,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         if detectArrival(at: location, settings: settings) { return }
         updateBreakReminder(settings: settings)
+        updateFuelReminder()
         // Evaluate route safety before accepting another spoken maneuver from
         // the old geometry. The GPS fix that confirms a deviation must not
         // first announce the very turn the driver has already missed.
@@ -2033,6 +2037,38 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingRestStore.save(drivingRestState)
             _ = speak(text, priority: .status, breakReminderClaim: stage)
         }
+    }
+
+    private func updateFuelReminder() {
+        guard isNavigating, let result = longTripPlan?.results.first else {
+            fuelReminderText = nil
+            return
+        }
+        let currentProgress = currentInstalledRouteProgress
+        guard let stop = result.fuelStops
+            .filter({ PlannedRouteStopVisibilityPolicy.isAhead(
+                $0.insertionRouteProgress, current: currentProgress
+            ) })
+            .min(by: { $0.insertionRouteProgress < $1.insertionRouteProgress }) else {
+            fuelReminderText = nil
+            return
+        }
+        let distance = NavigationFuelReminderPolicy.remainingDistance(
+            stop: stop, currentProgress: currentProgress,
+            installedRouteDistance: totalDistance
+        )
+        guard let stage = NavigationFuelReminderPolicy.stage(
+            distanceMetres: distance,
+            deliveredKeys: drivingFuelState.deliveredReminderKeys,
+            stopID: stop.id
+        ) else { return }
+        drivingFuelState.deliveredReminderKeys.formUnion(
+            NavigationFuelReminderPolicy.keysThrough(stopID: stop.id, stage: stage)
+        )
+        drivingFuelStore.save(drivingFuelState)
+        fuelReminderText = NavigationFuelReminderPolicy.text(
+            stage: stage, stationName: stop.candidate?.name
+        )
     }
 
     @discardableResult

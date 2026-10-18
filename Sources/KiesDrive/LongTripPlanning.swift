@@ -955,6 +955,95 @@ struct DrivingFuelState: Codable, Equatable {
     var distanceSinceObservationMetres: Double = 0
     var lastCoordinate: DriveCoordinate?
     var lastSampleAt: Date?
+    var deliveredReminderKeys: Set<String> = []
+
+    init(tripID: UUID? = nil, observedFuelFraction: Double = 1,
+         distanceSinceObservationMetres: Double = 0,
+         lastCoordinate: DriveCoordinate? = nil, lastSampleAt: Date? = nil,
+         deliveredReminderKeys: Set<String> = []) {
+        self.tripID = tripID
+        self.observedFuelFraction = observedFuelFraction
+        self.distanceSinceObservationMetres = distanceSinceObservationMetres
+        self.lastCoordinate = lastCoordinate
+        self.lastSampleAt = lastSampleAt
+        self.deliveredReminderKeys = deliveredReminderKeys
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case tripID, observedFuelFraction, distanceSinceObservationMetres
+        case lastCoordinate, lastSampleAt, deliveredReminderKeys
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        tripID = try values.decodeIfPresent(UUID.self, forKey: .tripID)
+        observedFuelFraction = try values.decodeIfPresent(
+            Double.self, forKey: .observedFuelFraction
+        ) ?? 1
+        distanceSinceObservationMetres = try values.decodeIfPresent(
+            Double.self, forKey: .distanceSinceObservationMetres
+        ) ?? 0
+        lastCoordinate = try values.decodeIfPresent(DriveCoordinate.self, forKey: .lastCoordinate)
+        lastSampleAt = try values.decodeIfPresent(Date.self, forKey: .lastSampleAt)
+        deliveredReminderKeys = try values.decodeIfPresent(
+            Set<String>.self, forKey: .deliveredReminderKeys
+        ) ?? []
+    }
+}
+
+enum NavigationFuelReminderPolicy {
+    enum Stage: Int, CaseIterable { case plan, soon, due }
+
+    static func stage(distanceMetres: CLLocationDistance,
+                      deliveredKeys: Set<String>, stopID: String) -> Stage? {
+        guard distanceMetres.isFinite, distanceMetres >= 0 else { return nil }
+        let current: Stage
+        if distanceMetres <= 2_000 { current = .due }
+        else if distanceMetres <= 10_000 { current = .soon }
+        else if distanceMetres <= 30_000 { current = .plan }
+        else { return nil }
+        return deliveredKeys.contains(key(stopID: stopID, stage: current)) ? nil : current
+    }
+
+    static func key(stopID: String, stage: Stage) -> String {
+        "\(stopID):\(stage.rawValue)"
+    }
+
+    static func keysThrough(stopID: String, stage: Stage) -> Set<String> {
+        Set(Stage.allCases.filter { $0.rawValue <= stage.rawValue }.map {
+            key(stopID: stopID, stage: $0)
+        })
+    }
+
+    static func text(stage: Stage, stationName: String?) -> String {
+        let name = stationName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch stage {
+        case .plan:
+            return name?.isEmpty == false
+                ? "Tankstopp bei \(name!) in etwa 30 Kilometern."
+                : "In etwa 30 Kilometern einen Tankstopp einplanen."
+        case .soon:
+            return name?.isEmpty == false
+                ? "In etwa 10 Kilometern bei \(name!) tanken."
+                : "In etwa 10 Kilometern tanken."
+        case .due:
+            return name?.isEmpty == false
+                ? "Jetzt den Tankstopp bei \(name!) nehmen."
+                : "Bitte bei der nächsten sicheren Möglichkeit tanken."
+        }
+    }
+
+    static func remainingDistance(stop: PlannedFuelStop, currentProgress: Double,
+                                  installedRouteDistance: CLLocationDistance)
+        -> CLLocationDistance {
+        let insertion = stop.insertionRouteProgress
+        guard insertion.isFinite, currentProgress.isFinite,
+              installedRouteDistance.isFinite, installedRouteDistance > 0,
+              insertion >= currentProgress else {
+            return max(0, stop.afterDistanceMetres)
+        }
+        return max(0, insertion - currentProgress) * installedRouteDistance
+    }
 }
 
 enum DrivingFuelPolicy {

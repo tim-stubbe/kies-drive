@@ -1047,6 +1047,11 @@ struct DriveContentView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.kiesBrass)
             }
+            if let reminder = planner.fuelReminderText {
+                Label(reminder, systemImage: "fuelpump.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.kiesBrass)
+            }
             if let followingInstruction {
                 Divider().overlay(.white.opacity(0.2))
                 HStack(spacing: 12) {

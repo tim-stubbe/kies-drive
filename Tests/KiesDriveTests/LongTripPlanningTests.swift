@@ -82,6 +82,45 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testFuelReminderEscalatesWithoutRepeatingDeliveredStages() {
+        let stopID = "fuel-a"
+        XCTAssertEqual(NavigationFuelReminderPolicy.stage(
+            distanceMetres: 25_000, deliveredKeys: [], stopID: stopID
+        ), .plan)
+        let deliveredPlan = [NavigationFuelReminderPolicy.key(stopID: stopID, stage: .plan)]
+        XCTAssertEqual(NavigationFuelReminderPolicy.stage(
+            distanceMetres: 8_000, deliveredKeys: Set(deliveredPlan), stopID: stopID
+        ), .soon)
+        let deliveredSoon = Set(deliveredPlan + [
+            NavigationFuelReminderPolicy.key(stopID: stopID, stage: .soon)
+        ])
+        XCTAssertEqual(NavigationFuelReminderPolicy.stage(
+            distanceMetres: 1_000, deliveredKeys: deliveredSoon, stopID: stopID
+        ), .due)
+        XCTAssertNil(NavigationFuelReminderPolicy.stage(
+            distanceMetres: 40_000, deliveredKeys: [], stopID: stopID
+        ))
+        let sparseDue = NavigationFuelReminderPolicy.keysThrough(stopID: stopID, stage: .due)
+        XCTAssertNil(NavigationFuelReminderPolicy.stage(
+            distanceMetres: 8_000, deliveredKeys: sparseDue, stopID: stopID
+        ), "A sparse jump directly to due must consume obsolete earlier stages")
+    }
+
+    func testFuelReminderUsesInstalledRouteDistanceAndPersistsDelivery() throws {
+        let stop = PlannedFuelStop(
+            id: "fuel", candidate: nil, afterDistanceMetres: 80_000,
+            routeProgress: 0.6, explanation: "Tanken"
+        )
+        XCTAssertEqual(NavigationFuelReminderPolicy.remainingDistance(
+            stop: stop, currentProgress: 0.5, installedRouteDistance: 200_000
+        ), 20_000, accuracy: 0.1)
+
+        let state = DrivingFuelState(deliveredReminderKeys: ["fuel:0"])
+        XCTAssertEqual(try JSONDecoder().decode(
+            DrivingFuelState.self, from: JSONEncoder().encode(state)
+        ), state)
+    }
+
     func testBreakCandidateShortlistIsBoundedAndDistributed() {
         let candidates = (0..<18).map { index in
             BreakCandidate(id: "candidate-\(index)", name: "Halt \(index)", coordinate: .init(),
