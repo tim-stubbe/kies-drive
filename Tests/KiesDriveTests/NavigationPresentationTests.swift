@@ -2837,4 +2837,23 @@ final class NavigationPresentationTests: XCTestCase {
         store.clear()
         XCTAssertEqual(store.load(), DriveUsageSessionState())
     }
+
+    func testRouteOverviewRejectsRemoteVehicleFixButKeepsNearbyDeviation() throws {
+        let route = MKMapRect(
+            origin: MKMapPoint(.init(latitude: 50.0, longitude: 8.0)),
+            size: .init(width: 5_000, height: 5_000)
+        )
+        let nearby = CLLocationCoordinate2D(latitude: 50.05, longitude: 8.05)
+        let remote = CLLocationCoordinate2D(latitude: 48.14, longitude: 11.58)
+
+        XCTAssertNotNil(RouteOverviewMapRectPolicy.vehicleCoordinate(nearby, near: route))
+        XCTAssertNil(RouteOverviewMapRectPolicy.vehicleCoordinate(remote, near: route))
+        XCTAssertNil(RouteOverviewMapRectPolicy.vehicleCoordinate(
+            .init(latitude: .nan, longitude: 8), near: route
+        ))
+        XCTAssertEqual(
+            RouteOverviewMapRectPolicy.vehicleCoordinate(remote, near: nil)?.longitude,
+            remote.longitude
+        )
+    }
 }

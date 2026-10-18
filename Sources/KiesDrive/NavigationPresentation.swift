@@ -838,13 +838,29 @@ enum CarPlayRouteLinePolicy {
 }
 
 enum RouteOverviewMapRectPolicy {
+    /// Reject a wildly displaced GPS fix before it becomes part of the full
+    /// route overview. A restored route can briefly receive a cached or
+    /// network-derived location from another region; fitting that point would
+    /// make the actual journey look like a single pixel. Genuine deviations
+    /// remain visible within the generous corridor.
+    static func vehicleCoordinate(_ coordinate: CLLocationCoordinate2D?,
+                                  near base: MKMapRect?,
+                                  maximumDistanceMetres: CLLocationDistance = 100_000)
+        -> CLLocationCoordinate2D? {
+        guard let coordinate, isValid(coordinate) else { return nil }
+        guard let base, !base.isNull, !base.isEmpty else { return coordinate }
+        let point = MKMapPoint(coordinate)
+        let dx = max(base.minX - point.x, 0, point.x - base.maxX)
+        let dy = max(base.minY - point.y, 0, point.y - base.maxY)
+        let mapPointDistance = hypot(dx, dy)
+        let metres = mapPointDistance / MKMapPointsPerMeterAtLatitude(coordinate.latitude)
+        return metres <= max(0, maximumDistanceMetres) ? coordinate : nil
+    }
+
     static func including(_ base: MKMapRect?,
                           coordinates: [CLLocationCoordinate2D]) -> MKMapRect? {
         var rect = base ?? .null
-        for coordinate in coordinates where
-            coordinate.latitude.isFinite && coordinate.longitude.isFinite &&
-            (-90...90).contains(coordinate.latitude) &&
-            (-180...180).contains(coordinate.longitude) {
+        for coordinate in coordinates where isValid(coordinate) {
             let point = MKMapPoint(coordinate)
             // A tiny non-zero rect reliably participates in MapKit unions;
             // zero-sized point rects can be discarded at an existing edge.
@@ -852,6 +868,12 @@ enum RouteOverviewMapRectPolicy {
                                         width: 1, height: 1))
         }
         return rect.isNull ? nil : rect
+    }
+
+    private static func isValid(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        coordinate.latitude.isFinite && coordinate.longitude.isFinite &&
+            (-90...90).contains(coordinate.latitude) &&
+            (-180...180).contains(coordinate.longitude)
     }
 }
 

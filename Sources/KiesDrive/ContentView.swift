@@ -1176,8 +1176,11 @@ struct DriveContentView: View {
         #else
         routeRect = planner.completeDisplayMapRect
         #endif
+        let vehicleCoordinate = RouteOverviewMapRectPolicy.vehicleCoordinate(
+            location.location?.coordinate, near: routeRect
+        )
         let requiredCoordinates = [
-            location.location?.coordinate,
+            vehicleCoordinate,
             planner.destination?.placemark.coordinate,
         ].compactMap { $0 } + (planner.activeRouteLock?.waypoints
             .filter {
