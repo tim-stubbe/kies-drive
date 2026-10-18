@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CoreLocation
+import ImageIO
 
 struct OfflineMapBounds: Codable, Equatable {
     let north: Double
@@ -252,7 +253,10 @@ final class OfflineMapPackageStore: ObservableObject {
                   let center = OfflineTileCoordinatePolicy.center(z: zoom, x: x, y: y),
                   manifest.bounds.contains(center),
                   let data = try? Data(contentsOf: tileURL, options: .mappedIfSafe),
-                  data.count > pngSignature.count, data.prefix(pngSignature.count) == pngSignature else { continue }
+                  data.count > pngSignature.count, data.prefix(pngSignature.count) == pngSignature,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  CGImageSourceGetCount(source) == 1,
+                  CGImageSourceCreateImageAtIndex(source, 0, nil) != nil else { continue }
             return true
         }
         return false
