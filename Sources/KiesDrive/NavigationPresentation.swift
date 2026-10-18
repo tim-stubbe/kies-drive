@@ -273,7 +273,7 @@ struct NavigationManeuverPresentation: Equatable {
             let number = instruction[range].replacingOccurrences(of: " ", with: "")
             exitLabel = "Ausfahrt \(number.uppercased())"
         } else {
-            exitLabel = nil
+            exitLabel = Self.roundaboutExitLabel(in: instruction)
         }
 
         let roadPattern = #"(?i)\b(?:A|B|E|L|K)\s?[0-9]{1,4}[a-z]?\b"#
@@ -339,6 +339,44 @@ struct NavigationManeuverPresentation: Equatable {
             )
         }
         return value.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
+    /// MapKit commonly describes roundabouts using an ordinal before the
+    /// noun ("die zweite Ausfahrt" / "the 2nd exit"), unlike motorway exits
+    /// where the number follows "Ausfahrt". Preserve that decisive lane cue
+    /// in the large phone banner and CarPlay instruction variants.
+    private static func roundaboutExitLabel(in instruction: String) -> String? {
+        let words: [String: Int] = [
+            "erste": 1, "ersten": 1, "first": 1,
+            "zweite": 2, "zweiten": 2, "second": 2,
+            "dritte": 3, "dritten": 3, "third": 3,
+            "vierte": 4, "vierten": 4, "fourth": 4,
+            "fünfte": 5, "fünften": 5, "fuenfte": 5, "fuenften": 5, "fifth": 5,
+            "sechste": 6, "sechsten": 6, "sixth": 6,
+            "siebte": 7, "siebten": 7, "seventh": 7,
+            "achte": 8, "achten": 8, "eighth": 8,
+            "neunte": 9, "neunten": 9, "ninth": 9,
+            "zehnte": 10, "zehnten": 10, "tenth": 10,
+            "elfte": 11, "elften": 11, "eleventh": 11,
+            "zwölfte": 12, "zwölften": 12, "zwoelfte": 12, "zwoelften": 12, "twelfth": 12,
+        ]
+        let lower = instruction.lowercased()
+        guard lower.contains("kreisverkehr") || lower.contains("roundabout") else { return nil }
+        let numericPattern = #"\b([0-9]{1,2})(?:\.|st|nd|rd|th)?\s+(?:ausfahrt|exit)\b"#
+        if let regex = try? NSRegularExpression(pattern: numericPattern),
+           let match = regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
+           let range = Range(match.range(at: 1), in: lower),
+           let number = Int(lower[range]), (1...20).contains(number) {
+            return "\(number). Ausfahrt"
+        }
+        let wordPattern = #"\b([\p{L}]+)\s+(?:ausfahrt|exit)\b"#
+        if let regex = try? NSRegularExpression(pattern: wordPattern),
+           let match = regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
+           let range = Range(match.range(at: 1), in: lower),
+           let number = words[String(lower[range])] {
+            return "\(number). Ausfahrt"
+        }
+        return nil
     }
 }
 

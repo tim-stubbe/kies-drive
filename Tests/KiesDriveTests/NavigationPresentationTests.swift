@@ -4,6 +4,37 @@ import MapKit
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testRoundaboutPresentationKeepsOrdinalExitVisible() {
+        let german = NavigationManeuverPresentation(
+            "Im Kreisverkehr die zweite Ausfahrt Richtung Mainz nehmen"
+        )
+        XCTAssertEqual(german.direction, .roundabout)
+        XCTAssertEqual(german.exitLabel, "2. Ausfahrt")
+        XCTAssertEqual(german.destinationLabel, "Mainz")
+
+        XCTAssertEqual(
+            NavigationManeuverPresentation(
+                "Im Kreisverkehr die 3. Ausfahrt nehmen"
+            ).exitLabel,
+            "3. Ausfahrt"
+        )
+        XCTAssertEqual(
+            NavigationManeuverPresentation(
+                "At the roundabout, take the 4th exit"
+            ).exitLabel,
+            "4. Ausfahrt"
+        )
+    }
+
+    func testOrdinalsOutsideRoundaboutsDoNotInventExitLabels() {
+        XCTAssertNil(NavigationManeuverPresentation(
+            "Die zweite Straße rechts nehmen"
+        ).exitLabel)
+        XCTAssertNil(NavigationManeuverPresentation(
+            "Am Kreisverkehr geradeaus fahren"
+        ).exitLabel)
+    }
+
     func testSearchCompletionGatePublishesExactlyOnce() {
         let gate = NavigationSearchCompletionGate<[String]>()
         var published: [[String]] = []
