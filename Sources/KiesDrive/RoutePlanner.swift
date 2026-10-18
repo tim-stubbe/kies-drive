@@ -2572,8 +2572,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let key = NavigationFuelReminderPolicy.key(
             stopID: reminderID, stage: stageToRetry
         )
-        let text = NavigationFuelReminderPolicy.text(
+        let fuelText = NavigationFuelReminderPolicy.text(
             stage: stageToRetry, stationName: stop.candidate?.name
+        )
+        let pendingBreakStage = drivingRestState.pendingSpokenReminderRawValue.flatMap(
+            NavigationBreakReminderPolicy.Stage.init(rawValue:)
+        )
+        // Break and fuel planning can become due on the same location update.
+        // A second status utterance would cancel the first and CarPlay would
+        // replace its alert. One combined claim keeps both safety messages
+        // audible and acknowledges neither until the complete text finishes.
+        let text = NavigationCombinedStopReminderTextPolicy.text(
+            breakReminder: pendingBreakStage == nil ? nil : breakReminderText,
+            fuelReminder: fuelText
         )
         fuelReminderText = text
         if drivingFuelState.pendingSpokenReminderKey != key ||
@@ -2585,7 +2596,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let inFlight = pendingFuelReminderSpeech.values.contains { $0.key == key } ||
             activeFuelReminderSpeech.values.contains { $0.key == key }
         guard !inFlight else { return }
-        _ = speak(text, priority: .status, fuelReminderClaim: (key, text))
+        _ = speak(
+            text, priority: .status,
+            breakReminderClaim: pendingBreakStage,
+            fuelReminderClaim: (key, text)
+        )
     }
 
     @discardableResult

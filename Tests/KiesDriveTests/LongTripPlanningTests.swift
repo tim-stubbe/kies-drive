@@ -172,6 +172,23 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(restored, state)
     }
 
+    func testBreakAndFuelReminderBecomeOneCompleteDrivingMessage() {
+        XCTAssertEqual(
+            NavigationCombinedStopReminderTextPolicy.text(
+                breakReminder: "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen.",
+                fuelReminder: "In etwa 10 Kilometern bei Esso tanken."
+            ),
+            "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen. In etwa 10 Kilometern bei Esso tanken."
+        )
+        XCTAssertEqual(
+            NavigationCombinedStopReminderTextPolicy.text(
+                breakReminder: nil,
+                fuelReminder: "In etwa 10 Kilometern tanken."
+            ),
+            "In etwa 10 Kilometern tanken."
+        )
+    }
+
     func testPendingSpokenFuelReminderSurvivesStateRoundTrip() throws {
         let state = DrivingFuelState(
             deliveredReminderKeys: ["station:0"],

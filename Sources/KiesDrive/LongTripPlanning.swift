@@ -1313,6 +1313,18 @@ enum NavigationFuelReminderSpeechDeliveryPolicy {
     }
 }
 
+enum NavigationCombinedStopReminderTextPolicy {
+    static func text(breakReminder: String?, fuelReminder: String) -> String {
+        let fuel = fuelReminder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let breakReminder else { return fuel }
+        let rest = breakReminder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rest.isEmpty else { return fuel }
+        guard !fuel.isEmpty else { return rest }
+        let first = rest.last.map { ".!?".contains($0) } == true ? rest : rest + "."
+        return "\(first) \(fuel.prefix(1).uppercased())\(fuel.dropFirst())"
+    }
+}
+
 enum DrivingFuelPolicy {
     static let maximumCountedSampleGap: TimeInterval = 2 * 60
 
