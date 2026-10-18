@@ -893,7 +893,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     @discardableResult
     func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D,
-                      settings: DriveSettings) async -> Bool {
+                      settings: DriveSettings,
+                      knownRouteProgress: Double? = nil) async -> Bool {
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousLock = routeLockStore.activeLock
         let previousSearchResults = routeSearchResults
@@ -917,13 +918,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // A route-search result already has an unambiguous progress value.
         // Reuse it so a POI beside a later parallel carriageway or a route
         // crossing cannot be inserted into an earlier locked segment.
-        let knownProgress = routeSearchResults.first(where: { result in
+        let searchedProgress = routeSearchResults.first(where: { result in
             let resultCoordinate = result.mapItem.placemark.coordinate
             return CLLocation(latitude: resultCoordinate.latitude, longitude: resultCoordinate.longitude)
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= 30
         })?.routeProgress
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: stopName,
-                             coordinate: coordinate, knownProgress: knownProgress,
+                             coordinate: coordinate,
+                             knownProgress: knownRouteProgress ?? searchedProgress,
                              kind: .userStop)
         let mutatedLock = routeLockStore.activeLock
         routeSearchResults = []
@@ -2939,9 +2941,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         } else {
             viaStations.append(station)
             if routeLockStore.activeLock == nil { persistActiveTrip() }
+            let knownProgress = breakCandidates(along: legs)
+                .first(where: { $0.id == station.id })?.progress
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
-                coordinate: station.coordinate, kind: .fuelStop
+                coordinate: station.coordinate, knownProgress: knownProgress,
+                kind: .fuelStop
             )
         }
         let mutatedStations = viaStations
@@ -2984,7 +2989,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if routeLockStore.activeLock == nil { persistActiveTrip() }
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
-                coordinate: station.coordinate, kind: .fuelStop
+                coordinate: station.coordinate,
+                knownProgress: plannedBreak.routeProgress,
+                kind: .fuelStop
             )
             let mutatedStations = viaStations
             let mutatedLock = routeLockStore.activeLock
@@ -3006,7 +3013,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         } else {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
             item.name = candidate.name
-            return await addRouteStop(item, from: start, settings: settings)
+            return await addRouteStop(
+                item, from: start, settings: settings,
+                knownRouteProgress: plannedBreak.routeProgress
+            )
         }
     }
 
