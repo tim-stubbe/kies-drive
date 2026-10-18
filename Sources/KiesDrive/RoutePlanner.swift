@@ -329,6 +329,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var consecutiveRerouteFailures = 0
     private var navigationSessionGeneration = UUID()
     private var rerouteGeneration = UUID()
+    /// Owns the actual MapKit work behind an automatic reroute. Generation
+    /// checks protect publication, while cancellation also stops obsolete
+    /// network work after a timeout or navigation stop.
+    private var activeAutomaticRerouteTask: Task<Void, Never>?
     private var lastAcceptedNavigationLocation: CLLocation?
     private let usageSessionStore = DriveUsageSessionStore.live
     @Published private(set) var usageSessionState = DriveUsageSessionStore.live.load()
@@ -1789,6 +1793,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             navigationSession: navigationSession,
             navigationWork: navigationWork
         ) {
+            activeAutomaticRerouteTask?.cancel()
+            activeAutomaticRerouteTask = nil
             rerouteGeneration = UUID()
             isRecalculating = false
         }
@@ -3581,7 +3587,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     currentWork: self.rerouteGeneration
                   ), self.isRecalculating else { return }
             self.rerouteGeneration = UUID()
+            self.routeCalculationGeneration = UUID()
             self.isRecalculating = false
+            self.activeAutomaticRerouteTask?.cancel()
+            self.activeAutomaticRerouteTask = nil
             self.consecutiveRerouteFailures += 1
             self.lastRerouteAt = Date()
             DriveDiagnosticStore.append(
@@ -3595,14 +3604,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }
         }
-        Task {
+        activeAutomaticRerouteTask?.cancel()
+        activeAutomaticRerouteTask = Task {
             guard NavigationAsyncWorkPolicy.isCurrent(
                 navigationActive: isNavigating,
                 session: sessionGeneration, currentSession: navigationSessionGeneration,
                 work: workGeneration, currentWork: rerouteGeneration
             ) else { return }
             defer {
-                if workGeneration == rerouteGeneration { isRecalculating = false }
+                if workGeneration == rerouteGeneration {
+                    isRecalculating = false
+                    activeAutomaticRerouteTask = nil
+                }
             }
             if settings.voiceGuidance { speak("Die Route wird neu berechnet.", priority: .status) }
             // Keep the current route, station data and guidance visible while
@@ -3672,6 +3685,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func beginNavigationSession() {
+        activeAutomaticRerouteTask?.cancel()
+        activeAutomaticRerouteTask = nil
         navigationSessionGeneration = UUID()
         rerouteGeneration = UUID()
         isRecalculating = false
@@ -3754,6 +3769,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func invalidateNavigationAsyncWork() {
+        activeAutomaticRerouteTask?.cancel()
+        activeAutomaticRerouteTask = nil
         navigationSessionGeneration = UUID()
         rerouteGeneration = UUID()
         isRecalculating = false
