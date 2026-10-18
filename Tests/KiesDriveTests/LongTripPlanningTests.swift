@@ -1086,6 +1086,31 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 111 * 60, accuracy: 0.001)
     }
 
+    func testDrivingRestPolicyCountsShortStationaryStopUntilMovementResumes() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 28_000)
+        var state = DrivingRestState(
+            tripID: tripID, continuousDriving: 90 * 60,
+            lastSampleAt: start, stationarySince: nil
+        )
+
+        for minute in 1...10 {
+            state = DrivingRestPolicy.updated(
+                state, tripID: tripID,
+                at: start.addingTimeInterval(TimeInterval(minute * 60)),
+                speedMetresPerSecond: 0
+            )
+        }
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID, at: start.addingTimeInterval(11 * 60),
+            speedMetresPerSecond: 15
+        )
+
+        XCTAssertNil(state.stationarySince)
+        XCTAssertEqual(state.continuousDriving, 101 * 60, accuracy: 0.001,
+                       "A ten-minute stop is not a qualifying fatigue break")
+    }
+
     func testDrivingRestStateStorePersistsWithoutLocationData() throws {
         let suite = "KiesDriveTests.DrivingRest.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

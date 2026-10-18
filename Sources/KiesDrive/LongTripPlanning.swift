@@ -845,8 +845,16 @@ enum DrivingRestPolicy {
                 ? date : nil
             return state
         }
-        let wasStationary = state.stationarySince != nil
         state.lastSampleAt = date
+
+        // A traffic light, congestion or a short stop is not restorative.
+        // Count every continuously observed interval until a full break is
+        // confirmed. If the stop later reaches `restResetDuration`, the value
+        // is reset below; unknown gaps remain excluded by the bounded sample
+        // interval so we still never invent driving time without evidence.
+        if interval <= maximumCountedSampleGap {
+            state.continuousDriving += interval
+        }
 
         if speedMetresPerSecond >= movingThresholdMetresPerSecond {
             if let stationarySince = state.stationarySince,
@@ -854,9 +862,6 @@ enum DrivingRestPolicy {
                 state.continuousDriving = 0
             }
             state.stationarySince = nil
-            if !wasStationary, interval <= maximumCountedSampleGap {
-                state.continuousDriving += interval
-            }
         } else {
             if state.stationarySince == nil {
                 // Missing samples are not proof of a break: the driver may
