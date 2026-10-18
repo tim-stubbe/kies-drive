@@ -4181,22 +4181,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             request: generation, currentRequest: breakCandidateLoadGeneration
         ) else { return }
         activeAmenitySearches = []
-        let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
-        guard routePoints.count > 1 else { amenityBreakCandidates = []; return }
+        guard routeCoordinates.count > 1 else { amenityBreakCandidates = []; return }
         let candidates = matches.values.compactMap { item -> BreakCandidate? in
-            let point = CLLocation(latitude: item.placemark.coordinate.latitude,
-                                   longitude: item.placemark.coordinate.longitude)
-            guard let nearest = routePoints.enumerated().min(by: {
-                $0.element.distance(from: point) < $1.element.distance(from: point)
-            }) else { return nil }
-            let detour = nearest.element.distance(from: point)
-            guard detour <= 4_000 else { return nil }
+            guard let projection = RouteGeometryProgress.nearestProgress(
+                of: item.placemark.coordinate, on: routeCoordinates
+            ), projection.distance <= 4_000 else { return nil }
             let coordinate = item.placemark.coordinate
             return .init(id: "amenity-\(coordinate.latitude)-\(coordinate.longitude)",
                          name: item.name ?? "Rastmöglichkeit", coordinate: coordinate,
-                         progress: routeProgress[nearest.offset],
-                         detourMetres: detour * 2, isOpen: nil)
+                         progress: projection.progress,
+                         detourMetres: projection.distance * 2, isOpen: nil)
         }
         let buckets = Dictionary(grouping: candidates) { min(9, Int($0.progress * 10)) }
         amenityBreakCandidates = buckets.keys.sorted().compactMap { bucket in
@@ -4271,17 +4265,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             request: generation, currentRequest: stationLoadGeneration
         ) else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
-        let routePoints = routeCoordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        let routeProgress = RouteGeometryProgress.cumulativeFractions(routeCoordinates)
         let nearRoute = unique.values.compactMap { station -> (station: FuelStation, progress: Double,
                                                                 corridorDistance: Double)? in
-            let point = CLLocation(latitude: station.lat, longitude: station.lon)
-            guard let match = routePoints.enumerated().min(by: { $0.element.distance(from: point) < $1.element.distance(from: point) }),
-                  match.element.distance(from: point) < 4_000,
-                  RouteSearchPolicy.isAhead(candidateProgress: routeProgress[match.offset],
+            guard let projection = RouteGeometryProgress.nearestProgress(
+                    of: station.coordinate, on: routeCoordinates
+                  ), projection.distance < 4_000,
+                  RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
                                             currentProgress: currentProgress,
                                             totalRouteDistance: totalDistance) else { return nil }
-            return (station, routeProgress[match.offset], match.element.distance(from: point))
+            return (station, projection.progress, projection.distance)
         }
         // Keep at most one strong candidate per route section. This gives the
         // break planner geographic coverage without flooding MapKit with pins.
