@@ -341,3 +341,23 @@ enum RouteWaypointProgressPolicy {
         return result
     }
 }
+
+enum RouteWaypointOptionsPolicy {
+    /// Returns the rules for the segment that starts at the current trip
+    /// position. A visited route constraint changes the active rules until a
+    /// later visited constraint changes them again. Only a contiguous visited
+    /// prefix is considered, so an accidentally persisted later waypoint can
+    /// never skip the restrictions of an earlier mandatory point.
+    static func currentOptions(defaultOptions: LockedRouteOptions,
+                               waypoints: [LockedWaypoint],
+                               visitedIDs: Set<String>) -> LockedRouteOptions {
+        var options = defaultOptions
+        for waypoint in waypoints where waypoint.required {
+            guard visitedIDs.contains(waypoint.id) else { break }
+            if let optionsAfter = waypoint.optionsAfter {
+                options = optionsAfter
+            }
+        }
+        return options
+    }
+}

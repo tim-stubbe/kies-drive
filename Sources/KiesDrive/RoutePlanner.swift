@@ -998,6 +998,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )) ?? [])
             let visited = Set(lock?.visitedWaypointIDs ?? []).union(newlyPassed)
             let lockedWaypoints = lock?.waypoints.filter { $0.required && !visited.contains($0.id) } ?? []
+            let currentLockedOptions = lock.map {
+                RouteWaypointOptionsPolicy.currentOptions(
+                    defaultOptions: $0.defaultOptions,
+                    waypoints: $0.waypoints,
+                    visitedIDs: visited
+                )
+            }
             let computedLegs: [MKRoute]
             let computedAlternatives: [MKRoute]
             let computedComparison: MKRoute?
@@ -1037,8 +1044,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 for i in 0..<(allStops.count - 1) {
                     let from = allStops[i]
                     let to = allStops[i + 1]
-                    let lockedOptions = i == 0 ? routeLockStore.activeLock?.defaultOptions
-                        : lockedWaypoints[safe: i - 1]?.optionsAfter ?? routeLockStore.activeLock?.defaultOptions
+                    let lockedOptions = i == 0 ? currentLockedOptions
+                        : lockedWaypoints[safe: i - 1]?.optionsAfter ?? lock?.defaultOptions
                     guard let leg = try await computeRoutes(from: from, to: to, settings: settings,
                                                             alternates: false, lockedOptions: lockedOptions).first else {
                         throw DriveAPIError.invalidData

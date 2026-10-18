@@ -254,6 +254,32 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.waypoints[1].optionsAfter, .init(avoidTolls: false, avoidHighways: false))
     }
 
+    func testCurrentSegmentKeepsOptionsFromLastVisitedMandatoryPoint() {
+        let lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+
+        XCTAssertEqual(RouteWaypointOptionsPolicy.currentOptions(
+            defaultOptions: lock.defaultOptions,
+            waypoints: lock.waypoints,
+            visitedIDs: ["sentilj"]
+        ), .init(avoidTolls: true, avoidHighways: true))
+
+        XCTAssertEqual(RouteWaypointOptionsPolicy.currentOptions(
+            defaultOptions: lock.defaultOptions,
+            waypoints: lock.waypoints,
+            visitedIDs: ["sentilj", "macelj"]
+        ), .init(avoidTolls: false, avoidHighways: false))
+    }
+
+    func testCurrentSegmentDoesNotApplyOutOfOrderWaypointOptions() {
+        let lock = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+
+        XCTAssertEqual(RouteWaypointOptionsPolicy.currentOptions(
+            defaultOptions: lock.defaultOptions,
+            waypoints: lock.waypoints,
+            visitedIDs: ["macelj"]
+        ), lock.defaultOptions)
+    }
+
     func testActiveTripSurvivesStoreRecreationWithSegmentRules() throws {
         let suite = "RoutePersistenceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
