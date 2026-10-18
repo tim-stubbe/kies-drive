@@ -41,6 +41,10 @@ struct CachedRoute: Codable {
     /// Optional for backwards compatibility with caches written before the
     /// destination identity was anchored geographically.
     let destinationCoordinate: DriveCoordinate?
+    /// Fingerprint of required waypoints and per-segment route rules. Optional
+    /// keeps old files decodable, but an untagged cache cannot restore a
+    /// locked trip whose constraints it cannot prove it represents.
+    let routeConstraintIdentity: String?
     let legs: [Leg]
     let stations: [FuelStation]
     let savedAt: Date
@@ -49,12 +53,14 @@ struct CachedRoute: Codable {
     let navigationProgress: Double?
 
     init(destinationName: String, tripID: UUID? = nil,
-         destinationCoordinate: DriveCoordinate?, legs: [Leg],
+         destinationCoordinate: DriveCoordinate?, routeConstraintIdentity: String? = nil,
+         legs: [Leg],
          stations: [FuelStation], savedAt: Date,
          navigationProgress: Double? = nil) {
         self.destinationName = destinationName
         self.tripID = tripID
         self.destinationCoordinate = destinationCoordinate
+        self.routeConstraintIdentity = routeConstraintIdentity
         self.legs = legs
         self.stations = stations
         self.savedAt = savedAt
@@ -65,7 +71,8 @@ struct CachedRoute: Codable {
         guard progress.isFinite else { return self }
         return .init(
             destinationName: destinationName, tripID: tripID,
-            destinationCoordinate: destinationCoordinate, legs: legs,
+            destinationCoordinate: destinationCoordinate,
+            routeConstraintIdentity: routeConstraintIdentity, legs: legs,
             stations: stations, savedAt: savedAt,
             navigationProgress: min(1, max(navigationProgress ?? 0, progress))
         )
@@ -1737,6 +1744,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func cacheForOffline(preservingProgress: Bool = false) {
         guard !legs.isEmpty else { return }
         let currentTripID = routeLockStore.activeLock?.id
+        let routeConstraintIdentity = routeLockStore.activeLock.map {
+            OfflineRouteConstraintIdentityPolicy.identity(for: $0)
+        }
         let retainedProgress = OfflineRouteCacheWritePolicy.retainedProgress(
             existing: offlineRoute,
             currentTripID: currentTripID,
@@ -1749,6 +1759,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 .init(latitude: $0.placemark.coordinate.latitude,
                       longitude: $0.placemark.coordinate.longitude)
             },
+            routeConstraintIdentity: routeConstraintIdentity,
             legs: legs.map { leg in
                 CachedRoute.Leg(distance: leg.distance, travelTime: leg.expectedTravelTime,
                                  steps: leg.steps.map { step in
@@ -2002,6 +2013,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard let lock = routeLockStore.activeLock,
               OfflineRouteTripIdentityPolicy.belongs(
                 cacheTripID: cache.tripID, activeTripID: lock.id, active: lock.isActive
+              ),
+              OfflineRouteConstraintIdentityPolicy.matches(
+                cache.routeConstraintIdentity, lock: lock
               ) else { return false }
         return OfflineRouteCachePolicy.matches(
             cacheName: cache.destinationName,

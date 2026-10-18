@@ -201,6 +201,39 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var isActive: Bool { status == .active }
 }
 
+enum OfflineRouteConstraintIdentityPolicy {
+    /// Stable identity of every instruction that can materially change route
+    /// geometry. Progress and timestamps are deliberately excluded: passing a
+    /// waypoint must not invalidate the same cached road, while adding,
+    /// removing, reordering or changing a constraint must.
+    static func identity(for lock: ActiveRouteLock) -> String {
+        let defaultOptions = options(lock.defaultOptions)
+        let destination = coordinate(lock.destination)
+        let waypoints = lock.waypoints.map { waypoint in
+            [
+                waypoint.id,
+                coordinate(waypoint.coordinate),
+                waypoint.required ? "required" : "optional",
+                waypoint.kind?.rawValue ?? "legacy-constraint",
+                waypoint.optionsAfter.map(options) ?? "inherit",
+            ].joined(separator: ":")
+        }.joined(separator: "|")
+        return [destination, defaultOptions, waypoints].joined(separator: "#")
+    }
+
+    static func matches(_ cachedIdentity: String?, lock: ActiveRouteLock) -> Bool {
+        cachedIdentity == identity(for: lock)
+    }
+
+    private static func coordinate(_ value: DriveCoordinate) -> String {
+        "\(value.latitude.bitPattern),\(value.longitude.bitPattern)"
+    }
+
+    private static func options(_ value: LockedRouteOptions) -> String {
+        "\(value.avoidTolls ? 1 : 0)\(value.avoidHighways ? 1 : 0)"
+    }
+}
+
 enum ActiveRouteLockValidationPolicy {
     static func isValid(_ lock: ActiveRouteLock) -> Bool {
         guard isValid(lock.destination),

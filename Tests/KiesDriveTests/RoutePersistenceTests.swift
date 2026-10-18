@@ -832,7 +832,24 @@ final class RoutePersistenceTests: XCTestCase {
         let cache = try JSONDecoder().decode(CachedRoute.self, from: Data(json.utf8))
         XCTAssertEqual(cache.destinationName, "Ziel")
         XCTAssertNil(cache.tripID)
+        XCTAssertNil(cache.routeConstraintIdentity)
         XCTAssertNil(cache.legs.first?.coordinates)
         XCTAssertNil(cache.legs.first?.steps.first?.coordinates)
+    }
+
+    func testOfflineConstraintIdentityRejectsChangedLockedRoute() {
+        let original = ActiveRouteLock.hochheimViaWurzenpass()
+        let identity = OfflineRouteConstraintIdentityPolicy.identity(for: original)
+        XCTAssertTrue(OfflineRouteConstraintIdentityPolicy.matches(identity, lock: original))
+
+        var changed = original
+        changed.waypoints[0].optionsAfter?.avoidHighways.toggle()
+        XCTAssertFalse(OfflineRouteConstraintIdentityPolicy.matches(identity, lock: changed))
+
+        var progressed = original
+        progressed.lastRouteProgress = 0.8
+        progressed.visitedWaypointIDs = [original.waypoints[0].id]
+        XCTAssertTrue(OfflineRouteConstraintIdentityPolicy.matches(identity, lock: progressed))
+        XCTAssertFalse(OfflineRouteConstraintIdentityPolicy.matches(nil, lock: original))
     }
 }
