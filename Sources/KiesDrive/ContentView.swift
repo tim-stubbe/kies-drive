@@ -2504,10 +2504,15 @@ private struct AccountWelcomeView: View {
                     Image(systemName: "location.north.circle.fill")
                         .font(.system(size: 66)).foregroundStyle(Color.kiesBrass)
                     VStack(spacing: 7) {
-                        Text("KIES DRIVE").font(.title.bold()).tracking(3)
+                        Text("KIES DRIVE")
+                            .font(.title.bold()).tracking(3)
+                            .lineLimit(1).minimumScaleFactor(0.68)
                         Text("Deine Route. Dein Konto. Auf jedem Gerät.")
                             .font(.subheadline).foregroundStyle(.white.opacity(0.72))
-                    }.foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundStyle(.white)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
 
                     VStack(spacing: 16) {
                         if awaitingVerification {
@@ -2586,6 +2591,12 @@ private struct AccountWelcomeView: View {
                     .padding(22)
                     .background(Color.kiesIvory, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .environment(\.colorScheme, .light)
+                    // Text fields are single-line controls. At the largest
+                    // accessibility sizes their prompts become wider than the
+                    // screen and hide the meaning of the field. Keep the form
+                    // itself at a still-large accessibility size; surrounding
+                    // explanatory text remains fully scalable and scrollable.
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     Spacer(minLength: 30)
                 }
                 .padding(.horizontal, 22)
