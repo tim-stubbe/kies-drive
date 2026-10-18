@@ -128,6 +128,15 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
+        planner.$breakReminderText
+            .removeDuplicates()
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] reminder in
+                self?.presentBreakReminder(reminder)
+            }
+            .store(in: &cancellables)
+
         LocationService.shared.$location
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
@@ -591,6 +600,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             actions: [action]
         )
         interfaceController?.presentTemplate(alert, animated: true, completion: nil)
+    }
+
+    private func presentBreakReminder(_ message: String) {
+        guard RoutePlanner.shared.isNavigating, let mapTemplate else { return }
+        let variants = CarPlayBreakReminderPresentationPolicy.titleVariants(for: message)
+        guard !variants.isEmpty else { return }
+        let acknowledge = CPAlertAction(title: "OK", style: .default) { _ in }
+        let alert = CPNavigationAlert(
+            titleVariants: variants,
+            subtitleVariants: nil,
+            image: UIImage(systemName: "cup.and.saucer.fill"),
+            primaryAction: acknowledge,
+            secondaryAction: nil,
+            duration: 8
+        )
+        mapTemplate.present(navigationAlert: alert, animated: true)
     }
 
     private func redrawRoute() {

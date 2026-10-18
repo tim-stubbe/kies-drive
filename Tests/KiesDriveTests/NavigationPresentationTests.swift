@@ -25,6 +25,16 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayBreakReminderKeepsConcreteTextAndShortFallback() {
+        XCTAssertEqual(
+            CarPlayBreakReminderPresentationPolicy.titleVariants(
+                for: "  Bitte in etwa 10 Minuten Pause einlegen.  "
+            ),
+            ["Bitte in etwa 10 Minuten Pause einlegen.", "Pause einplanen"]
+        )
+        XCTAssertEqual(CarPlayBreakReminderPresentationPolicy.titleVariants(for: "  "), [])
+    }
+
     func testDestinationSearchPublishesOnlyForCurrentUnchangedQuery() {
         let current = UUID()
         XCTAssertTrue(DestinationSearchCompletionPolicy.mayPublish(

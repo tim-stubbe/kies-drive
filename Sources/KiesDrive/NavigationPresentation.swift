@@ -33,6 +33,14 @@ enum CarPlayAlertPresentationPolicy {
     }
 }
 
+enum CarPlayBreakReminderPresentationPolicy {
+    static func titleVariants(for message: String) -> [String] {
+        let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+        return [cleaned, "Pause einplanen"]
+    }
+}
+
 struct CarPlayPlannedStopAction: Equatable {
     enum Purpose: Equatable {
         case breakOnly
