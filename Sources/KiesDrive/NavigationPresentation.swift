@@ -1329,6 +1329,21 @@ enum NavigationDeviationCorridorPolicy {
     }
 }
 
+enum NavigationDeviationGeometryPolicy {
+    /// An empty MapKit step has no route geometry. Treating its sentinel
+    /// distance as a real deviation can start an endless recalculation loop
+    /// while a route is being restored or replaced.
+    static func nearestUsableDistance(
+        _ candidates: [(pointCount: Int, distance: CLLocationDistance)]
+    ) -> CLLocationDistance? {
+        candidates.compactMap { candidate in
+            guard candidate.pointCount > 1, candidate.distance.isFinite,
+                  candidate.distance >= 0 else { return nil }
+            return candidate.distance
+        }.min()
+    }
+}
+
 enum NavigationManeuverSafetyPolicy {
     static func mayAnnounceLiveManeuver(navigationActive: Bool,
                                         rerouting: Bool,

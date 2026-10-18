@@ -484,6 +484,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationDeviationCorridorPolicy.indices(current: 0, stepCount: 0), 0..<0)
     }
 
+    func testDeviationIgnoresMissingAndInvalidRouteGeometry() {
+        XCTAssertNil(NavigationDeviationGeometryPolicy.nearestUsableDistance([]))
+        XCTAssertNil(NavigationDeviationGeometryPolicy.nearestUsableDistance([
+            (pointCount: 0, distance: 900),
+            (pointCount: 1, distance: 800),
+            (pointCount: 2, distance: .infinity),
+        ]))
+        XCTAssertEqual(
+            NavigationDeviationGeometryPolicy.nearestUsableDistance([
+                (pointCount: 2, distance: 130),
+                (pointCount: 8, distance: 45),
+            ]),
+            45
+        )
+    }
+
     func testFailedReroutesBackOffInsteadOfLooping() {
         let attemptedAt = Date(timeIntervalSince1970: 10_000)
         XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 0), 30)

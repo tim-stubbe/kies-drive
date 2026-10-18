@@ -2850,9 +2850,22 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let corridor = NavigationDeviationCorridorPolicy.indices(
             current: navigationStepCursor, stepCount: steps.count
         )
-        let nearest = corridor.map {
-            Self.distance(from: location.coordinate, to: steps[$0].step.polyline)
-        }.min() ?? .greatestFiniteMagnitude
+        guard let nearest = NavigationDeviationGeometryPolicy.nearestUsableDistance(
+            corridor.map {
+                let polyline = steps[$0].step.polyline
+                return (
+                    pointCount: polyline.pointCount,
+                    distance: Self.distance(from: location.coordinate, to: polyline)
+                )
+            }
+        ) else {
+            // Keep the installed guidance state while route geometry is
+            // temporarily unavailable. The calculation/watchdog lifecycle is
+            // responsible for recovery; a missing polyline is not evidence
+            // that the driver left the road.
+            resetDeviationTracking()
+            return
+        }
         let isOutsideCorridor = NavigationDeviationPolicy.isOutsideCorridor(
             distanceFromRoute: nearest,
             horizontalAccuracy: location.horizontalAccuracy,
