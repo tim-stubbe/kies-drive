@@ -279,6 +279,7 @@ struct DriveDiagnosticEvent: Codable, Identifiable, Equatable {
 }
 
 enum DriveDiagnosticStore {
+    static let didChange = Notification.Name("KiesDriveDiagnosticStoreDidChange")
     private static let key = "drive.diagnostics.v1"
     private static let maximumCount = 100
     private static let maximumPriorityCount = 30
@@ -300,7 +301,10 @@ enum DriveDiagnosticStore {
         if events.count > maximumCount {
             events = bounded(events)
         }
-        if let data = try? JSONEncoder().encode(events) { defaults.set(data, forKey: key) }
+        if let data = try? JSONEncoder().encode(events) {
+            defaults.set(data, forKey: key)
+            NotificationCenter.default.post(name: didChange, object: nil)
+        }
     }
 
     static func bounded(_ events: [DriveDiagnosticEvent]) -> [DriveDiagnosticEvent] {
@@ -319,7 +323,10 @@ enum DriveDiagnosticStore {
         return events.filter { retained.contains($0.id) }
     }
 
-    static func clear(defaults: UserDefaults = .standard) { defaults.removeObject(forKey: key) }
+    static func clear(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: key)
+        NotificationCenter.default.post(name: didChange, object: nil)
+    }
 }
 
 struct DriveDiagnosticSummary: Equatable {

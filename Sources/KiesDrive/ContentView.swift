@@ -2015,7 +2015,11 @@ struct DriveSettingsView: View {
             .toolbar { Button("Fertig") { dismiss() } }
             .task { accountProfile = try? await DriveAPI.account() }
             .onAppear {
+                diagnosticEvents = DriveDiagnosticStore.load()
                 currentFuelPercent = planner.estimatedFuelFraction(settings: settings) * 100
+            }
+            .onReceive(NotificationCenter.default.publisher(for: DriveDiagnosticStore.didChange)) { _ in
+                diagnosticEvents = DriveDiagnosticStore.load()
             }
             .sheet(isPresented: $showTwoFactorSetup, onDismiss: {
                 Task { accountProfile = try? await DriveAPI.account() }

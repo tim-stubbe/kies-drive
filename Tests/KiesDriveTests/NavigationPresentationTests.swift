@@ -1161,6 +1161,23 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(events.last?.detail, "119")
     }
 
+    func testDiagnosticStoreNotifiesViewsAfterAppendAndClear() throws {
+        let suite = "DriveDiagnosticNotificationTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var notifications = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: DriveDiagnosticStore.didChange, object: nil, queue: nil
+        ) { _ in notifications += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Test", defaults: defaults)
+        DriveDiagnosticStore.clear(defaults: defaults)
+
+        XCTAssertEqual(notifications, 2)
+        XCTAssertTrue(DriveDiagnosticStore.load(defaults: defaults).isEmpty)
+    }
+
     func testBoundedDiagnosticsRetainCurrentLongTripStart() throws {
         let suite = "DriveDiagnosticLongTripTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
