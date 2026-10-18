@@ -298,16 +298,16 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testFailedReroutesBackOffInsteadOfLooping() {
         let attemptedAt = Date(timeIntervalSince1970: 10_000)
-        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 0), 45)
-        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 1), 120)
-        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 4), 300)
+        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 0), 30)
+        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 1), 60)
+        XCTAssertEqual(NavigationRerouteRetryPolicy.cooldown(consecutiveFailures: 4), 180)
         XCTAssertFalse(NavigationRerouteRetryPolicy.mayRetry(
             lastAttempt: attemptedAt, consecutiveFailures: 2,
-            now: attemptedAt.addingTimeInterval(299)
+            now: attemptedAt.addingTimeInterval(179)
         ))
         XCTAssertTrue(NavigationRerouteRetryPolicy.mayRetry(
             lastAttempt: attemptedAt, consecutiveFailures: 2,
-            now: attemptedAt.addingTimeInterval(300)
+            now: attemptedAt.addingTimeInterval(180)
         ))
         XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: 300, previousDistance: 280,
@@ -331,7 +331,7 @@ final class NavigationPresentationTests: XCTestCase {
             startedAt: startedAt,
             now: startedAt.addingTimeInterval(NavigationRerouteWatchdogPolicy.timeout)
         ))
-        XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeoutNanoseconds, 45_000_000_000)
+        XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeoutNanoseconds, 20_000_000_000)
     }
 
     func testDelayedGuidanceCalculationCannotCommitAfterStopOrWatchdog() {

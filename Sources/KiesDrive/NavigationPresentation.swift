@@ -931,9 +931,9 @@ enum NavigationDeviationCorridorPolicy {
 enum NavigationRerouteRetryPolicy {
     static func cooldown(consecutiveFailures: Int) -> TimeInterval {
         switch max(0, consecutiveFailures) {
-        case 0: 45
-        case 1: 2 * 60
-        default: 5 * 60
+        case 0: 30
+        case 1: 60
+        default: 3 * 60
         }
     }
 
@@ -948,7 +948,7 @@ enum NavigationRerouteRetryPolicy {
 /// remain suspended for much longer. The navigation UI must never stay in a
 /// permanent "recalculating" state because of one lost response.
 enum NavigationRerouteWatchdogPolicy {
-    static let timeout: TimeInterval = 45
+    static let timeout: TimeInterval = 20
     static let timeoutNanoseconds: UInt64 = UInt64(timeout * 1_000_000_000)
 
     static func hasTimedOut(startedAt: Date, now: Date = Date()) -> Bool {
