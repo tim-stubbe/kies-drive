@@ -78,13 +78,15 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         let deliveredAt = Date()
         let guidanceSamples = NavigationLocationBatchPolicy.orderedDistinct(locations)
         guard let latest = guidanceSamples.last else { return }
-        location = latest
         // Buffered samples are trusted only when Core Location finishes the
-        // batch with a normal, current fix. This lets guidance replay the last
-        // approach to a junction without accepting an entirely stale batch.
+        // batch with a normal, current and physically plausible fix. Keep the
+        // previously published fix when GPS briefly jumps: otherwise the map,
+        // remote status and trip restore could all show the same bad position
+        // even though turn guidance correctly rejected it.
         let batchEndsWithFreshFix = NavigationLocationPolicy.accepts(
-            latest, after: nil, now: deliveredAt
+            latest, after: location, now: deliveredAt
         )
+        if batchEndsWithFreshFix { location = latest }
 
         // Navigation progress must be driven by Core Location itself, not by
         // a SwiftUI `onReceive` callback. SwiftUI view updates are not a
@@ -109,12 +111,11 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
             }
         }
 
+        guard batchEndsWithFreshFix else { return }
         Task {
             // A cached, stale or kilometre-uncertain first fix must not spend
             // the restore attempt or calculate a route from the wrong place.
-            if batchEndsWithFreshFix {
-                await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
-            }
+            await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
             await DriveRemoteBridge.shared.sync(location: latest)
         }
     }
