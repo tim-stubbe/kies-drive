@@ -577,6 +577,13 @@ enum ManeuverDiagnosticPolicy {
         !stages.contains(.now)
     }
 
+    /// A completed final distance cue is already actionable. Repeating that
+    /// maneuver only after the route cursor crossed the junction would be too
+    /// late and can mislead at closely spaced intersections.
+    static func deliveredDecisiveCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
+        stages.contains(.final) || stages.contains(.now)
+    }
+
     static func shouldRecordMissedFinalCue(stages: Set<NavigationAnnouncementStage>,
                                            reason: ClosureReason) -> Bool {
         guard reason != .userStopped, reason != .recoveryQueued else { return false }
@@ -591,7 +598,7 @@ enum ManeuverDiagnosticPolicy {
     static func shouldRecoverFinalCue(previousKey: String?, nextKey: String,
                                       stages: Set<NavigationAnnouncementStage>) -> Bool {
         guard let previousKey, previousKey != nextKey else { return false }
-        return missedFinalCue(stages: stages)
+        return !deliveredDecisiveCue(stages: stages)
     }
 }
 

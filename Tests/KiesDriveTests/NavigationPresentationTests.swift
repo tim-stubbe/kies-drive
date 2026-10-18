@@ -934,6 +934,9 @@ final class NavigationPresentationTests: XCTestCase {
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare, .now]))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: [.early, .prepare]))
+        XCTAssertTrue(ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: [.final]))
+        XCTAssertTrue(ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: [.now]))
         XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
             stages: [.early, .prepare], reason: .routeTransition
         ))
@@ -957,6 +960,10 @@ final class NavigationPresentationTests: XCTestCase {
             previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
             stages: [.early, .prepare, .now]
         ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
+            stages: [.early, .prepare, .final]
+        ), "A completed final distance cue must not be repeated behind the junction")
         XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: "0:1:Rechts abbiegen", nextKey: "0:1:Rechts abbiegen",
             stages: [.early, .prepare]
