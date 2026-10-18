@@ -365,6 +365,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeManeuverSpeech = [:]
             diagnosticManeuverKey = nil
             diagnosticManeuverInstruction = nil
+            activeUtterance = nil
+            activeSpeechPriority = nil
+            #if os(iOS)
+            // `didCancel` normally releases this session, but Bluetooth route
+            // changes can delay or omit that callback. Muting is an immediate
+            // user command and must restore music volume deterministically.
+            try? AVAudioSession.sharedInstance().setActive(
+                false, options: .notifyOthersOnDeactivation
+            )
+            #endif
         }
     }
 

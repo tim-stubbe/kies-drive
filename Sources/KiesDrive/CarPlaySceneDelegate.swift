@@ -14,6 +14,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var carWindow: CPWindow?
     private var mapView: MKMapView?
     private var mapTemplate: CPMapTemplate?
+    private var audioMapButton: CPMapButton?
     private var navigationSession: CPNavigationSession?
     private var activeTrip: CPTrip?
     private var activeTripDestination: CLLocationCoordinate2D?
@@ -82,6 +83,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         carWindow = nil
         mapView = nil
         mapTemplate = nil
+        audioMapButton = nil
         navigationSession = nil
         activeTrip = nil
         activeTripDestination = nil
@@ -138,6 +140,17 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
+        DriveSettings.shared.$voiceGuidance
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                RoutePlanner.shared.setVoiceGuidanceEnabled(enabled)
+                self?.audioMapButton?.image = UIImage(
+                    systemName: enabled ? "speaker.wave.2.fill" : "speaker.slash.fill"
+                )
+            }
+            .store(in: &cancellables)
+
         LocationService.shared.$location
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
@@ -187,6 +200,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                                    ? "speaker.wave.2.fill" : "speaker.slash.fill")
         }
         audio.image = UIImage(systemName: DriveSettings.shared.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
+        audioMapButton = audio
         return [follow, overview, stops, audio]
     }
 
