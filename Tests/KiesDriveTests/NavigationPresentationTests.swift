@@ -143,6 +143,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(baseline, .init(avoidTolls: false, avoidHighways: true))
     }
 
+    func testPreviewRouteOptionRollbackUsesInstalledRouteOptionsWithoutTripLock() {
+        let installedPreview = LockedRouteOptions(
+            avoidTolls: false, avoidHighways: false
+        )
+        let baseline = RouteOptionSettingsBaselinePolicy.baseline(
+            waypointID: nil,
+            activeDefaults: installedPreview,
+            currentAvoidTolls: true,
+            currentAvoidHighways: false
+        )
+
+        XCTAssertEqual(baseline, installedPreview)
+    }
+
     func testScopedRouteOptionChangeDoesNotReplaceGlobalSettingsBaseline() {
         let baseline = RouteOptionSettingsBaselinePolicy.baseline(
             waypointID: "slovenia",

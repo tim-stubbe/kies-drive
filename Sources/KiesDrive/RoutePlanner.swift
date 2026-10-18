@@ -405,6 +405,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// live `MKRoute` values cannot be persisted, but they still must never be
     /// resumed for a different destination after a failed recalculation.
     private var liveRouteDestinationCoordinate: CLLocationCoordinate2D?
+    /// Global options that produced the currently installed `legs`. Route
+    /// previews do not have a trip lock yet, so this is their authoritative
+    /// rollback baseline when a settings toggle cannot be recalculated.
+    private var installedDefaultRouteOptions: LockedRouteOptions?
     private var destinationSearchGeneration = UUID()
     private var destinationActivationGeneration = UUID()
     private struct DestinationActivationSnapshot {
@@ -1034,7 +1038,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeOptionMutationGeneration = mutationGeneration
         let settingsBaseline = RouteOptionSettingsBaselinePolicy.baseline(
             waypointID: waypointID,
-            activeDefaults: routeLockStore.activeLock?.defaultOptions,
+            activeDefaults: routeLockStore.activeLock?.defaultOptions ??
+                installedDefaultRouteOptions,
             currentAvoidTolls: settings.avoidTolls,
             currentAvoidHighways: settings.avoidHighways
         )
@@ -2012,6 +2017,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
             liveRouteDestinationCoordinate = destination.placemark.coordinate
+            installedDefaultRouteOptions = lock?.defaultOptions ?? .init(
+                avoidTolls: settings.avoidTolls,
+                avoidHighways: settings.avoidHighways
+            )
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
             // Enrichment belongs to the geometry that produced it. Preserve
