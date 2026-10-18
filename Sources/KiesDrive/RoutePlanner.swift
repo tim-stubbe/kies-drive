@@ -3626,7 +3626,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// automatische Neuberechnung ab der aktuellen Position aus.
     private func checkForDeviation(from location: CLLocation, settings: DriveSettings,
                                    allowsAutomaticReroute: Bool) {
-        guard !isLoading, !isRecalculating else { return }
+        // Continue matching against the still-installed route while MapKit is
+        // recalculating. If the driver returns before the request completes,
+        // the old route is trustworthy again and the obsolete network result
+        // must be prevented from replacing it.
+        guard !isLoading else { return }
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
         let rerouteAllowed = NavigationRerouteRetryPolicy.mayRetry(
             lastAttempt: lastRerouteAt,
@@ -3673,12 +3677,29 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if NavigationRouteRejoinPolicy.isConfirmed(
                 consecutiveInsideFixes: onRouteRecoveryFixCount
             ) {
+                let shouldCancelReroute = NavigationRouteRejoinPolicy
+                    .shouldCancelAutomaticReroute(
+                        isRecalculating: isRecalculating,
+                        guidanceReliable: isManeuverGuidanceReliable,
+                        consecutiveInsideFixes: onRouteRecoveryFixCount
+                    )
+                if shouldCancelReroute {
+                    activeAutomaticRerouteTask?.cancel()
+                    activeAutomaticRerouteTask = nil
+                    rerouteGeneration = UUID()
+                    routeCalculationGeneration = UUID()
+                    isRecalculating = false
+                    consecutiveRerouteFailures = 0
+                }
                 isManeuverGuidanceReliable = true
                 onRouteRecoveryFixCount = 0
                 DriveDiagnosticStore.append(
                     .routeRejoined,
                     detail: DriveDiagnosticDetail.navigationSample(
-                        "Ursprüngliche Route stabil wieder erreicht", location: location
+                        shouldCancelReroute
+                            ? "Ursprüngliche Route stabil wieder erreicht; Neuberechnung beendet"
+                            : "Ursprüngliche Route stabil wieder erreicht",
+                        location: location
                     )
                 )
             }
@@ -3710,7 +3731,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 elapsed: now.timeIntervalSince(offRouteSince),
                 consecutiveFixes: offRouteFixCount,
                 speedMetresPerSecond: reliableSpeed
-              ), allowsAutomaticReroute else { return }
+              ), allowsAutomaticReroute, !isRecalculating else { return }
         isManeuverGuidanceReliable = false
         // A confirmed departure invalidates the current maneuver immediately.
         // Do not let a queued or audible instruction from the abandoned road

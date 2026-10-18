@@ -1841,6 +1841,16 @@ enum NavigationRouteRejoinPolicy {
     static func isConfirmed(consecutiveInsideFixes: Int) -> Bool {
         consecutiveInsideFixes >= requiredConsecutiveInsideFixes
     }
+
+    /// A slow MapKit request must not replace the original route after the
+    /// driver has already returned to it. The same stable-match requirement
+    /// used to restore maneuver guidance also owns cancellation of that work.
+    static func shouldCancelAutomaticReroute(isRecalculating: Bool,
+                                             guidanceReliable: Bool,
+                                             consecutiveInsideFixes: Int) -> Bool {
+        isRecalculating && !guidanceReliable &&
+            isConfirmed(consecutiveInsideFixes: consecutiveInsideFixes)
+    }
 }
 
 struct NavigationInstructionDisplay: Equatable {
