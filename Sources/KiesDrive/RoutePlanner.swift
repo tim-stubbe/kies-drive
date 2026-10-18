@@ -316,7 +316,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var destinationSearchGeneration = UUID()
     private var destinationActivationGeneration = UUID()
     private var routeSearchGeneration = UUID()
-    private var activeDestinationSearch: MKLocalSearch?
+    private var activeDestinationSearches: [MKLocalSearch] = []
     private var activeRouteSearches: [MKLocalSearch] = []
     private var activeAmenitySearches: [MKLocalSearch] = []
     private var automaticRestoreInProgress = false
@@ -974,35 +974,75 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let query = destinationText.trimmingCharacters(in: .whitespacesAndNewlines)
         let generation = UUID()
         destinationSearchGeneration = generation
-        activeDestinationSearch?.cancel()
-        activeDestinationSearch = nil
+        activeDestinationSearches.forEach { $0.cancel() }
+        activeDestinationSearches = []
         suggestions = []
         errorMessage = nil
         guard query.count > 2 else { return }
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
-        if let coordinate { request.region = .init(center: coordinate, latitudinalMeters: 100_000, longitudinalMeters: 100_000) }
-        let search = MKLocalSearch(request: request)
-        activeDestinationSearch = search
-        let outcome = await withTaskGroup(of: DestinationSearchOutcome.self) { group in
-            group.addTask {
-                do { return .results(try await search.start().mapItems) }
-                catch { return .failed(error.localizedDescription) }
+        var requests: [MKLocalSearch.Request] = []
+        if let coordinate {
+            let local = MKLocalSearch.Request()
+            local.naturalLanguageQuery = query
+            local.region = .init(center: coordinate, latitudinalMeters: 100_000,
+                                 longitudinalMeters: 100_000)
+            requests.append(local)
+        }
+        // A region is a strong MapKit ranking hint. Pair it with an unbiased
+        // request so a remote holiday destination such as Split cannot lose
+        // to a similarly named nearby business or district.
+        let global = MKLocalSearch.Request()
+        global.naturalLanguageQuery = query
+        requests.append(global)
+        let searches = requests.map(MKLocalSearch.init(request:))
+        activeDestinationSearches = searches
+        let outcome = await withTaskGroup(of: DestinationSearchOutcome.self) {
+            group -> DestinationSearchOutcome in
+            for search in searches {
+                group.addTask {
+                    do { return .results(try await search.start().mapItems) }
+                    catch { return .failed(error.localizedDescription) }
+                }
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: NavigationSearchTimeoutPolicy.timeoutNanoseconds)
                 return .timedOut
             }
-            let first = await group.next() ?? .timedOut
-            group.cancelAll()
-            search.cancel()
-            return first
+            var results: [MKMapItem] = []
+            var failures: [String] = []
+            var completedSearches = 0
+            while let next = await group.next() {
+                switch next {
+                case .results(let items):
+                    results.append(contentsOf: items)
+                    completedSearches += 1
+                case .failed(let detail):
+                    failures.append(detail)
+                    completedSearches += 1
+                case .timedOut:
+                    searches.forEach { $0.cancel() }
+                    group.cancelAll()
+                    return results.isEmpty
+                        ? DestinationSearchOutcome.timedOut
+                        : DestinationSearchOutcome.results(results)
+                }
+                if completedSearches == searches.count {
+                    group.cancelAll()
+                    if !results.isEmpty || failures.count < searches.count {
+                        return .results(results)
+                    }
+                    return .failed(failures.first ?? "Unbekannter Suchfehler")
+                }
+            }
+            return results.isEmpty
+                ? DestinationSearchOutcome.timedOut
+                : DestinationSearchOutcome.results(results)
         }
+        searches.forEach { $0.cancel() }
         guard DestinationSearchCompletionPolicy.mayPublish(
             request: generation, currentRequest: destinationSearchGeneration,
             query: query, currentText: destinationText
         ) else { return }
-        activeDestinationSearch = nil
+        activeDestinationSearches = []
         switch outcome {
         case .results(let items):
             let origin = coordinate.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
@@ -1522,8 +1562,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeCalculationGeneration = calculationGeneration
         destinationSearchGeneration = UUID()
         routeSearchGeneration = UUID()
-        activeDestinationSearch?.cancel()
-        activeDestinationSearch = nil
+        activeDestinationSearches.forEach { $0.cancel() }
+        activeDestinationSearches = []
         activeRouteSearches.forEach { $0.cancel() }
         activeRouteSearches = []
         activeAmenitySearches.forEach { $0.cancel() }
