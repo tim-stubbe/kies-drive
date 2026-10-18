@@ -3198,6 +3198,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             isSpeaking: synthesizer.isSpeaking,
             hasQueuedUtterance: activeUtterance != nil
         )
+        let requestedManeuverClaims = maneuverClaims + (maneuverClaim.map { [$0] } ?? [])
+        if hasActiveSpeechWork, !requestedManeuverClaims.isEmpty {
+            let activeKeys = Set(
+                (Array(pendingManeuverSpeech.values) + Array(activeManeuverSpeech.values))
+                    .joined().map(\.key)
+            )
+            let incomingKeys = Set(requestedManeuverClaims.map(\.key))
+            if NavigationSpeechInterruptionPolicy.shouldDeferForSameManeuver(
+                activeKeys: activeKeys,
+                incomingKeys: incomingKeys,
+                incomingPriority: priority
+            ) {
+                // Do not claim this stage. A following location fix retries it
+                // once the current complete sentence has finished.
+                return false
+            }
+        }
         if hasActiveSpeechWork, let activeSpeechPriority,
            !NavigationSpeechInterruptionPolicy.shouldInterrupt(
                active: activeSpeechPriority, incoming: priority
@@ -3224,9 +3241,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         utterance.prefersAssistiveTechnologySettings = false
         activeUtterance = utterance
         activeSpeechPriority = priority
-        let claims = maneuverClaims + (maneuverClaim.map { [$0] } ?? [])
-        if !claims.isEmpty {
-            pendingManeuverSpeech[ObjectIdentifier(utterance)] = claims
+        if !requestedManeuverClaims.isEmpty {
+            pendingManeuverSpeech[ObjectIdentifier(utterance)] = requestedManeuverClaims
         }
         if let breakReminderClaim {
             pendingBreakReminderSpeech[ObjectIdentifier(utterance)] = .init(

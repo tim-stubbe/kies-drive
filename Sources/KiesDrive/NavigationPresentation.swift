@@ -684,6 +684,18 @@ enum NavigationSpeechInterruptionPolicy {
         return incoming.rawValue >= active.rawValue
     }
 
+    /// A newer distance stage for the same turn must not cut a sentence in
+    /// half. Keep it retryable until the audible sentence finishes. Only the
+    /// immediate, critical cue may overtake older preparation for that turn.
+    static func shouldDeferForSameManeuver(
+        activeKeys: Set<String>,
+        incomingKeys: Set<String>,
+        incomingPriority: NavigationSpeechPriority
+    ) -> Bool {
+        guard incomingPriority != .critical else { return false }
+        return !activeKeys.isDisjoint(with: incomingKeys)
+    }
+
     /// Once a replacement route is committed, every queued or audible
     /// maneuver belongs to geometry that is no longer authoritative. Even a
     /// critical final cue must be cancelled instead of directing the driver

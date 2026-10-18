@@ -1330,6 +1330,21 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A later preparation stage must be able to supersede an unfinished earlier stage")
     }
 
+    func testNewDistanceStageDoesNotCutOffSameManeuverSentence() {
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldDeferForSameManeuver(
+            activeKeys: ["leg-0-step-4"], incomingKeys: ["leg-0-step-4"],
+            incomingPriority: .maneuver
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldDeferForSameManeuver(
+            activeKeys: ["leg-0-step-4"], incomingKeys: ["leg-0-step-5"],
+            incomingPriority: .maneuver
+        ), "A genuinely different upcoming maneuver may replace old preparation")
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldDeferForSameManeuver(
+            activeKeys: ["leg-0-step-4"], incomingKeys: ["leg-0-step-4"],
+            incomingPriority: .critical
+        ), "The immediate cue must still overtake an old distance cue")
+    }
+
     func testFinishedSpeechCommitsQueuedClaimWhenStartCallbackWasLost() {
         XCTAssertEqual(
             NavigationAnnouncementDeliveryPolicy.completedClaims(
