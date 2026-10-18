@@ -872,8 +872,11 @@ enum NavigationBreakReminderPolicy {
         guard currentRouteProgress.isFinite else { return nil }
         let threshold = min(1, max(0, currentRouteProgress)) + max(0, minimumProgressLead)
         return breaks
-            .filter { $0.routeProgress.isFinite && $0.routeProgress >= threshold }
-            .sorted { $0.routeProgress < $1.routeProgress }
+            .filter {
+                $0.insertionRouteProgress.isFinite &&
+                    $0.insertionRouteProgress >= threshold
+            }
+            .sorted { $0.insertionRouteProgress < $1.insertionRouteProgress }
             .compactMap { planned in
                 let name = planned.candidate?.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 return name?.isEmpty == false ? name : nil

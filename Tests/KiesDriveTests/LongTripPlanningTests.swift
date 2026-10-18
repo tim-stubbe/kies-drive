@@ -834,6 +834,25 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testBreakReminderUsesInstalledProgressForRebasedRemainingRoute() {
+        let candidate = BreakCandidate(
+            id: "ahead", name: "Raststätte voraus", coordinate: .init(),
+            progress: 0.25, installedRouteProgress: 0.8,
+            detourMetres: 100, isOpen: true
+        )
+        let planned = PlannedBreak(
+            id: "break", candidate: candidate, afterDriving: 1_800,
+            duration: 900, routeProgress: 0.25, explanation: "Pause"
+        )
+
+        XCTAssertEqual(NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: [planned], currentRouteProgress: 0.7
+        ), "Raststätte voraus")
+        XCTAssertNil(NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: [planned], currentRouteProgress: 0.85
+        ))
+    }
+
     func testDrivingRestPolicyDoesNotTreatUnknownGapAsObservedBreak() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 25_000)
