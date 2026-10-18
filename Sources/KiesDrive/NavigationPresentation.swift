@@ -2550,6 +2550,24 @@ enum SpeedLimitSelectionPolicy {
     }
 }
 
+enum SpeedLimitPresentation: Equatable {
+    case numeric(Int)
+    case unrestricted
+    case unavailable
+}
+
+enum SpeedLimitPresentationPolicy {
+    /// Numeric evidence is safer and more specific than a contradictory
+    /// `unlimited` flag. Only an explicit unrestricted result without a
+    /// numeric limit may display the general German restriction-end sign.
+    static func presentation(for result: SpeedLimitResult) -> SpeedLimitPresentation {
+        if let value = result.maxspeed, (1...300).contains(value) {
+            return .numeric(value)
+        }
+        return result.unlimited ? .unrestricted : .unavailable
+    }
+}
+
 enum RouteSearchCompletionDisposition: Equatable {
     case publish
     case discardAndFinish

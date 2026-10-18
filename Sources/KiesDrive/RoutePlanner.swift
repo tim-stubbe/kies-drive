@@ -4225,7 +4225,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             availableLimitCount: speedLimits.count,
             expectedProgress: expectedProgress
         ) else { return nil }
-        return speedLimits[index]
+        let result = speedLimits[index]
+        guard SpeedLimitPresentationPolicy.presentation(for: result) != .unavailable else {
+            return nil
+        }
+        return result
     }
 
     private func computeRoutes(from source: MKMapItem, to destination: MKMapItem, settings: DriveSettings,

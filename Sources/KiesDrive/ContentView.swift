@@ -1810,16 +1810,37 @@ struct DriveContentView: View {
     private func speedLimitSign(_ limit: SpeedLimitResult) -> some View {
         ZStack {
             Circle().fill(.white).frame(width: 56, height: 56)
-            if limit.unlimited {
+            switch SpeedLimitPresentationPolicy.presentation(for: limit) {
+            case .unrestricted:
                 Circle().strokeBorder(.black, lineWidth: 3)
-                Text("120").font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
-                Rectangle().fill(.black).frame(width: 56, height: 4).rotationEffect(.degrees(-35))
-            } else if let maxspeed = limit.maxspeed {
+                // Zeichen 282: Ende sämtlicher streckenbezogener
+                // Geschwindigkeitsbeschränkungen. A crossed-out number would
+                // mean only that one previous limit ended.
+                ForEach(-2...2, id: \.self) { line in
+                    Rectangle()
+                        .fill(.black)
+                        .frame(width: 68, height: 2)
+                        .offset(y: CGFloat(line) * 7)
+                        .rotationEffect(.degrees(-45))
+                }
+                .clipShape(Circle())
+            case .numeric(let maxspeed):
                 Circle().strokeBorder(.red, lineWidth: 5)
                 Text("\(maxspeed)").font(.system(size: 20, weight: .bold)).foregroundStyle(.black)
+            case .unavailable:
+                EmptyView()
             }
         }
         .shadow(radius: 3)
+        .accessibilityLabel(speedLimitAccessibilityLabel(limit))
+    }
+
+    private func speedLimitAccessibilityLabel(_ limit: SpeedLimitResult) -> String {
+        switch SpeedLimitPresentationPolicy.presentation(for: limit) {
+        case .numeric(let value): "Tempolimit \(value) Kilometer pro Stunde"
+        case .unrestricted: "Keine streckenbezogene Geschwindigkeitsbeschränkung"
+        case .unavailable: "Tempolimit nicht verfügbar"
+        }
     }
 
     private func formatDistance(_ metres: Double) -> String { metres >= 1000 ? String(format: "%.1f km", metres / 1000) : "\(Int(metres)) m" }

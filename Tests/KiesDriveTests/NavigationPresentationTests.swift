@@ -3584,6 +3584,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testSpeedLimitPresentationPrefersNumericEvidenceOverConflict() {
+        XCTAssertEqual(SpeedLimitPresentationPolicy.presentation(for: .init(
+            maxspeed: 120, unlimited: true
+        )), .numeric(120))
+        XCTAssertEqual(SpeedLimitPresentationPolicy.presentation(for: .init(
+            maxspeed: nil, unlimited: true
+        )), .unrestricted)
+        XCTAssertEqual(SpeedLimitPresentationPolicy.presentation(for: .init(
+            maxspeed: nil, unlimited: false
+        )), .unavailable)
+        XCTAssertEqual(SpeedLimitPresentationPolicy.presentation(for: .init(
+            maxspeed: -1, unlimited: true
+        )), .unrestricted)
+    }
+
     func testRouteSearchAheadCheckUsesDistanceProgress() {
         XCTAssertTrue(RouteSearchPolicy.isAhead(
             candidateProgress: 0.498, currentProgress: 0.50,
