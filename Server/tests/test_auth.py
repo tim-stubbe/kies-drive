@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import re
 from urllib.parse import parse_qs, urlparse
 
@@ -238,6 +239,52 @@ def test_password_and_authentication_guards(tmp_path, monkeypatch):
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": "set_destination", "arguments": {"query": "Hochheim"}},
     }).status_code == 401
+
+
+def test_mcp_reports_remote_command_completion(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "remote-status.db"))
+    verification = {}
+    monkeypatch.setattr(
+        main, "send_verification_email",
+        lambda email, token: verification.update(email=email, token=token),
+    )
+    main.AUTH_ATTEMPTS.clear()
+    client = TestClient(main.app)
+    email = "remote@example.com"
+    password = "a-secure-remote-password"
+    assert client.post("/auth/register", json={"email": email, "password": password}).status_code == 202
+    assert client.get("/auth/verify-email", params={"token": verification["token"]}).status_code == 200
+    session = client.post("/auth/login", json={"email": email, "password": password}).json()["session"]
+    headers = {"Authorization": f"Bearer {session}"}
+
+    queued = client.post("/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "set_destination", "arguments": {"query": "Hochheim"}},
+    }).json()
+    queued_data = json.loads(queued["result"]["content"][0]["text"])
+    command_id = queued_data["command_id"]
+    assert queued_data == {"accepted": True, "command_id": command_id, "status": "pending"}
+
+    pending = client.post("/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": "get_command_status", "arguments": {"command_id": command_id}},
+    }).json()
+    pending_data = json.loads(pending["result"]["content"][0]["text"])
+    assert pending_data["found"] is True
+    assert pending_data["status"] == "pending"
+    assert pending_data["result"] is None
+
+    assert client.post(
+        f"/api/navigation/remote/commands/{command_id}/complete",
+        headers=headers, json={"ok": False, "message": "Route nicht verfügbar"},
+    ).status_code == 200
+    failed = client.post("/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "get_command_status", "arguments": {"command_id": command_id}},
+    }).json()
+    failed_data = json.loads(failed["result"]["content"][0]["text"])
+    assert failed_data["status"] == "failed"
+    assert failed_data["result"] == {"ok": False, "message": "Route nicht verfügbar"}
 
 
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
