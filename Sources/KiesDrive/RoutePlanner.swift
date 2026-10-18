@@ -4085,13 +4085,54 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let generation = UUID()
         comparisonSpeedLimitLoadGeneration = generation
         let points = sample(comparisonRoute.polyline, maximum: 80)
-        let limits = await fetchSpeedLimits(along: points)
+        var limits: [SpeedLimitResult] = []
+        var loadWasSuperseded = false
+        await withTaskGroup(of: SpeedLimitLoadOutcome.self) { group in
+            group.addTask { [weak self] in
+                .comparison(await self?.fetchSpeedLimits(along: points) ?? [])
+            }
+            group.addTask { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    guard !Task.isCancelled else { break }
+                    guard let self else { return .superseded }
+                    if !(await self.isCurrentComparisonSpeedLimitLoad(
+                        routeGeneration: routeGeneration,
+                        loadGeneration: generation
+                    )) { return .superseded }
+                }
+                return .superseded
+            }
+            while let outcome = await group.next() {
+                switch outcome {
+                case .comparison(let loaded):
+                    limits = loaded
+                    group.cancelAll()
+                    return
+                case .superseded:
+                    loadWasSuperseded = true
+                    group.cancelAll()
+                    return
+                case .main:
+                    continue
+                }
+            }
+        }
+        guard !loadWasSuperseded else { return }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: comparisonSpeedLimitLoadGeneration
         ) else { return }
         comparisonSpeedLimitPoints = points
         comparisonSpeedLimits = limits
+    }
+
+    private func isCurrentComparisonSpeedLimitLoad(routeGeneration: UUID,
+                                                   loadGeneration: UUID) -> Bool {
+        RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: loadGeneration, currentRequest: comparisonSpeedLimitLoadGeneration
+        )
     }
 
     /// Aktuelles Tempolimit für den nächstgelegenen abgetasteten Routenpunkt

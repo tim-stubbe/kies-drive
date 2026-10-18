@@ -286,7 +286,11 @@ enum DriveAPI {
         let body = try JSONSerialization.data(withJSONObject: [
             "points": points.map { ["lat": $0.latitude, "lon": $0.longitude] },
         ])
-        let payload = try await data(for: try request(path: "/api/navigation/speed-limits", method: "POST", body: body))
+        var speedLimitRequest = try request(
+            path: "/api/navigation/speed-limits", method: "POST", body: body
+        )
+        speedLimitRequest.timeoutInterval = SpeedLimitQueryPolicy.requestTimeout
+        let payload = try await data(for: speedLimitRequest)
         return try JSONDecoder().decode(SpeedLimitEnvelope.self, from: payload).limits
     }
 

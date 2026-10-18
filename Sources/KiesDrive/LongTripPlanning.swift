@@ -537,6 +537,13 @@ enum FuelStationQueryPolicy {
     }
 }
 
+enum SpeedLimitQueryPolicy {
+    /// Route planning must remain usable when the external road-data provider
+    /// is overloaded. A missing limit is safer than an indefinitely blocked
+    /// enrichment task; live guidance continues without a speed warning.
+    static let requestTimeout: TimeInterval = 10
+}
+
 enum RouteTravelTimeProgress {
     /// Maps a point's whole-route distance fraction to its expected-time
     /// fraction using the individual MapKit leg ETAs. It intentionally works

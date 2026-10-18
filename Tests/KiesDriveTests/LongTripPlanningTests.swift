@@ -402,6 +402,7 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(FuelStationQueryPolicy.maximumSampleCount, 6)
         XCTAssertEqual(FuelStationQueryPolicy.maximumResultsPerSample, 24)
         XCTAssertEqual(FuelStationQueryPolicy.requestTimeout, 8)
+        XCTAssertEqual(SpeedLimitQueryPolicy.requestTimeout, 10)
     }
 
     func testFuelPlannerContinuesAfterMandatoryDepartureRefuel() {
