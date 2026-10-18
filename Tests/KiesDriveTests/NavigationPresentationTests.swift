@@ -1473,6 +1473,12 @@ final class NavigationPresentationTests: XCTestCase {
         ), 150_000)
     }
 
+    func testRouteSearchBatchLimitsRemainSmallAndBounded() {
+        XCTAssertEqual(NavigationSearchBatchPolicy.timeoutNanoseconds, 8_000_000_000)
+        XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentRouteSearches, 5)
+        XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches, 8)
+    }
+
     func testRouteSearchRejectsExcessiveOrInvalidDrivingDetours() {
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(4_500))
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(20_000))

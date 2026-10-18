@@ -18,6 +18,12 @@ enum NavigationSearchTimeoutPolicy {
     static let timeoutNanoseconds: UInt64 = 8_000_000_000
 }
 
+enum NavigationSearchBatchPolicy {
+    static let timeoutNanoseconds: UInt64 = 8_000_000_000
+    static let maximumConcurrentRouteSearches = 5
+    static let maximumConcurrentAmenitySearches = 8
+}
+
 enum DestinationSearchCompletionPolicy {
     static func mayPublish(request: UUID, currentRequest: UUID,
                            query: String, currentText: String) -> Bool {

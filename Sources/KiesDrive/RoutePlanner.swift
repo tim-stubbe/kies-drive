@@ -633,7 +633,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let remainingCoordinates = RouteSearchPolicy.remainingRouteCoordinates(
             routeCoordinates, currentProgress: currentRouteProgress
         )
-        let searchPoints = evenlySpaced(remainingCoordinates, maximum: 5)
+        let searchPoints = evenlySpaced(
+            remainingCoordinates,
+            maximum: NavigationSearchBatchPolicy.maximumConcurrentRouteSearches
+        )
         let searchRadius = RouteSearchPolicy.searchRadiusMetres(
             routeCoordinates: remainingCoordinates, searchPointCount: searchPoints.count
         )
@@ -646,18 +649,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return MKLocalSearch(request: request)
         }
         activeRouteSearches = searches
-        await withTaskGroup(of: [MKMapItem].self) { group in
-            for search in searches {
-                group.addTask {
-                    (try? await search.start().mapItems) ?? []
-                }
-            }
-            for await items in group {
-                for item in items {
-                    let c = item.placemark.coordinate
-                    matches["\(item.name ?? ""):\(c.latitude):\(c.longitude)"] = item
-                }
-            }
+        for item in await boundedMapSearchResults(searches) {
+            let c = item.placemark.coordinate
+            matches["\(item.name ?? ""):\(c.latitude):\(c.longitude)"] = item
         }
         switch RouteSearchCompletionPolicy.disposition(
             request: generation, currentRequest: routeSearchGeneration,
@@ -2573,7 +2567,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeAmenitySearches.forEach { $0.cancel() }
         activeAmenitySearches = []
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
-        let searchPoints = evenlySpaced(routeCoordinates, maximum: 4)
+        let queryCount = 2
+        let pointLimit = max(
+            1,
+            NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches / queryCount
+        )
+        let searchPoints = evenlySpaced(routeCoordinates, maximum: pointLimit)
         var matches: [String: MKMapItem] = [:]
         let searches = searchPoints.flatMap { point in
             ["Raststätte Autohof", "Rastplatz"].map { query -> MKLocalSearch in
@@ -2585,18 +2584,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
         }
         activeAmenitySearches = searches
-        await withTaskGroup(of: [MKMapItem].self) { group in
-            for search in searches {
-                group.addTask {
-                    (try? await search.start().mapItems) ?? []
-                }
-            }
-            for await items in group {
-                for item in items {
-                    let coordinate = item.placemark.coordinate
-                    matches["\(item.name ?? "Halt"):\(coordinate.latitude):\(coordinate.longitude)"] = item
-                }
-            }
+        for item in await boundedMapSearchResults(searches) {
+            let coordinate = item.placemark.coordinate
+            matches["\(item.name ?? "Halt"):\(coordinate.latitude):\(coordinate.longitude)"] = item
         }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
@@ -2623,6 +2613,28 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let buckets = Dictionary(grouping: candidates) { min(9, Int($0.progress * 10)) }
         amenityBreakCandidates = buckets.keys.sorted().compactMap { bucket in
             buckets[bucket]?.min { $0.detourMetres < $1.detourMetres }
+        }
+    }
+
+    /// MapKit occasionally leaves one request suspended while the other
+    /// searches in the same batch have already completed. Cancel the exact
+    /// batch after a short deadline so route search, break planning and their
+    /// loading indicators always return control to the driver.
+    private func boundedMapSearchResults(_ searches: [MKLocalSearch]) async -> [MKMapItem] {
+        guard !searches.isEmpty else { return [] }
+        let timeout = Task {
+            try? await Task.sleep(nanoseconds: NavigationSearchBatchPolicy.timeoutNanoseconds)
+            guard !Task.isCancelled else { return }
+            searches.forEach { $0.cancel() }
+        }
+        defer { timeout.cancel() }
+        return await withTaskGroup(of: [MKMapItem].self, returning: [MKMapItem].self) { group in
+            for search in searches {
+                group.addTask { (try? await search.start().mapItems) ?? [] }
+            }
+            var results: [MKMapItem] = []
+            for await items in group { results.append(contentsOf: items) }
+            return results
         }
     }
 
