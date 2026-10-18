@@ -91,6 +91,42 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 23, x: 0, y: 0))
     }
 
+    func testTileResolverRejectsSymlinkEscapingInstalledPackage() throws {
+        try writeManifest(id: "alpen-safe")
+        let tile = source.appendingPathComponent("tiles/8/132/87.png")
+        try validPNG().write(to: tile)
+        let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let installed = try store.install(from: source)
+        let installedTile = try XCTUnwrap(store.tileURL(z: 8, x: 132, y: 87, package: installed))
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("outside-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try validPNG().write(to: outside)
+        try FileManager.default.removeItem(at: installedTile)
+        try FileManager.default.createSymbolicLink(at: installedTile, withDestinationURL: outside)
+
+        XCTAssertNil(store.tileURL(z: 8, x: 132, y: 87, package: installed))
+    }
+
+    func testImportRejectsSymlinkedTileRoot() throws {
+        try FileManager.default.removeItem(at: source.appendingPathComponent("tiles"))
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("outside-tiles-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try FileManager.default.createDirectory(
+            at: outside.appendingPathComponent("8/132"), withIntermediateDirectories: true
+        )
+        try validPNG().write(to: outside.appendingPathComponent("8/132/87.png"))
+        try FileManager.default.createSymbolicLink(
+            at: source.appendingPathComponent("tiles"), withDestinationURL: outside
+        )
+        try writeManifest(id: "linked-root")
+
+        XCTAssertThrowsError(
+            try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source)
+        )
+    }
+
     private func validPNG() -> Data {
         Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
     }

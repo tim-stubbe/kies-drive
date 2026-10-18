@@ -73,13 +73,14 @@ private final class LocalXYZTileOverlay: MKTileOverlay {
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, (any Error)?) -> Void) {
-        let url = package.directoryURL
-            .appendingPathComponent("tiles", isDirectory: true)
-            .appendingPathComponent(String(path.z), isDirectory: true)
-            .appendingPathComponent(String(path.x), isDirectory: true)
-            .appendingPathComponent("\(path.y).png")
-        do { result(try Data(contentsOf: url, options: .mappedIfSafe), nil) }
-        catch { result(Self.missingTileData, nil) }
+        guard let url = OfflineTileFilePolicy.tileURL(
+            z: path.z, x: path.x, y: path.y,
+            packageDirectory: package.directoryURL, manifest: package.manifest
+        ), let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            result(Self.missingTileData, nil)
+            return
+        }
+        result(data, nil)
     }
 }
 
