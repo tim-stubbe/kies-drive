@@ -3636,7 +3636,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         #if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            // Navigation must remain intelligible over both music and spoken
+            // content. Duck music, but pause podcasts/audiobooks for the
+            // short instruction instead of letting two voices overlap.
+            try audioSession.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
+            )
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             // No claim has been registered yet. Returning false keeps the
