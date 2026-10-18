@@ -466,6 +466,16 @@ enum NavigationAnnouncementDeliveryPolicy {
     /// Bluetooth route changes, Siri and phone calls can still cancel it before
     /// the driver hears the decisive words. Commit delivery only on finish.
     static func shouldCommitDelivery(didFinish: Bool) -> Bool { didFinish }
+
+    /// Audio callbacks are expected in order, but Bluetooth route changes and
+    /// synthesizer interruption can occasionally deliver an older completion
+    /// after a newer decisive cue. Delivery state is monotonic: completing an
+    /// early stage can never remove an already completed final/now stage.
+    static func committedStages(delivered: Set<NavigationAnnouncementStage>,
+                                completing stage: NavigationAnnouncementStage)
+        -> Set<NavigationAnnouncementStage> {
+        delivered.union(stages(upTo: stage))
+    }
 }
 
 enum NavigationSpeechClaimTimeoutPolicy {

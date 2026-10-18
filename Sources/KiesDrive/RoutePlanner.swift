@@ -2423,8 +2423,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if let claims = activeManeuverSpeech.removeValue(forKey: identifier),
            NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(didFinish: true) {
             for claim in claims {
+                let delivered = announcedManeuverStages[claim.key] ?? []
+                let isNewCompletion = !delivered.contains(claim.stage)
                 announcedManeuverStages[claim.key] =
-                    NavigationAnnouncementDeliveryPolicy.stages(upTo: claim.stage)
+                    NavigationAnnouncementDeliveryPolicy.committedStages(
+                        delivered: delivered, completing: claim.stage
+                    )
+                guard isNewCompletion else { continue }
                 lastAnnouncement = claim.instruction
                 DriveDiagnosticStore.append(
                     .maneuverAnnounced,

@@ -834,6 +834,18 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testLateOlderSpeechCompletionCannotRegressDeliveredManeuverStage() {
+        let decisive = NavigationAnnouncementDeliveryPolicy.stages(upTo: .now)
+        let afterLatePrepare = NavigationAnnouncementDeliveryPolicy.committedStages(
+            delivered: decisive, completing: .prepare
+        )
+
+        XCTAssertEqual(afterLatePrepare, decisive)
+        XCTAssertFalse(NavigationAnnouncementDeliveryPolicy.shouldAttempt(
+            .now, delivered: afterLatePrepare, pending: []
+        ), "A late older callback must not make the completed final cue eligible again")
+    }
+
     func testNewRouteSeedsItsOwnFirstManeuverImmediately() throws {
         let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
             (instruction: "", distance: 420),
