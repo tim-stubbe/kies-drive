@@ -60,6 +60,22 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertNil(store.load())
     }
 
+    func testOfflineRouteIdentityRequiresExactActiveTrip() {
+        let tripID = UUID()
+        XCTAssertTrue(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: tripID, activeTripID: tripID, active: true
+        ))
+        XCTAssertFalse(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: nil, activeTripID: tripID, active: true
+        ), "A preview cache must be rebound after the trip lock is persisted")
+        XCTAssertFalse(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: tripID, activeTripID: UUID(), active: true
+        ))
+        XCTAssertFalse(OfflineRouteTripIdentityPolicy.belongs(
+            cacheTripID: tripID, activeTripID: tripID, active: false
+        ))
+    }
+
     func testRouteLockTransactionCanRestoreEmptySnapshot() {
         let suite = "RouteLockTransaction-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

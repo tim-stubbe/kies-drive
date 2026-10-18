@@ -306,6 +306,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let shouldSpeak = voiceGuidance ?? DriveSettings.shared.voiceGuidance
         isUsingOfflineGuidance = false
         persistActiveTrip()
+        // `calculate` may have written its first cache while a preview still
+        // had no trip lock. Bind the exact same geometry to the now-persisted
+        // trip before guidance starts, so an immediate network loss or app
+        // termination cannot leave only an anonymous short-lived cache.
+        cacheForOffline()
         beginNavigationSession()
         isNavigating = true
         hasArrived = false
