@@ -593,12 +593,82 @@ struct NavigationStepMetric: Equatable {
     let distanceFromRoute: CLLocationDistance
     let remainingOnStep: CLLocationDistance
     let stepDistance: CLLocationDistance
+    /// Difference between the car's trustworthy course and the local route
+    /// segment. `nil` deliberately keeps distance-only matching while stopped
+    /// or when Core Location cannot provide a useful course.
+    let courseDifferenceDegrees: Double?
 
     init(distanceFromRoute: CLLocationDistance, remainingOnStep: CLLocationDistance,
-         stepDistance: CLLocationDistance = 0) {
+         stepDistance: CLLocationDistance = 0,
+         courseDifferenceDegrees: Double? = nil) {
         self.distanceFromRoute = distanceFromRoute
         self.remainingOnStep = remainingOnStep
         self.stepDistance = stepDistance
+        self.courseDifferenceDegrees = courseDifferenceDegrees
+    }
+}
+
+/// Distance alone cannot distinguish two carriageways, a flyover, or the
+/// parallel motorway and exit ramp at a junction. A live, reliable vehicle
+/// course gives us the missing direction without making guidance dependent on
+/// a compass while the car is stationary.
+enum NavigationCourseMatchingPolicy {
+    static let maximumPlausibleDifference = 80.0
+
+    static func angularDifference(courseDegrees: Double,
+                                  routeCourseDegrees: Double) -> Double? {
+        guard courseDegrees.isFinite, routeCourseDegrees.isFinite,
+              courseDegrees >= 0, courseDegrees < 360,
+              routeCourseDegrees >= 0, routeCourseDegrees < 360 else { return nil }
+        let raw = abs(courseDegrees - routeCourseDegrees).truncatingRemainder(dividingBy: 360)
+        return min(raw, 360 - raw)
+    }
+
+    static func isPlausible(_ difference: Double?) -> Bool {
+        guard let difference else { return true }
+        return difference.isFinite && difference <= maximumPlausibleDifference
+    }
+
+    static func routeCourse(near coordinate: CLLocationCoordinate2D,
+                            coordinates: [CLLocationCoordinate2D]) -> Double? {
+        guard coordinates.count > 1 else { return nil }
+        let target = MKMapPoint(coordinate)
+        let points = coordinates.map(MKMapPoint.init)
+        var bestIndex: Int?
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        for index in points.indices.dropLast() {
+            let projection = segmentProjection(target, points[index], points[index + 1])
+            guard projection.distance < bestDistance else { continue }
+            bestDistance = projection.distance
+            bestIndex = index
+        }
+        guard let bestIndex else { return nil }
+        return bearing(from: coordinates[bestIndex], to: coordinates[bestIndex + 1])
+    }
+
+    static func bearing(from start: CLLocationCoordinate2D,
+                        to end: CLLocationCoordinate2D) -> Double? {
+        guard start.latitude.isFinite, start.longitude.isFinite,
+              end.latitude.isFinite, end.longitude.isFinite else { return nil }
+        let latitude1 = start.latitude * .pi / 180
+        let latitude2 = end.latitude * .pi / 180
+        let longitudeDelta = (end.longitude - start.longitude) * .pi / 180
+        let y = sin(longitudeDelta) * cos(latitude2)
+        let x = cos(latitude1) * sin(latitude2) -
+            sin(latitude1) * cos(latitude2) * cos(longitudeDelta)
+        guard abs(x) > .ulpOfOne || abs(y) > .ulpOfOne else { return nil }
+        return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    }
+
+    private static func segmentProjection(_ point: MKMapPoint, _ start: MKMapPoint,
+                                          _ end: MKMapPoint)
+        -> (point: MKMapPoint, distance: CLLocationDistance) {
+        let dx = end.x - start.x, dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        let fraction = lengthSquared == 0 ? 0 : max(0, min(1,
+            ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+        let projected = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+        return (projected, point.distance(to: projected))
     }
 }
 
@@ -631,11 +701,14 @@ enum NavigationStepSelectionPolicy {
         // forward window below.
         if allowsFullRecovery, metrics[current].distanceFromRoute > 250 {
             if let earliestPlausible = metrics.indices.dropFirst(current).first(where: {
-                metrics[$0].distanceFromRoute <= max(45, radius * 1.5)
+                metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&
+                    NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }) {
                 return earliestPlausible
             }
-            if let nearest = metrics.indices.dropFirst(current).min(by: {
+            if let nearest = metrics.indices.dropFirst(current).filter({
+                NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
+            }).min(by: {
                 metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
             }), metrics[nearest].distanceFromRoute + 250 < metrics[current].distanceFromRoute {
                 return nearest
@@ -647,11 +720,14 @@ enum NavigationStepSelectionPolicy {
         let recovery = recoveryIndices(current: current, metrics: metrics)
         if metrics[current].distanceFromRoute > 250 {
             if let earliestPlausible = recovery.first(where: {
-                metrics[$0].distanceFromRoute <= max(45, radius * 1.5)
+                metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&
+                    NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
             }) {
                 return earliestPlausible
             }
-            if let recovered = recovery.min(by: {
+            if let recovered = recovery.filter({
+                NavigationCourseMatchingPolicy.isPlausible(metrics[$0].courseDifferenceDegrees)
+            }).min(by: {
                 metrics[$0].distanceFromRoute < metrics[$1].distanceFromRoute
             }), metrics[recovered].distanceFromRoute + 80 < metrics[current].distanceFromRoute {
                 return recovered
@@ -662,9 +738,14 @@ enum NavigationStepSelectionPolicy {
         while metrics.indices.contains(selected + 1) {
             let active = metrics[selected]
             let next = metrics[selected + 1]
-            let reachedJunction = active.remainingOnStep <= radius && next.distanceFromRoute <= radius * 1.5
+            let headingMatches = NavigationCourseMatchingPolicy.isPlausible(
+                next.courseDifferenceDegrees
+            )
+            let reachedJunction = active.remainingOnStep <= radius &&
+                next.distanceFromRoute <= radius * 1.5 && headingMatches
             let clearlyPastStep = active.distanceFromRoute > 60 &&
-                next.distanceFromRoute + 30 < active.distanceFromRoute && next.distanceFromRoute <= 45
+                next.distanceFromRoute + 30 < active.distanceFromRoute &&
+                next.distanceFromRoute <= 45 && headingMatches
             guard reachedJunction || clearlyPastStep else { break }
             selected += 1
         }
@@ -1208,12 +1289,14 @@ enum OfflineGuidanceEngine {
     static func progress(at coordinate: CLLocationCoordinate2D, currentIndex: Int,
                          steps: [OfflineGuidanceStep],
                          transitionRadius: CLLocationDistance,
-                         allowsFullRecovery: Bool = false) -> OfflineGuidanceProgress? {
+                         allowsFullRecovery: Bool = false,
+                         courseDegrees: Double? = nil) -> OfflineGuidanceProgress? {
         guard !steps.isEmpty else { return nil }
         let metrics = steps.map {
-            NavigationStepMetric(distanceFromRoute: distance(from: coordinate, to: $0.coordinates),
-                                 remainingOnStep: remaining(from: coordinate, on: $0.coordinates),
-                                 stepDistance: $0.distance)
+            geometryMetric(
+                from: coordinate, on: $0.coordinates,
+                stepDistance: $0.distance, courseDegrees: courseDegrees
+            )
         }
         let selected = NavigationStepSelectionPolicy.selectedIndex(
             current: min(max(0, currentIndex), steps.count - 1), metrics: metrics,
@@ -1252,19 +1335,15 @@ enum OfflineGuidanceEngine {
                      distanceFromRoute: metrics[selected].distanceFromRoute)
     }
 
-    private static func distance(from coordinate: CLLocationCoordinate2D,
-                                 to coordinates: [CLLocationCoordinate2D]) -> CLLocationDistance {
-        guard coordinates.count > 1 else { return .greatestFiniteMagnitude }
-        let point = MKMapPoint(coordinate)
-        let route = coordinates.map(MKMapPoint.init)
-        return route.indices.dropLast().reduce(.greatestFiniteMagnitude) { best, index in
-            min(best, segmentProjection(point, route[index], route[index + 1]).distance)
+    private static func geometryMetric(from coordinate: CLLocationCoordinate2D,
+                                       on coordinates: [CLLocationCoordinate2D],
+                                       stepDistance: CLLocationDistance,
+                                       courseDegrees: Double?) -> NavigationStepMetric {
+        guard coordinates.count > 1 else {
+            return .init(distanceFromRoute: .greatestFiniteMagnitude,
+                         remainingOnStep: .greatestFiniteMagnitude,
+                         stepDistance: stepDistance)
         }
-    }
-
-    private static func remaining(from coordinate: CLLocationCoordinate2D,
-                                  on coordinates: [CLLocationCoordinate2D]) -> CLLocationDistance {
-        guard coordinates.count > 1 else { return .greatestFiniteMagnitude }
         let point = MKMapPoint(coordinate)
         let route = coordinates.map(MKMapPoint.init)
         var best = (index: 0, projection: route[0], distance: CLLocationDistance.greatestFiniteMagnitude)
@@ -1280,7 +1359,17 @@ enum OfflineGuidanceEngine {
                 value += route[index].distance(to: route[index + 1])
             }
         }
-        return value
+        let difference = courseDegrees.flatMap { course in
+            NavigationCourseMatchingPolicy.bearing(
+                from: coordinates[best.index], to: coordinates[best.index + 1]
+            ).flatMap {
+                NavigationCourseMatchingPolicy.angularDifference(
+                    courseDegrees: course, routeCourseDegrees: $0
+                )
+            }
+        }
+        return .init(distanceFromRoute: best.distance, remainingOnStep: value,
+                     stepDistance: stepDistance, courseDifferenceDegrees: difference)
     }
 
     private static func segmentProjection(_ point: MKMapPoint, _ start: MKMapPoint,

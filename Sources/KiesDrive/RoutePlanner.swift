@@ -1205,7 +1205,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard let progress = OfflineGuidanceEngine.progress(
             at: location.coordinate, currentIndex: navigationStepCursor, steps: steps,
             transitionRadius: max(8, location.horizontalAccuracy * 1.5),
-            allowsFullRecovery: offlineNeedsInitialPositionMatch
+            allowsFullRecovery: offlineNeedsInitialPositionMatch,
+            courseDegrees: NavigationMotionPolicy.reliableCourse(for: location)
         ) else { return }
         offlineNeedsInitialPositionMatch = false
 
@@ -1441,10 +1442,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard !steps.isEmpty else { return nil }
 
         let metrics = steps.map {
-            NavigationStepMetric(
-                distanceFromRoute: Self.distance(from: location.coordinate, to: $0.step.polyline),
-                remainingOnStep: Self.remainingDistance(from: location.coordinate, on: $0.step.polyline),
-                stepDistance: $0.step.distance
+            Self.navigationMetric(
+                from: location.coordinate, on: $0.step.polyline,
+                stepDistance: $0.step.distance,
+                vehicleCourse: NavigationMotionPolicy.reliableCourse(for: location)
             )
         }
         let transitionRadius = max(8, location.horizontalAccuracy * 1.5)
@@ -1454,9 +1455,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         let currentIndex = navigationStepCursor
 
-        let currentStepRemaining = Self.remainingDistance(
-            from: location.coordinate, on: steps[currentIndex].step.polyline
-        )
+        let currentStepRemaining = metrics[currentIndex].remainingOnStep
         let routeRemaining = max(0, currentStepRemaining
             + steps.dropFirst(currentIndex + 1).reduce(0) { $0 + $1.step.distance })
         let routeRemainingTime = estimatedRemainingTravelTime(
@@ -1478,7 +1477,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return nil
         }
 
-        var distance = Self.remainingDistance(from: location.coordinate, on: steps[currentIndex].step.polyline)
+        var distance = metrics[currentIndex].remainingOnStep
         if maneuverIndex > currentIndex + 1 {
             for index in (currentIndex + 1)..<maneuverIndex { distance += steps[index].step.distance }
         }
@@ -2074,6 +2073,63 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
         }
         return remaining
+    }
+
+    /// Computes distance, remaining path and local direction in one pass.
+    /// Guidance evaluates every route step for every accepted GPS fix, so
+    /// walking each polyline three times would be directly visible as UI lag
+    /// on long routes.
+    private static func navigationMetric(from coordinate: CLLocationCoordinate2D,
+                                         on polyline: MKPolyline,
+                                         stepDistance: CLLocationDistance,
+                                         vehicleCourse: Double?) -> NavigationStepMetric {
+        guard polyline.pointCount > 1 else {
+            let distance = polyline.pointCount == 1
+                ? MKMapPoint(coordinate).distance(to: polyline.points()[0])
+                : CLLocationDistance.greatestFiniteMagnitude
+            return .init(distanceFromRoute: distance, remainingOnStep: distance,
+                         stepDistance: stepDistance)
+        }
+        let target = MKMapPoint(coordinate)
+        let points = polyline.points()
+        var bestIndex = 0
+        var bestProjection = points[0]
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        for index in 0..<(polyline.pointCount - 1) {
+            let start = points[index], end = points[index + 1]
+            let dx = end.x - start.x, dy = end.y - start.y
+            let lengthSquared = dx * dx + dy * dy
+            let fraction = lengthSquared == 0 ? 0 : max(0, min(1,
+                ((target.x - start.x) * dx + (target.y - start.y) * dy) / lengthSquared))
+            let projected = MKMapPoint(x: start.x + fraction * dx,
+                                       y: start.y + fraction * dy)
+            let distance = target.distance(to: projected)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = index
+                bestProjection = projected
+            }
+        }
+        var remaining = bestProjection.distance(to: points[bestIndex + 1])
+        if bestIndex + 1 < polyline.pointCount - 1 {
+            for index in (bestIndex + 1)..<(polyline.pointCount - 1) {
+                remaining += points[index].distance(to: points[index + 1])
+            }
+        }
+        let difference = vehicleCourse.flatMap { course in
+            NavigationCourseMatchingPolicy.bearing(
+                from: points[bestIndex].coordinate,
+                to: points[bestIndex + 1].coordinate
+            ).flatMap {
+                NavigationCourseMatchingPolicy.angularDifference(
+                    courseDegrees: course, routeCourseDegrees: $0
+                )
+            }
+        }
+        return .init(
+            distanceFromRoute: bestDistance, remainingOnStep: remaining,
+            stepDistance: stepDistance, courseDifferenceDegrees: difference
+        )
     }
 
     /// Lädt Tempolimits für abgetastete Routenpunkte (OpenStreetMap/Overpass).

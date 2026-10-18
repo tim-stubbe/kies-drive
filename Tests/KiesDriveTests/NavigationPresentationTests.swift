@@ -128,6 +128,56 @@ final class NavigationPresentationTests: XCTestCase {
             courseDegrees: -1, courseAccuracy: 8, speedMetresPerSecond: 18))
     }
 
+    func testCourseMatchingHandlesWraparoundAndOppositeCarriageway() throws {
+        XCTAssertEqual(try XCTUnwrap(NavigationCourseMatchingPolicy.angularDifference(
+            courseDegrees: 355, routeCourseDegrees: 5
+        )), 10, accuracy: 0.001)
+        XCTAssertTrue(NavigationCourseMatchingPolicy.isPlausible(65))
+        XCTAssertFalse(NavigationCourseMatchingPolicy.isPlausible(179))
+        XCTAssertTrue(NavigationCourseMatchingPolicy.isPlausible(nil),
+                      "Stopped or course-less fixes retain safe distance matching")
+    }
+
+    func testStepSelectionDoesNotAdvanceOntoOpposingParallelRoad() {
+        let selected = NavigationStepSelectionPolicy.selectedIndex(
+            current: 0,
+            metrics: [
+                .init(distanceFromRoute: 5, remainingOnStep: 4,
+                      courseDifferenceDegrees: 5),
+                .init(distanceFromRoute: 3, remainingOnStep: 500,
+                      courseDifferenceDegrees: 175),
+            ],
+            transitionRadius: 12
+        )
+        XCTAssertEqual(selected, 0)
+    }
+
+    func testStepSelectionAdvancesAfterVehicleTurnsOntoRamp() {
+        let selected = NavigationStepSelectionPolicy.selectedIndex(
+            current: 0,
+            metrics: [
+                .init(distanceFromRoute: 5, remainingOnStep: 4,
+                      courseDifferenceDegrees: 88),
+                .init(distanceFromRoute: 3, remainingOnStep: 500,
+                      courseDifferenceDegrees: 8),
+            ],
+            transitionRadius: 12
+        )
+        XCTAssertEqual(selected, 1)
+    }
+
+    func testOfflineCourseUsesLocalNearestSegment() throws {
+        let northbound = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50.01, longitude: 8),
+        ]
+        let course = try XCTUnwrap(NavigationCourseMatchingPolicy.routeCourse(
+            near: .init(latitude: 50.005, longitude: 8.0001),
+            coordinates: northbound
+        ))
+        XCTAssertEqual(course, 0, accuracy: 0.5)
+    }
+
     func testGuidanceSpeedSurvivesBriefInvalidGPSReading() {
         let measuredAt = Date(timeIntervalSince1970: 1_000)
         XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
