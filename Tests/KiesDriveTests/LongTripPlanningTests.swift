@@ -728,6 +728,33 @@ final class LongTripPlanningTests: XCTestCase {
         ), .soon)
     }
 
+    func testBreakReminderSelectsOnlyAPlannedStopAheadOfVehicle() {
+        func planned(_ name: String, progress: Double) -> PlannedBreak {
+            let candidate = BreakCandidate(
+                id: name, name: name,
+                coordinate: .init(latitude: 50, longitude: 8),
+                progress: progress, detourMetres: 100, isOpen: true
+            )
+            return PlannedBreak(
+                id: name, candidate: candidate, afterDriving: 0,
+                duration: 900, routeProgress: progress, explanation: "Pause"
+            )
+        }
+        let breaks = [planned("Schon vorbei", progress: 0.3),
+                      planned("Nächster Rastplatz", progress: 0.62),
+                      planned("Später", progress: 0.8)]
+
+        XCTAssertEqual(NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: breaks, currentRouteProgress: 0.5
+        ), "Nächster Rastplatz")
+        XCTAssertNil(NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: breaks, currentRouteProgress: 0.9
+        ))
+        XCTAssertNil(NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: breaks, currentRouteProgress: .nan
+        ))
+    }
+
     func testDrivingRestPolicyDoesNotTreatUnknownGapAsObservedBreak() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 25_000)

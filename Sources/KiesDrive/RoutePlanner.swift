@@ -1734,7 +1734,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             delivered: deliveredBreakReminderStages
         ) else { return }
         deliveredBreakReminderStages.insert(stage)
-        let plannedName = longTripPlan?.results.first?.breaks.first?.candidate?.name
+        let distanceProgress = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: totalDistance,
+            remainingDistance: remainingDistanceMetres,
+            navigationActive: isNavigating
+        )
+        let currentProgress = RouteSearchPolicy.currentProgress(
+            projected: distanceProgress,
+            persisted: activeRouteLock?.lastRouteProgress ??
+                routeLockStore.activeLock?.lastRouteProgress,
+            navigationActive: isNavigating
+        )
+        let plannedName = NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: longTripPlan?.results.first?.breaks ?? [],
+            currentRouteProgress: currentProgress
+        )
         let text: String
         switch stage {
         case .plan:

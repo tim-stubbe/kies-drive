@@ -811,6 +811,22 @@ enum NavigationBreakReminderPolicy {
            !delivered.contains(.plan) { return .plan }
         return nil
     }
+
+    static func nextPlannedStopName(
+        breaks: [PlannedBreak], currentRouteProgress: Double,
+        minimumProgressLead: Double = 0.001
+    ) -> String? {
+        guard currentRouteProgress.isFinite else { return nil }
+        let threshold = min(1, max(0, currentRouteProgress)) + max(0, minimumProgressLead)
+        return breaks
+            .filter { $0.routeProgress.isFinite && $0.routeProgress >= threshold }
+            .sorted { $0.routeProgress < $1.routeProgress }
+            .compactMap { planned in
+                let name = planned.candidate?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                return name?.isEmpty == false ? name : nil
+            }
+            .first
+    }
 }
 
 enum DrivingRestReminderStatePolicy {
