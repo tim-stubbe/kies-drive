@@ -167,11 +167,24 @@ final class OfflineMapPackageStore: ObservableObject {
     private let fileManager: FileManager
     private let rootURL: URL
     private let defaults: UserDefaults
+    private let now: () -> Date
     private let activePackageKey = "drive.offlineMap.activePackageID"
+    private struct BaseTileCoverageKey: Hashable {
+        let packageID: String
+        let tiles: [OfflineTileCoordinatePolicy.Tile]
+    }
+    private struct BaseTileCoverageEntry {
+        let result: Bool
+        let checkedAt: Date
+    }
+    private var baseTileCoverageCache: [BaseTileCoverageKey: BaseTileCoverageEntry] = [:]
+    private let baseTileCoverageCacheLifetime: TimeInterval = 2
 
-    init(fileManager: FileManager = .default, rootURL: URL? = nil, defaults: UserDefaults = .standard) {
+    init(fileManager: FileManager = .default, rootURL: URL? = nil,
+         defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
         self.fileManager = fileManager
         self.defaults = defaults
+        self.now = now
         self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
         self.activePackageID = defaults.string(forKey: activePackageKey)
         reload()
@@ -182,6 +195,7 @@ final class OfflineMapPackageStore: ObservableObject {
     }
 
     func reload() {
+        baseTileCoverageCache.removeAll(keepingCapacity: true)
         try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         let directories = (try? fileManager.contentsOfDirectory(
             at: rootURL,
@@ -247,9 +261,20 @@ final class OfflineMapPackageStore: ObservableObject {
             )
         })
         guard requiredTiles.count > 0, requiredTiles.count <= coordinates.count else { return false }
-        return requiredTiles.allSatisfy {
+        let orderedTiles = requiredTiles.sorted {
+            ($0.z, $0.x, $0.y) < ($1.z, $1.x, $1.y)
+        }
+        let key = BaseTileCoverageKey(packageID: package.id, tiles: orderedTiles)
+        let checkTime = now()
+        if let cached = baseTileCoverageCache[key],
+           checkTime.timeIntervalSince(cached.checkedAt) < baseTileCoverageCacheLifetime {
+            return cached.result
+        }
+        let result = orderedTiles.allSatisfy {
             tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) != nil
         }
+        baseTileCoverageCache[key] = .init(result: result, checkedAt: checkTime)
+        return result
     }
 
     private static func readPackage(at url: URL, fileManager: FileManager) throws -> InstalledOfflineMapPackage {
