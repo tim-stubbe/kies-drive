@@ -316,22 +316,53 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     func selectAlternative(at index: Int, settings: DriveSettings) {
-        guard alternatives.indices.contains(index), !isNavigating else { return }
-        legs = [alternatives[index]]
+        guard alternatives.indices.contains(index), !isNavigating,
+              selectedAlternativeIndex != index else { return }
+        // An alternative is a new authoritative geometry, even though origin
+        // and destination stay the same. Invalidate every asynchronous
+        // enrichment tied to the previously selected polyline before
+        // publishing the replacement; otherwise a late station, speed-limit
+        // or toll response can be rendered on the wrong road.
+        let selectionGeneration = UUID()
+        routeCalculationGeneration = selectionGeneration
+        routeSearchGeneration = UUID()
+        activeRouteSearches.forEach { $0.cancel() }
+        activeRouteSearches = []
+        activeAmenitySearches.forEach { $0.cancel() }
+        activeAmenitySearches = []
+        routeSearchResults = []
+        isSearchingAlongRoute = false
+        let selectedRoute = alternatives[index]
+        let selectedOrigin = selectedRoute.polyline.coordinate
+        legs = [selectedRoute]
         resetLiveNavigationProgress()
         seedInitialNavigationPresentation()
         remainingDistanceMetres = totalDistance
         remainingTravelTime = totalTravelTime
         stations = []
         amenityBreakCandidates = []
+        speedLimitPoints = []
+        speedLimits = []
+        speedWarning = false
+        researchedStandardToll = .unknown(reason: "Maut für die gewählte Route wird geprüft.")
+        researchedAvoidingToll = .unknown(reason: "Mautfreie Alternative wird geprüft.")
+        longTripPlan = nil
+        stopPlanningGeneration = UUID()
         measuredBreakDetours = [:]
         cacheForOffline()
         buildLongTripPlan(settings: settings)
         Task { [weak self] in
-            guard let self else { return }
-            await self.reloadStopPlanning(fuel: settings.fuel, settings: settings,
-                                          reloadAmenities: true)
-            await self.loadSpeedLimits()
+            guard let self,
+                  selectionGeneration == self.routeCalculationGeneration else { return }
+            async let stopPlanning: Void = self.reloadStopPlanning(
+                fuel: settings.fuel, settings: settings, reloadAmenities: true
+            )
+            async let speedLimits: Void = self.loadSpeedLimits()
+            async let tollCost: Void = self.loadTollCost(from: selectedOrigin, settings: settings)
+            _ = await (stopPlanning, speedLimits, tollCost)
+            guard selectionGeneration == self.routeCalculationGeneration else { return }
+            self.buildLongTripPlan(settings: settings)
+            self.cacheForOffline(preservingProgress: true)
         }
     }
 
