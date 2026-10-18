@@ -1139,6 +1139,31 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(progress.distanceToManeuver.isFinite)
     }
 
+    func testOfflineGuidanceExposesOpposingCourseOnCachedRoad() throws {
+        let south = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
+        let north = CLLocationCoordinate2D(latitude: 50.0020, longitude: 8.0000)
+        let later = CLLocationCoordinate2D(latitude: 50.0030, longitude: 8.0000)
+        let steps = [
+            OfflineGuidanceStep(instruction: "", distance: 222, coordinates: [south, north]),
+            OfflineGuidanceStep(
+                instruction: "Rechts abbiegen", distance: 111,
+                coordinates: [north, later]
+            ),
+        ]
+
+        let progress = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: south, currentIndex: 0, steps: steps,
+            transitionRadius: 12, courseDegrees: 180
+        ))
+
+        XCTAssertEqual(progress.courseDifferenceDegrees ?? -1, 180, accuracy: 1)
+        XCTAssertTrue(NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: progress.courseDifferenceDegrees,
+            distanceFromRoute: progress.distanceFromRoute,
+            horizontalAccuracy: 8, speedMetresPerSecond: 18
+        ))
+    }
+
     func testAnnouncementStagesAdaptToRoadSpeed() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 120), .early)
         XCTAssertNil(NavigationAnnouncementStage.stage(distance: 850, speedKmh: 50))

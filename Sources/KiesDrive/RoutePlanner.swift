@@ -2393,11 +2393,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
 
         let reliableSpeed = NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
-        let isOutsideCorridor = NavigationDeviationPolicy.isOutsideCorridor(
+        let isWrongWay = NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: progress.courseDifferenceDegrees,
             distanceFromRoute: progress.distanceFromRoute,
             horizontalAccuracy: location.horizontalAccuracy,
             speedMetresPerSecond: reliableSpeed
         )
+        let isOutsideCorridor = NavigationDeviationPolicy.isOutsideCorridor(
+            distanceFromRoute: progress.distanceFromRoute,
+            horizontalAccuracy: location.horizontalAccuracy,
+            speedMetresPerSecond: reliableSpeed
+        ) || isWrongWay
         if offlineNeedsInitialPositionMatch,
            OfflineInitialPositionMatchPolicy.isReliable(
                 distanceFromRoute: progress.distanceFromRoute,
@@ -2410,7 +2416,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             distanceFromRoute: progress.distanceFromRoute,
             previousDistance: previousOffRouteDistance,
             horizontalAccuracy: location.horizontalAccuracy,
-            speedMetresPerSecond: reliableSpeed
+            speedMetresPerSecond: reliableSpeed,
+            wrongWay: isWrongWay
         )
         previousOffRouteDistance = progress.distanceFromRoute
         if isOutsideCorridor {
@@ -2433,13 +2440,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     DriveDiagnosticStore.append(
                         .offlineRouteDeparture,
                         detail: DriveDiagnosticDetail.navigationSample(
-                            "Abstand zum Offline-Korridor \(Int(progress.distanceFromRoute.rounded())) m",
+                            isWrongWay
+                                ? "Falsche Fahrtrichtung auf der Offline-Route"
+                                : "Abstand zum Offline-Korridor \(Int(progress.distanceFromRoute.rounded())) m",
                             location: location
                         )
                     )
                     if settings.voiceGuidance {
                         _ = speak(
-                            "Du hast die gespeicherte Route verlassen. Sobald eine Verbindung verfügbar ist, wird neu berechnet.",
+                            isWrongWay
+                                ? "Du fährst entgegen der gespeicherten Route. Bitte sicher wenden. Sobald eine Verbindung verfügbar ist, wird neu berechnet."
+                                : "Du hast die gespeicherte Route verlassen. Sobald eine Verbindung verfügbar ist, wird neu berechnet.",
                             priority: .critical
                         )
                     }
