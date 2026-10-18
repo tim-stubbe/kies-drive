@@ -160,8 +160,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let distance: CLLocationDistance
         let issuedAt: Date
     }
-    private var pendingManeuverSpeech: [ObjectIdentifier: ManeuverSpeechClaim] = [:]
-    private var activeManeuverSpeech: [ObjectIdentifier: ManeuverSpeechClaim] = [:]
+    private var pendingManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
+    private var activeManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
     private var diagnosticManeuverKey: String?
     private var diagnosticManeuverInstruction: String?
     private var offRouteSince: Date?
@@ -1544,16 +1544,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if recordManeuverTransition(
             key: key,
             instruction: progress.instruction,
-            distance: progress.distanceToManeuver
-        ) {
-            markChainedManeuverAnnounced(
-                key: key,
-                instruction: progress.instruction,
-                distance: progress.distanceToManeuver,
-                guidanceSpeedMps: guidanceSpeedMps
-            )
-            return
-        }
+            distance: progress.distanceToManeuver,
+            guidanceSpeedMps: guidanceSpeedMps
+        ) { return }
         guard
               let stage = NavigationAnnouncementStage.stage(
                 distance: progress.distanceToManeuver,
@@ -1864,16 +1857,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if recordManeuverTransition(
             key: key,
             instruction: progress.maneuver.step.instructions,
-            distance: progress.distance
-        ) {
-            markChainedManeuverAnnounced(
-                key: key,
-                instruction: progress.maneuver.step.instructions,
-                distance: progress.distance,
-                guidanceSpeedMps: guidanceSpeedMps
-            )
-            return
-        }
+            distance: progress.distance,
+            guidanceSpeedMps: guidanceSpeedMps
+        ) { return }
         guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard NavigationAnnouncementDeliveryPolicy.shouldAttempt(
@@ -1904,7 +1890,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// for another GPS sample here can be too late at motorway interchanges.
     @discardableResult
     private func recordManeuverTransition(key: String, instruction: String,
-                                          distance: CLLocationDistance) -> Bool {
+                                          distance: CLLocationDistance,
+                                          guidanceSpeedMps: Double) -> Bool {
         guard diagnosticManeuverKey != key else { return false }
         let previousKey = diagnosticManeuverKey
         let previousInstruction = diagnosticManeuverInstruction
@@ -1914,6 +1901,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         var recovered = false
         if shouldRecover, let previousKey, let previousInstruction {
+            var claims = [ManeuverSpeechClaim(
+                key: previousKey, stage: .now, instruction: previousInstruction,
+                distance: 0, issuedAt: Date()
+            )]
+            if distance <= NavigationChainedManeuverPolicy.maximumFollowingDistance,
+               let currentStage = NavigationAnnouncementStage.stage(
+                   distance: distance, speedKmh: guidanceSpeedMps * 3.6
+               ) {
+                claims.append(.init(
+                    key: key, stage: currentStage, instruction: instruction,
+                    distance: distance, issuedAt: Date()
+                ))
+            }
             recovered = speak(
                 NavigationSpeechFormatter.spokenText(
                     previousInstruction,
@@ -1921,40 +1921,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     then: instruction,
                     followingDistance: distance
                 ),
-                priority: .critical
+                priority: .critical,
+                maneuverClaims: claims
             )
-            if recovered {
-                announcedManeuverStages[previousKey] = Set(NavigationAnnouncementStage.allCases)
-                lastAnnouncement = previousInstruction
-                DriveDiagnosticStore.append(
-                    .maneuverAnnounced,
-                    detail: "recovered-now · \(previousInstruction)"
-                )
-            }
         }
-        closeOutstandingManeuverDiagnostic(reason: .routeTransition)
+        closeOutstandingManeuverDiagnostic(
+            reason: recovered ? .recoveryQueued : .routeTransition
+        )
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction
         return recovered
-    }
-
-    /// When the recovery utterance already contained the close following
-    /// maneuver, remember its current stage so the next location update does
-    /// not repeat the same instruction. Distant maneuvers were not chained
-    /// and therefore remain eligible for their normal staged announcements.
-    private func markChainedManeuverAnnounced(key: String, instruction: String,
-                                              distance: CLLocationDistance,
-                                              guidanceSpeedMps: Double) {
-        guard distance <= 450,
-              let stage = NavigationAnnouncementStage.stage(
-                distance: distance, speedKmh: guidanceSpeedMps * 3.6
-              ) else { return }
-        announcedManeuverStages[key] = NavigationAnnouncementDeliveryPolicy.stages(upTo: stage)
-        lastAnnouncement = instruction
-        DriveDiagnosticStore.append(
-            .maneuverAnnounced,
-            detail: "chained-\(stage) · \(Int(distance)) m · \(instruction)"
-        )
     }
 
     private func closeOutstandingManeuverDiagnostic(
@@ -1976,19 +1952,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func pendingStages(for key: String) -> Set<NavigationAnnouncementStage> {
         Set((Array(pendingManeuverSpeech.values) + Array(activeManeuverSpeech.values))
-            .lazy.filter { $0.key == key }.map(\.stage))
+            .joined().lazy.filter { $0.key == key }.map(\.stage))
     }
 
     private func expireStaleManeuverSpeech(now: Date) {
         let expiredPending = pendingManeuverSpeech.filter {
-            NavigationSpeechClaimTimeoutPolicy.isExpired(
-                issuedAt: $0.value.issuedAt, now: now, active: false
-            )
+            $0.value.contains { NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.issuedAt, now: now, active: false
+            ) }
         }
         let expiredActive = activeManeuverSpeech.filter {
-            NavigationSpeechClaimTimeoutPolicy.isExpired(
-                issuedAt: $0.value.issuedAt, now: now, active: true
-            )
+            $0.value.contains { NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.issuedAt, now: now, active: true
+            ) }
         }
         guard !expiredPending.isEmpty || !expiredActive.isEmpty else { return }
         for identifier in expiredPending.keys { pendingManeuverSpeech.removeValue(forKey: identifier) }
@@ -1996,7 +1972,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // Remove the stale queued utterance from AVSpeechSynthesizer as well;
         // otherwise it could start after the retry and produce a duplicate.
         synthesizer.stopSpeaking(at: .immediate)
-        let claim = expiredActive.values.first ?? expiredPending.values.first
+        let claim = expiredActive.values.first?.first ?? expiredPending.values.first?.first
         DriveDiagnosticStore.append(
             .speechDeliveryFailed,
             detail: DriveDiagnosticDetail.navigationSample(
@@ -2029,7 +2005,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     @discardableResult
     private func speak(_ text: String, priority: NavigationSpeechPriority,
-                       maneuverClaim: ManeuverSpeechClaim? = nil) -> Bool {
+                       maneuverClaim: ManeuverSpeechClaim? = nil,
+                       maneuverClaims: [ManeuverSpeechClaim] = []) -> Bool {
         guard !text.isEmpty else { return false }
         if synthesizer.isSpeaking, let activeSpeechPriority,
            !NavigationSpeechInterruptionPolicy.shouldInterrupt(
@@ -2053,8 +2030,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         utterance.prefersAssistiveTechnologySettings = false
         activeUtterance = utterance
         activeSpeechPriority = priority
-        if let maneuverClaim {
-            pendingManeuverSpeech[ObjectIdentifier(utterance)] = maneuverClaim
+        let claims = maneuverClaims + (maneuverClaim.map { [$0] } ?? [])
+        if !claims.isEmpty {
+            pendingManeuverSpeech[ObjectIdentifier(utterance)] = claims
         }
         synthesizer.speak(utterance)
         return true
@@ -2063,22 +2041,24 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didStart utterance: AVSpeechUtterance) {
         let identifier = ObjectIdentifier(utterance)
-        guard let claim = pendingManeuverSpeech.removeValue(forKey: identifier) else { return }
-        activeManeuverSpeech[identifier] = claim
+        guard let claims = pendingManeuverSpeech.removeValue(forKey: identifier) else { return }
+        activeManeuverSpeech[identifier] = claims
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didFinish utterance: AVSpeechUtterance) {
         let identifier = ObjectIdentifier(utterance)
-        if let claim = activeManeuverSpeech.removeValue(forKey: identifier),
+        if let claims = activeManeuverSpeech.removeValue(forKey: identifier),
            NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(didFinish: true) {
-            announcedManeuverStages[claim.key] =
-                NavigationAnnouncementDeliveryPolicy.stages(upTo: claim.stage)
-            lastAnnouncement = claim.instruction
-            DriveDiagnosticStore.append(
-                .maneuverAnnounced,
-                detail: "\(claim.stage) · \(Int(claim.distance)) m · \(claim.instruction)"
-            )
+            for claim in claims {
+                announcedManeuverStages[claim.key] =
+                    NavigationAnnouncementDeliveryPolicy.stages(upTo: claim.stage)
+                lastAnnouncement = claim.instruction
+                DriveDiagnosticStore.append(
+                    .maneuverAnnounced,
+                    detail: "\(claim.stage) · \(Int(claim.distance)) m · \(claim.instruction)"
+                )
+            }
         }
         finishAudioSession(for: utterance)
     }

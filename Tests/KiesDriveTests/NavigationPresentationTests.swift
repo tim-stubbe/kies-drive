@@ -785,6 +785,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
             stages: [.early, .prepare], reason: .userStopped
         ), "An explicit stop must not be diagnosed as a missed turn")
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
+            stages: [.early, .prepare], reason: .recoveryQueued
+        ), "A queued recovery is judged by actual audio completion, not as immediately missed")
     }
 
     func testManeuverTransitionRecoversFinalCueOnlyOnceWhenGPSCrossesJunction() {

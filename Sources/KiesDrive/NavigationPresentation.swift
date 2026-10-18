@@ -499,6 +499,7 @@ enum NavigationInitialManeuverPolicy {
 enum ManeuverDiagnosticPolicy {
     enum ClosureReason {
         case routeTransition
+        case recoveryQueued
         case arrival
         case userStopped
     }
@@ -509,7 +510,7 @@ enum ManeuverDiagnosticPolicy {
 
     static func shouldRecordMissedFinalCue(stages: Set<NavigationAnnouncementStage>,
                                            reason: ClosureReason) -> Bool {
-        guard reason != .userStopped else { return false }
+        guard reason != .userStopped, reason != .recoveryQueued else { return false }
         return missedFinalCue(stages: stages)
     }
 
