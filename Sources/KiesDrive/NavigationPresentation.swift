@@ -267,7 +267,12 @@ struct NavigationManeuverPresentation: Equatable {
 /// that a German navigation voice can pronounce naturally.
 enum NavigationSpeechFormatter {
     static func spokenText(_ instruction: String, distance: CLLocationDistance? = nil) -> String {
-        var text = instruction
+        // Expand multi-character abbreviations before their punctuation is
+        // normalised. Otherwise `km/h` becomes `km, h` before the dedicated
+        // rule can make it understandable to the speech synthesizer.
+        var text = replacing(#"(?i)\bkm\s*/\s*h\b"#, in: instruction,
+                             with: "Kilometer pro Stunde")
+        text = text
             .replacingOccurrences(of: "&", with: " und ")
             .replacingOccurrences(of: "/", with: ", ")
             .replacingOccurrences(of: "→", with: " ")
@@ -288,7 +293,6 @@ enum NavigationSpeechFormatter {
         // some installed German voices.
         text = replacing(#"(?i)\b([ABELK])\s*([0-9]{1,4})([a-z]?)\b"#,
                          in: text, with: "$1 $2$3")
-        text = replacing(#"(?i)\bkm\s*/\s*h\b"#, in: text, with: "Kilometer pro Stunde")
         text = text.unicodeScalars.map { scalar -> String in
             if CharacterSet.controlCharacters.contains(scalar) ||
                 CharacterSet.illegalCharacters.contains(scalar) ||

@@ -596,6 +596,13 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechExpandsSpeedUnitBeforeRemovingSlash() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Tempolimit 80 km/h"),
+            "Tempolimit 80 Kilometer pro Stunde."
+        )
+    }
+
     func testSpeechInstructionUsesImmediateCueNearManeuver() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("links abbiegen", distance: 20),
