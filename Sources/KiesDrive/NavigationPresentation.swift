@@ -2120,6 +2120,19 @@ enum RouteRestoreModePolicy {
     }
 }
 
+enum LiveRouteRestoreEligibilityPolicy {
+    /// Reusing in-memory geometry after an online failure is safe only when it
+    /// was calculated for both the same destination and the exact currently
+    /// active waypoint/option set. Destination equality alone can silently
+    /// bypass a mandatory pass or a segment-specific motorway restriction.
+    static func mayReuse(destinationMatches: Bool,
+                         installedConstraintIdentity: String?,
+                         activeConstraintIdentity: String?) -> Bool {
+        guard destinationMatches, let activeConstraintIdentity else { return false }
+        return installedConstraintIdentity == activeConstraintIdentity
+    }
+}
+
 enum NavigationDestinationIdentityPolicy {
     static func matches(_ lhs: CLLocationCoordinate2D?, _ rhs: CLLocationCoordinate2D,
                         toleranceMetres: CLLocationDistance = 25) -> Bool {

@@ -406,6 +406,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// live `MKRoute` values cannot be persisted, but they still must never be
     /// resumed for a different destination after a failed recalculation.
     private var liveRouteDestinationCoordinate: CLLocationCoordinate2D?
+    private var liveRouteConstraintIdentity: String?
     /// Global options that produced the currently installed `legs`. Route
     /// previews do not have a trip lock yet, so this is their authoritative
     /// rollback baseline when a settings toggle cannot be recalculated.
@@ -552,6 +553,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             fallback: selectedRoute.polyline.coordinate
         )
         legs = [selectedRoute]
+        liveRouteConstraintIdentity = routeLockStore.activeLock.map {
+            OfflineRouteConstraintIdentityPolicy.identity(for: $0)
+        }
         resetLiveNavigationProgress()
         seedInitialNavigationPresentation()
         remainingDistanceMetres = totalDistance
@@ -725,6 +729,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeAmenitySearches = []
         legs = []
         liveRouteDestinationCoordinate = nil
+        liveRouteConstraintIdentity = nil
         alternatives = []
         comparisonRoute = nil
         stations = []
@@ -926,8 +931,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             expected: restoreConstraintSnapshot,
             current: RouteCalculationConstraintSnapshot(routeLockStore.activeLock)
         ) else { return false }
-        let hasMatchingLiveRoute = !legs.isEmpty && NavigationDestinationIdentityPolicy.matches(
-            liveRouteDestinationCoordinate, lock.destination.clLocationCoordinate
+        let hasMatchingLiveRoute = !legs.isEmpty && LiveRouteRestoreEligibilityPolicy.mayReuse(
+            destinationMatches: NavigationDestinationIdentityPolicy.matches(
+                liveRouteDestinationCoordinate, lock.destination.clLocationCoordinate
+            ),
+            installedConstraintIdentity: liveRouteConstraintIdentity,
+            activeConstraintIdentity: OfflineRouteConstraintIdentityPolicy.identity(for: lock)
         )
         let hasMatchingOfflineRoute = offlineRoute.map {
             let exactTrip = belongsToActiveTrip($0)
@@ -979,6 +988,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lastAutomaticRestoreAttempt = nil
         legs = []
         liveRouteDestinationCoordinate = nil
+        liveRouteConstraintIdentity = nil
         alternatives = []
     }
 
@@ -996,6 +1006,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lastAutomaticRestoreAttempt = nil
         legs = []
         liveRouteDestinationCoordinate = nil
+        liveRouteConstraintIdentity = nil
         alternatives = []
     }
 
@@ -2044,6 +2055,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
             liveRouteDestinationCoordinate = destination.placemark.coordinate
+            liveRouteConstraintIdentity = routeLockStore.activeLock.map {
+                OfflineRouteConstraintIdentityPolicy.identity(for: $0)
+            }
             installedDefaultRouteOptions = lock?.defaultOptions ?? .init(
                 avoidTolls: settings.avoidTolls,
                 avoidHighways: settings.avoidHighways
@@ -2524,6 +2538,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if replacingLiveRoute {
             legs = []
             liveRouteDestinationCoordinate = nil
+            liveRouteConstraintIdentity = nil
             alternatives = []
             comparisonRoute = nil
         }

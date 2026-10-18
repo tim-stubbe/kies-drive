@@ -3501,6 +3501,29 @@ final class NavigationPresentationTests: XCTestCase {
         ), .offline)
     }
 
+    func testStaleLiveRouteRequiresExactActiveConstraints() {
+        XCTAssertTrue(LiveRouteRestoreEligibilityPolicy.mayReuse(
+            destinationMatches: true,
+            installedConstraintIdentity: "destination#avoid-highways#pass-a",
+            activeConstraintIdentity: "destination#avoid-highways#pass-a"
+        ))
+        XCTAssertFalse(LiveRouteRestoreEligibilityPolicy.mayReuse(
+            destinationMatches: true,
+            installedConstraintIdentity: "destination#motorway#pass-a",
+            activeConstraintIdentity: "destination#avoid-highways#pass-a"
+        ))
+        XCTAssertFalse(LiveRouteRestoreEligibilityPolicy.mayReuse(
+            destinationMatches: true,
+            installedConstraintIdentity: nil,
+            activeConstraintIdentity: "destination#avoid-highways#pass-a"
+        ))
+        XCTAssertFalse(LiveRouteRestoreEligibilityPolicy.mayReuse(
+            destinationMatches: false,
+            installedConstraintIdentity: "same",
+            activeConstraintIdentity: "same"
+        ))
+    }
+
     func testNavigationDestinationIdentityUsesRoadLevelTolerance() {
         let destination = CLLocationCoordinate2D(latitude: 50.0147, longitude: 8.3522)
         XCTAssertTrue(NavigationDestinationIdentityPolicy.matches(
