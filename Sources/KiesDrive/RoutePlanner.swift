@@ -409,9 +409,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         invalidateNavigationAsyncWork()
         isNavigating = false
         isUsingOfflineGuidance = false
-        synthesizer.stopSpeaking(at: .immediate)
-        pendingManeuverSpeech = [:]
-        activeManeuverSpeech = [:]
+        cancelCurrentSpeechWork()
         lastAnnouncement = nil
         speedWarning = false
         // A persistent trip remains resumable, but cancelling guidance must
@@ -451,9 +449,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeLockStore.finish()
         activeRouteLock = nil
         routeLockStore.clearFinished()
+        clearCompletedTripPlanningState()
+    }
+
+    private func clearCompletedTripPlanningState() {
         drivingRestState = DrivingRestState()
         drivingRestStore.clear()
-        deliveredBreakReminderStages = []
         breakReminderText = nil
         drivingFuelState = DrivingFuelState()
         drivingFuelStore.clear()
@@ -1975,7 +1976,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         finishUsageSession()
         invalidateNavigationAsyncWork()
         isNavigating = false
+        isUsingOfflineGuidance = false
         isRecalculating = false
+        speedWarning = false
         remainingDistanceMetres = 0
         remainingTravelTime = 0
         nextManeuverInstruction = "Ziel erreicht"
@@ -1988,6 +1991,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeLockStore.finish()
         activeRouteLock = nil
         routeLockStore.clearFinished()
+        clearCompletedTripPlanningState()
         DriveDiagnosticStore.append(.arrivalReached, detail: destination?.name ?? destinationText)
         return true
     }
