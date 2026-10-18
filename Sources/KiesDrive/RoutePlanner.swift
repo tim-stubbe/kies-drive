@@ -4441,7 +4441,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // break planner geographic coverage without flooding MapKit with pins.
         let bucketCount = min(12, max(1, routeCoordinates.count))
         let grouped = Dictionary(grouping: nearRoute) { item in
-            min(bucketCount - 1, Int(item.progress * Double(bucketCount)))
+            FuelStationDistributionPolicy.bucket(
+                progress: item.progress,
+                currentProgress: currentProgress,
+                bucketCount: bucketCount
+            ) ?? 0
         }
         stations = grouped.keys.sorted().compactMap { bucket in
             grouped[bucket]?.min {

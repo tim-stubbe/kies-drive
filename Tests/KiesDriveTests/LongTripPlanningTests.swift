@@ -265,6 +265,24 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(Set(remainingRouteBuckets.map(\.id)), Set(candidates.map(\.id)))
     }
 
+    func testFuelStationsStayDistributedAcrossRemainingRoute() {
+        XCTAssertEqual(FuelStationDistributionPolicy.bucket(
+            progress: 0.70, currentProgress: 0.70, bucketCount: 12
+        ), 0)
+        XCTAssertEqual(FuelStationDistributionPolicy.bucket(
+            progress: 0.85, currentProgress: 0.70, bucketCount: 12
+        ), 6)
+        XCTAssertEqual(FuelStationDistributionPolicy.bucket(
+            progress: 0.99, currentProgress: 0.70, bucketCount: 12
+        ), 11)
+        XCTAssertNil(FuelStationDistributionPolicy.bucket(
+            progress: 0.69, currentProgress: 0.70, bucketCount: 12
+        ))
+        XCTAssertNil(FuelStationDistributionPolicy.bucket(
+            progress: 0.9, currentProgress: 0.7, bucketCount: 0
+        ))
+    }
+
     func testBreakCandidateShortlistPrefersUsefulOpenFuelStop() {
         let closed = BreakCandidate(id: "closed", name: "Closed", coordinate: .init(),
                                     progress: 0.4, detourMetres: 10, isOpen: false,

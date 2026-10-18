@@ -499,6 +499,27 @@ enum FuelStationSelectionPolicy {
     }
 }
 
+enum FuelStationDistributionPolicy {
+    /// Converts an installed full-route position into the remaining journey's
+    /// bucket space. The hard bucket count still caps map pins and provider
+    /// follow-up work, while late-trip searches retain useful geographic
+    /// coverage instead of collapsing into the last few original buckets.
+    static func bucket(
+        progress: Double,
+        currentProgress: Double,
+        bucketCount: Int
+    ) -> Int? {
+        guard progress.isFinite, currentProgress.isFinite, bucketCount > 0 else { return nil }
+        let current = min(1, max(0, currentProgress))
+        let candidate = min(1, max(0, progress))
+        guard candidate >= current else { return nil }
+        let remaining = (candidate - current) / max(0.000_001, 1 - current)
+        return min(bucketCount - 1, max(0, Int(
+            min(0.999_999, remaining) * Double(bucketCount)
+        )))
+    }
+}
+
 enum FuelStationQueryPolicy {
     static let maximumSampleCount = 6
     static let maximumResultsPerSample = 24
