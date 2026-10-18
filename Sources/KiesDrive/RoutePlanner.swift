@@ -753,6 +753,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             candidates, maximum: 6,
             progress: { $0.progress }, airDistance: { $0.airDistance }
         )
+        let remainingRouteDistance = isNavigating && remainingDistanceMetres > 0
+            ? remainingDistanceMetres : totalDistance
         var routed: [RouteSearchResult] = []
         await withTaskGroup(of: RouteSearchResult?.self) { group in
             for candidate in shortlist {
@@ -763,7 +765,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     guard let detour = driven ?? RouteSearchPolicy.estimatedDetour(
                         airDistance: candidate.airDistance
                     ) else { return nil }
-                    guard RouteSearchPolicy.acceptsDetour(detour) else { return nil }
+                    guard RouteSearchPolicy.acceptsDetour(
+                        detour, remainingRouteDistance: remainingRouteDistance
+                    ) else { return nil }
                     let coordinate = candidate.item.placemark.coordinate
                     return RouteSearchResult(
                         id: "\(candidate.item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
@@ -792,9 +796,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return
         }
         routeSearchResults = routed.sorted {
-            $0.routeProgress == $1.routeProgress
-                ? $0.detourMetres < $1.detourMetres
-                : $0.routeProgress < $1.routeProgress
+            let lhs = RouteSearchPolicy.rankingScore(
+                detourMetres: $0.detourMetres,
+                candidateProgress: $0.routeProgress,
+                currentProgress: currentRouteProgress,
+                remainingRouteDistance: remainingRouteDistance
+            )
+            let rhs = RouteSearchPolicy.rankingScore(
+                detourMetres: $1.detourMetres,
+                candidateProgress: $1.routeProgress,
+                currentProgress: currentRouteProgress,
+                remainingRouteDistance: remainingRouteDistance
+            )
+            return lhs == rhs ? $0.detourMetres < $1.detourMetres : lhs < rhs
         }
         isSearchingAlongRoute = false
     }

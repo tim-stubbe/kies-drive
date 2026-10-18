@@ -1345,6 +1345,39 @@ enum RouteSearchPolicy {
         metres.isFinite && metres >= 0 && metres <= 20_000
     }
 
+    /// A detour that is acceptable on a 700 km holiday drive can be absurd on
+    /// a 20 km local trip. Keep a useful minimum, then scale up gradually and
+    /// retain the absolute safety ceiling above.
+    static func maximumDetour(remainingRouteDistance: CLLocationDistance) -> CLLocationDistance {
+        guard remainingRouteDistance.isFinite, remainingRouteDistance >= 0 else { return 3_000 }
+        return min(20_000, max(3_000, remainingRouteDistance * 0.05))
+    }
+
+    static func acceptsDetour(_ metres: CLLocationDistance,
+                              remainingRouteDistance: CLLocationDistance) -> Bool {
+        acceptsDetour(metres) && metres <= maximumDetour(
+            remainingRouteDistance: remainingRouteDistance
+        )
+    }
+
+    /// Results should be useful rather than merely the first POI encountered.
+    /// Additional driving is expensive, while a modest amount of normal route
+    /// travel before the stop is usually harmless.
+    static func rankingScore(detourMetres: CLLocationDistance,
+                             candidateProgress: Double,
+                             currentProgress: Double,
+                             remainingRouteDistance: CLLocationDistance) -> Double {
+        guard detourMetres.isFinite, detourMetres >= 0,
+              candidateProgress.isFinite, currentProgress.isFinite,
+              remainingRouteDistance.isFinite, remainingRouteDistance >= 0 else {
+            return .greatestFiniteMagnitude
+        }
+        let remainingFraction = max(0.000_001, 1 - min(1, max(0, currentProgress)))
+        let progressAhead = max(0, candidateProgress - currentProgress)
+        let distanceAhead = progressAhead / remainingFraction * remainingRouteDistance
+        return detourMetres * 3 + distanceAhead * 0.12
+    }
+
     /// Without a successful driving route, straight-line proximity is only a
     /// useful fallback very close to the corridor. Across a river, motorway
     /// barrier or mountain, doubling several kilometres of air distance can

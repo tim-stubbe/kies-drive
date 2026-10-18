@@ -1740,6 +1740,34 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(RouteSearchPolicy.acceptsDetour(-1))
     }
 
+    func testRouteSearchScalesAcceptableDetourToTripLength() {
+        XCTAssertEqual(RouteSearchPolicy.maximumDetour(remainingRouteDistance: 20_000), 3_000)
+        XCTAssertEqual(RouteSearchPolicy.maximumDetour(remainingRouteDistance: 200_000), 10_000)
+        XCTAssertEqual(RouteSearchPolicy.maximumDetour(remainingRouteDistance: 800_000), 20_000)
+        XCTAssertTrue(RouteSearchPolicy.acceptsDetour(
+            2_900, remainingRouteDistance: 20_000
+        ))
+        XCTAssertFalse(RouteSearchPolicy.acceptsDetour(
+            3_100, remainingRouteDistance: 20_000
+        ))
+    }
+
+    func testRouteSearchRanksSmallUsefulDetourAheadOfEarlierLargeDetour() {
+        let earlyLargeDetour = RouteSearchPolicy.rankingScore(
+            detourMetres: 8_000, candidateProgress: 0.25,
+            currentProgress: 0.20, remainingRouteDistance: 200_000
+        )
+        let laterSmallDetour = RouteSearchPolicy.rankingScore(
+            detourMetres: 500, candidateProgress: 0.30,
+            currentProgress: 0.20, remainingRouteDistance: 200_000
+        )
+        XCTAssertLessThan(laterSmallDetour, earlyLargeDetour)
+        XCTAssertEqual(RouteSearchPolicy.rankingScore(
+            detourMetres: .infinity, candidateProgress: 0.3,
+            currentProgress: 0.2, remainingRouteDistance: 100_000
+        ), .greatestFiniteMagnitude)
+    }
+
     func testRouteSearchOnlyEstimatesSmallUnverifiedDetours() throws {
         XCTAssertEqual(
             try XCTUnwrap(RouteSearchPolicy.estimatedDetour(airDistance: 900)),
