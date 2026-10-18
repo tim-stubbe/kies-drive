@@ -650,18 +650,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func setVoiceGuidanceEnabled(_ enabled: Bool) {
         if !enabled {
-            synthesizer.stopSpeaking(at: .immediate)
-            pendingManeuverSpeech = [:]
-            activeManeuverSpeech = [:]
-            pendingBreakReminderSpeech = [:]
-            activeBreakReminderSpeech = [:]
-            pendingFuelReminderSpeech = [:]
-            activeFuelReminderSpeech = [:]
+            // Clear ownership before stopping AVSpeechSynthesizer. Some audio
+            // routes deliver `didCancel` synchronously; the shared safe path
+            // prevents a deliberate mute from looking like a failed Bluetooth
+            // delivery and immediately retrying the same instruction.
+            cancelCurrentSpeechWork()
             diagnosticManeuverKey = nil
             diagnosticManeuverInstruction = nil
             diagnosticManeuverDistance = nil
-            activeUtterance = nil
-            activeSpeechPriority = nil
             if drivingRestState.pendingSpokenReminderRawValue != nil {
                 drivingRestState.pendingSpokenReminderRawValue = nil
                 drivingRestStore.save(drivingRestState)
