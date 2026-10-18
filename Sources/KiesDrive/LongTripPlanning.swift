@@ -98,17 +98,37 @@ enum TollRouteIdentityPolicy {
     /// reroute.
     static func identity(destination: CLLocationCoordinate2D,
                          via: [DriveCoordinate],
+                         constraintOptions: [LockedRouteOptions?] = [],
                          distanceMetres: CLLocationDistance,
                          routeAnchors: [CLLocationCoordinate2D]) -> String {
         let destinationPart = coordinate(destination)
         let viaPart = via.map { coordinate($0.clLocationCoordinate) }.joined(separator: ";")
+        let optionPart = constraintOptions.map { options in
+            guard let options else { return "--" }
+            return "\(options.avoidTolls ? 1 : 0)\(options.avoidHighways ? 1 : 0)"
+        }.joined(separator: ";")
         let distancePart = String(Int((max(0, distanceMetres) / 500).rounded()) * 500)
         let routePart = routeAnchors.map(coordinate).joined(separator: ";")
-        return [destinationPart, viaPart, distancePart, routePart].joined(separator: "|")
+        return [destinationPart, viaPart, optionPart, distancePart, routePart].joined(separator: "|")
     }
 
     private static func coordinate(_ value: CLLocationCoordinate2D) -> String {
         String(format: "%.3f,%.3f", value.latitude, value.longitude)
+    }
+}
+
+enum TollWaypointEvidencePolicy {
+    /// SearXNG receives human-readable route evidence, not raw private route
+    /// state. Explicitly name segment rules so a mixed holiday route (for
+    /// example motorway allowed until Slovenia, then avoided) is not researched
+    /// as one global toll preference.
+    static func label(name: String, optionsAfter: LockedRouteOptions?) -> String {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let optionsAfter else { return cleanName }
+        var rules: [String] = []
+        rules.append(optionsAfter.avoidTolls ? "danach Mautstraßen vermeiden" : "danach Mautstraßen erlaubt")
+        rules.append(optionsAfter.avoidHighways ? "danach Autobahnen vermeiden" : "danach Autobahnen erlaubt")
+        return "\(cleanName) (\(rules.joined(separator: ", ")))"
     }
 }
 

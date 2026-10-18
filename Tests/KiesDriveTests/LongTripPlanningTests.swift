@@ -546,6 +546,39 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(first, noisy)
     }
 
+    func testTollRouteIdentityChangesWithSegmentRules() {
+        let destination = CLLocationCoordinate2D(latitude: 50.01, longitude: 8.35)
+        let waypoint = DriveCoordinate(latitude: 46.05, longitude: 14.50)
+        let geometry = [CLLocationCoordinate2D(latitude: 46.05, longitude: 14.50), destination]
+        let allowed = TollRouteIdentityPolicy.identity(
+            destination: destination, via: [waypoint],
+            constraintOptions: [.init(avoidTolls: false, avoidHighways: false)],
+            distanceMetres: 700_000, routeAnchors: geometry
+        )
+        let avoided = TollRouteIdentityPolicy.identity(
+            destination: destination, via: [waypoint],
+            constraintOptions: [.init(avoidTolls: true, avoidHighways: true)],
+            distanceMetres: 700_000, routeAnchors: geometry
+        )
+
+        XCTAssertNotEqual(allowed, avoided,
+                          "Changing a fixed segment rule must invalidate cached toll evidence")
+    }
+
+    func testTollProviderWaypointDescribesMixedSegmentRules() {
+        XCTAssertEqual(
+            TollWaypointEvidencePolicy.label(
+                name: "Slowenien Grenze",
+                optionsAfter: .init(avoidTolls: true, avoidHighways: true)
+            ),
+            "Slowenien Grenze (danach Mautstraßen vermeiden, danach Autobahnen vermeiden)"
+        )
+        XCTAssertEqual(
+            TollWaypointEvidencePolicy.label(name: "Wurzenpass", optionsAfter: nil),
+            "Wurzenpass"
+        )
+    }
+
     func testTollVariantsBindToTheirActualRouteGeometry() {
         XCTAssertFalse(TollVariantRoutePolicy.usesComparisonRoute(
             requestAvoidsTolls: false, mainRouteAvoidsTolls: false,

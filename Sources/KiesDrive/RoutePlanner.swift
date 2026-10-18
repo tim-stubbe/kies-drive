@@ -4609,7 +4609,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let openTollWaypoints = lock?.waypoints.filter {
             $0.required && !visited.contains($0.id) && $0.isTollEvidenceAnchor
         } ?? []
-        let via = openTollWaypoints.map(\.name)
+        let via = openTollWaypoints.map {
+            TollWaypointEvidencePolicy.label(name: $0.name, optionsAfter: $0.optionsAfter)
+        }
         let destinationCoordinate = destination.placemark.coordinate
         let generation = UUID()
         tollLoadGeneration = generation
@@ -4644,6 +4646,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             let routeIdentity = TollRouteIdentityPolicy.identity(
                 destination: destinationCoordinate,
                 via: openTollWaypoints.map(\.coordinate),
+                constraintOptions: openTollWaypoints.map(\.optionsAfter),
                 distanceMetres: variantDistance,
                 routeAnchors: variantAnchors
             ) + (avoidTolls ? "|avoid" : "|standard")
