@@ -623,6 +623,10 @@ final class NavigationPresentationTests: XCTestCase {
             ),
             "Am Autobahndreieck links zur Anschlussstelle 12, Sankt Goar."
         )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Richtung Ak Saray"),
+            "Richtung Ak Saray."
+        )
     }
 
     func testSpeechInstructionUsesImmediateCueNearManeuver() {

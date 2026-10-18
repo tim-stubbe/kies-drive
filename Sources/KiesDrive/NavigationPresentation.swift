@@ -293,9 +293,9 @@ enum NavigationSpeechFormatter {
         text = replacing(#"(?i)\bStr\."#, in: text, with: "Straße")
         text = replacing(#"(?i)\bRtg\.?(?=\s|$)"#, in: text, with: "Richtung")
         text = replacing(#"(?i)\bBhf\.?(?=\s|$)"#, in: text, with: "Bahnhof")
-        text = replacing(#"(?i)\bAK(?=\s|$)"#, in: text, with: "Autobahnkreuz")
-        text = replacing(#"(?i)\bAD(?=\s|$)"#, in: text, with: "Autobahndreieck")
-        text = replacing(#"(?i)\bAS(?=\s|$)"#, in: text, with: "Anschlussstelle")
+        text = replacing(#"\bAK(?=\s|$)"#, in: text, with: "Autobahnkreuz")
+        text = replacing(#"\bAD(?=\s|$)"#, in: text, with: "Autobahndreieck")
+        text = replacing(#"\bAS(?=\s|$)"#, in: text, with: "Anschlussstelle")
         // German state-road labels use `St` plus digits. Keep `St.` before a
         // place name distinct: there it conventionally means "Sankt".
         text = replacing(#"(?i)\bSt\.?\s*([0-9]{1,4})([a-z]?)\b"#,
