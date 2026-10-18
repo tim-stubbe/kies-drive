@@ -655,6 +655,9 @@ TOOLS = [
     {"name": "get_speed", "description": "Geschwindigkeit lesen", "inputSchema": EMPTY_SCHEMA},
     {"name": "get_active_route", "description": "Aktive Route und Trip-Lock lesen", "inputSchema": EMPTY_SCHEMA},
     {"name": "get_next_maneuver", "description": "Nächsten Navigationsschritt lesen", "inputSchema": EMPTY_SCHEMA},
+    {"name": "get_command_status", "description": "Ausführung einer Remote-Aktion prüfen", "inputSchema": {
+        "type": "object", "properties": {"command_id": {"type": "integer", "minimum": 1}},
+        "required": ["command_id"], "additionalProperties": False}},
     {"name": "restore_route", "description": "Persistente Route wiederherstellen", "inputSchema": EMPTY_SCHEMA},
     {"name": "add_route_stop", "description": "POI mit geringem Umweg als Zwischenstopp hinzufügen", "inputSchema": {
         "type": "object", "properties": {"query": {"type": "string", "minLength": 2}},
@@ -691,7 +694,25 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
         name = params.get("name")
         args = params.get("arguments") or {}
         with db() as conn:
-            if isinstance(name, str) and name.startswith("get_"):
+            if name == "get_command_status":
+                command_id = args.get("command_id")
+                row = conn.execute(
+                    "SELECT status,result FROM user_commands WHERE id=? AND user_id=?",
+                    (command_id, user["id"]),
+                ).fetchone() if isinstance(command_id, int) and command_id > 0 else None
+                parsed_result = None
+                if row and row["result"]:
+                    try:
+                        parsed_result = json.loads(row["result"])
+                    except (TypeError, json.JSONDecodeError):
+                        parsed_result = {"message": "Ungültige Ergebnisdaten"}
+                data = {
+                    "found": row is not None,
+                    "command_id": command_id,
+                    "status": row["status"] if row else "unknown",
+                    "result": parsed_result,
+                }
+            elif isinstance(name, str) and name.startswith("get_"):
                 row = conn.execute("SELECT payload,updated_at FROM user_state WHERE user_id=?", (user["id"],)).fetchone()
                 state = json.loads(row["payload"]) if row else {}
                 keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
@@ -703,7 +724,7 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
             elif name in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
                 cur = conn.execute("INSERT INTO user_commands(user_id,command,arguments,created_at) VALUES(?,?,?,?)",
                                    (user["id"], name, json.dumps(args), datetime.now(timezone.utc).isoformat()))
-                data = {"accepted": True, "command_id": cur.lastrowid}
+                data = {"accepted": True, "command_id": cur.lastrowid, "status": "pending"}
             else:
                 raise HTTPException(400, "Unbekanntes Tool")
         result = {"content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}]}
