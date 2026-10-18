@@ -414,6 +414,30 @@ def test_stale_remote_command_expires_without_reaching_phone(tmp_path, monkeypat
     assert data["result"]["ok"] is False
 
 
+def test_remote_state_freshness_uses_device_recording_time_not_database_write():
+    now = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
+    stale_recording = now - timedelta(minutes=2)
+    just_stored = now - timedelta(seconds=1)
+
+    recorded_at, age, live = main.remote_state_freshness(
+        {"recorded_at": stale_recording.isoformat()}, just_stored.isoformat(), now=now
+    )
+
+    assert recorded_at == stale_recording.isoformat()
+    assert age == 120
+    assert live is False
+
+
+def test_remote_state_freshness_rejects_materially_future_device_clock():
+    now = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
+    _, age, live = main.remote_state_freshness(
+        {"recorded_at": (now + timedelta(seconds=30)).isoformat()},
+        now.isoformat(), now=now,
+    )
+    assert age == 0
+    assert live is False
+
+
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
     verification = {}

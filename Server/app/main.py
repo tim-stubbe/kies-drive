@@ -134,6 +134,32 @@ def expire_stale_remote_commands(conn: sqlite3.Connection, user_id: int,
     return cursor.rowcount
 
 
+def remote_state_freshness(payload: dict[str, Any], stored_at: str | None,
+                           now: datetime | None = None) -> tuple[str | None, float | None, bool]:
+    current = now or datetime.now(timezone.utc)
+    candidates = [payload.get("recorded_at"), stored_at]
+    observed: datetime | None = None
+    observed_text: str | None = None
+    for value in candidates:
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                continue
+            observed, observed_text = parsed.astimezone(timezone.utc), value
+            break
+        except ValueError:
+            continue
+    if observed is None:
+        return None, None, False
+    delta = (current - observed).total_seconds()
+    # A device clock a few seconds ahead is normal. A materially future-dated
+    # payload is not evidence of a live car and must remain visibly stale.
+    live = -5 <= delta <= 30
+    return observed_text, max(0, delta), live
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "kies-drive"}
@@ -877,10 +903,12 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
                 state = json.loads(row["payload"]) if row else {}
                 keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
                 value = {"active_route": state.get("active_route"), "route_lock": state.get("route_lock")} if name == "get_active_route" else state.get(keys.get(name, ""))
-                updated_at = datetime.fromisoformat(row["updated_at"]) if row else None
-                age = max(0, (datetime.now(timezone.utc) - updated_at).total_seconds()) if updated_at else None
-                data = {"value": value, "updated_at": row["updated_at"] if row else None,
-                        "age_seconds": age, "live": age is not None and age <= 30}
+                observed_at, age, live = remote_state_freshness(
+                    state, row["updated_at"] if row else None
+                )
+                data = {"value": value, "recorded_at": observed_at,
+                        "updated_at": row["updated_at"] if row else None,
+                        "age_seconds": age, "live": live}
             elif name in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
                 cur = conn.execute("INSERT INTO user_commands(user_id,command,arguments,created_at) VALUES(?,?,?,?)",
                                    (user["id"], name, json.dumps(args), datetime.now(timezone.utc).isoformat()))
