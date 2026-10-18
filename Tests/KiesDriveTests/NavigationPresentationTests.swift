@@ -334,6 +334,13 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRouteRejoinRequiresSeveralInsideFixesBeforeOldGuidanceReturns() {
+        XCTAssertFalse(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 1))
+        XCTAssertFalse(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 2))
+        XCTAssertTrue(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 3))
+        XCTAssertTrue(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 4))
+    }
+
     func testDeviationThresholdReroutesSoonerInTownWithoutWeakeningMotorwayNoiseMargin() {
         XCTAssertEqual(NavigationDeviationPolicy.threshold(
             horizontalAccuracy: 8, speedMetresPerSecond: 8

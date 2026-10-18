@@ -189,6 +189,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var diagnosticManeuverInstruction: String?
     private var offRouteSince: Date?
     private var offRouteFixCount = 0
+    private var onRouteRecoveryFixCount = 0
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
     private var consecutiveRerouteFailures = 0
@@ -1814,6 +1815,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         lastReliableGuidanceSpeedAt = nil
         lastLocationRejectionLoggedAt = nil
         consecutiveRerouteFailures = 0
+        onRouteRecoveryFixCount = 0
         offlineNeedsInitialPositionMatch = false
         offlineDeviationWarningActive = false
         isManeuverGuidanceReliable = true
@@ -2396,7 +2398,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             horizontalAccuracy: location.horizontalAccuracy,
             speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
         )
-        if !isOutsideCorridor { isManeuverGuidanceReliable = true }
+        if isOutsideCorridor {
+            onRouteRecoveryFixCount = 0
+        } else if !isManeuverGuidanceReliable {
+            onRouteRecoveryFixCount += 1
+            if NavigationRouteRejoinPolicy.isConfirmed(
+                consecutiveInsideFixes: onRouteRecoveryFixCount
+            ) {
+                isManeuverGuidanceReliable = true
+                onRouteRecoveryFixCount = 0
+            }
+        } else {
+            onRouteRecoveryFixCount = 0
+        }
         let shouldAccumulate = NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
@@ -2496,6 +2510,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if succeeded {
                 consecutiveRerouteFailures = 0
                 isManeuverGuidanceReliable = true
+                onRouteRecoveryFixCount = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
                 if settings.voiceGuidance {
                     announceRecalculatedRoute(at: location)

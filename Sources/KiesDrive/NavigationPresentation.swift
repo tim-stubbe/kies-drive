@@ -1153,6 +1153,14 @@ enum NavigationManeuverSafetyPolicy {
     }
 }
 
+enum NavigationRouteRejoinPolicy {
+    static let requiredConsecutiveInsideFixes = 3
+
+    static func isConfirmed(consecutiveInsideFixes: Int) -> Bool {
+        consecutiveInsideFixes >= requiredConsecutiveInsideFixes
+    }
+}
+
 struct NavigationInstructionDisplay: Equatable {
     let instruction: String
     let distance: CLLocationDistance?
