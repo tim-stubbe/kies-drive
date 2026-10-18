@@ -270,6 +270,16 @@ enum SpeedScenarioPolicy {
         return configured.id == comparison.id ? [configured] : [configured, comparison]
     }
 
+    static func matchesTarget(
+        scenarioSpeed: Double,
+        configuredSpeed: Double,
+        tolerance: Double = 0.1
+    ) -> Bool {
+        guard scenarioSpeed.isFinite else { return false }
+        let configured = SpeedScenario.target(configuredSpeed).targetSpeedKmh
+        return abs(scenarioSpeed - configured) <= max(0, tolerance)
+    }
+
     /// Measures unrestricted motorway share by route distance. Missing speed
     /// data stays conservative instead of inflating the known unrestricted
     /// samples to 100 percent of the journey.
@@ -1478,7 +1488,11 @@ enum SpeedScenarioComparisonPolicy {
             referenceSpeed: referenceSpeed
         )
         guard let baseline = plan.results.first(where: {
-                  abs($0.scenario.targetSpeedKmh - configuredSpeed) <= tolerance
+                  SpeedScenarioPolicy.matchesTarget(
+                      scenarioSpeed: $0.scenario.targetSpeedKmh,
+                      configuredSpeed: configuredSpeed,
+                      tolerance: tolerance
+                  )
               }),
               let alternative = plan.results.first(where: {
                   $0.routeTitle == baseline.routeTitle &&

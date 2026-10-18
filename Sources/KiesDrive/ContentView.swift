@@ -1755,7 +1755,12 @@ struct DriveContentView: View {
         }
 
         let selectedSpeed = settings.targetSpeedKmh
-        let routeOptions = plan.results.filter { $0.scenario.targetSpeedKmh == selectedSpeed }
+        let routeOptions = plan.results.filter {
+            SpeedScenarioPolicy.matchesTarget(
+                scenarioSpeed: $0.scenario.targetSpeedKmh,
+                configuredSpeed: selectedSpeed
+            )
+        }
         if routeOptions.count >= 2 {
             let delta = RouteComparisonDelta(from: routeOptions[0], to: routeOptions[1])
             VStack(alignment: .leading, spacing: 4) {

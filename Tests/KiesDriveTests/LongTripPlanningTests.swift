@@ -655,6 +655,21 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(comparison?.alternative.scenario.targetSpeedKmh ?? 0, 150, accuracy: 0.1)
     }
 
+    func testScenarioMatchingSanitizesConfiguredAndDecodedSpeedValues() {
+        XCTAssertTrue(SpeedScenarioPolicy.matchesTarget(
+            scenarioSpeed: 199.999_99, configuredSpeed: 200
+        ))
+        XCTAssertTrue(SpeedScenarioPolicy.matchesTarget(
+            scenarioSpeed: 220, configuredSpeed: 500
+        ))
+        XCTAssertTrue(SpeedScenarioPolicy.matchesTarget(
+            scenarioSpeed: 150, configuredSpeed: .nan
+        ))
+        XCTAssertFalse(SpeedScenarioPolicy.matchesTarget(
+            scenarioSpeed: .infinity, configuredSpeed: 150
+        ))
+    }
+
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {
         let candidates = [
             BreakCandidate(id: "closed", name: "Closed", coordinate: .init(latitude: 0, longitude: 0), progress: 0.34, detourMetres: 50, isOpen: false),
