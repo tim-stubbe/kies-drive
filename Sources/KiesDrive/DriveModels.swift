@@ -347,6 +347,7 @@ struct DriveDiagnosticSummary: Equatable {
     let breakRemindersShown: Int
     let breakRemindersAnnounced: Int
     let fuelRemindersShown: Int
+    let fuelRemindersAnnounced: Int
     let missedFinalCues: Int
     let speechDeliveryFailures: Int
     let offlineRouteDepartures: Int
@@ -469,6 +470,7 @@ struct DriveDiagnosticSummary: Equatable {
         let shownBreaks = session.filter { $0.kind == .breakReminderShown }.count
         let spokenBreaks = session.filter { $0.kind == .breakReminderAnnounced }.count
         let shownFuel = session.filter { $0.kind == .fuelReminderShown }.count
+        let spokenFuel = session.filter { $0.kind == .fuelReminderAnnounced }.count
         return .init(quality: quality, eventCount: session.count,
                      rerouteRequests: reroutes,
                      rerouteFailures: failures, rejectedLocations: rejected,
@@ -476,6 +478,7 @@ struct DriveDiagnosticSummary: Equatable {
                      breakRemindersShown: shownBreaks,
                      breakRemindersAnnounced: spokenBreaks,
                      fuelRemindersShown: shownFuel,
+                     fuelRemindersAnnounced: spokenFuel,
                      missedFinalCues: missed, speechDeliveryFailures: speechFailures,
                      offlineRouteDepartures: offlineDepartures,
                      resolvedRouteIssues: resolved, recommendation: recommendation)

@@ -1657,6 +1657,10 @@ final class NavigationPresentationTests: XCTestCase {
                 kind: .fuelReminderShown,
                 detail: "Tankhinweis · soon · In 10 Kilometern tanken"
             ),
+            DriveDiagnosticEvent(
+                kind: .fuelReminderAnnounced,
+                detail: "Tankhinweis · gesprochen · In 10 Kilometern tanken"
+            ),
         ]
 
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
@@ -1666,6 +1670,7 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.breakRemindersShown, 1)
         XCTAssertEqual(summary.breakRemindersAnnounced, 1)
         XCTAssertEqual(summary.fuelRemindersShown, 1)
+        XCTAssertEqual(summary.fuelRemindersAnnounced, 1)
     }
 
     func testDifferentLaterManeuverDoesNotHideSpeechFailure() throws {
@@ -1684,6 +1689,26 @@ final class NavigationPresentationTests: XCTestCase {
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
         XCTAssertEqual(summary.quality, .critical)
         XCTAssertEqual(summary.speechDeliveryFailures, 1)
+    }
+
+    func testDiagnosticSummaryClearsRecoveredFuelReminderSpeechFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "Tankhinweis · In etwa 10 Kilometern tanken. · GPS ±8 m · 100 km/h"
+            ),
+            DriveDiagnosticEvent(
+                kind: .fuelReminderAnnounced,
+                detail: "Tankhinweis · gesprochen · In etwa 10 Kilometern tanken."
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.speechDeliveryFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+        XCTAssertEqual(summary.fuelRemindersAnnounced, 1)
     }
 
     func testMatchingRetriedManeuverClearsOnlyItsSpeechFailure() throws {

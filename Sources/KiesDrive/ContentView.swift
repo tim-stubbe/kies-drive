@@ -2025,6 +2025,7 @@ struct DriveSettingsView: View {
                         LabeledContent("Pausenhinweise gezeigt", value: "\(latestSummary.breakRemindersShown)")
                         LabeledContent("Pausenhinweise gesprochen", value: "\(latestSummary.breakRemindersAnnounced)")
                         LabeledContent("Tankhinweise gezeigt", value: "\(latestSummary.fuelRemindersShown)")
+                        LabeledContent("Tankhinweise gesprochen", value: "\(latestSummary.fuelRemindersAnnounced)")
                         LabeledContent("Nicht beendete Fahransagen", value: "\(latestSummary.speechDeliveryFailures)")
                         LabeledContent("Letzte Ansage verpasst", value: "\(latestSummary.missedFinalCues)")
                     } else {
