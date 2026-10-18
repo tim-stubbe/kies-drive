@@ -502,6 +502,14 @@ enum NavigationAnnouncementDeliveryPolicy {
     /// the driver hears the decisive words. Commit delivery only on finish.
     static func shouldCommitDelivery(didFinish: Bool) -> Bool { didFinish }
 
+    /// `didStart` is advisory and can be lost while iOS changes the audio
+    /// route (Bluetooth, CarPlay, Siri). A later `didFinish` is still proof
+    /// that the utterance completed, so retain the queued claim as a fallback
+    /// instead of repeating the same turn on every following GPS fix.
+    static func completedClaims<Value>(active: Value?, queued: Value?) -> Value? {
+        active ?? queued
+    }
+
     /// Audio callbacks are expected in order, but Bluetooth route changes and
     /// synthesizer interruption can occasionally deliver an older completion
     /// after a newer decisive cue. Delivery state is monotonic: completing an

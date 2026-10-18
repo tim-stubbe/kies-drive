@@ -2777,7 +2777,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didFinish utterance: AVSpeechUtterance) {
         let identifier = ObjectIdentifier(utterance)
-        if let claims = activeManeuverSpeech.removeValue(forKey: identifier),
+        let claims = NavigationAnnouncementDeliveryPolicy.completedClaims(
+            active: activeManeuverSpeech.removeValue(forKey: identifier),
+            queued: pendingManeuverSpeech.removeValue(forKey: identifier)
+        )
+        if let claims,
            NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(didFinish: true) {
             for claim in claims {
                 let delivered = announcedManeuverStages[claim.key] ?? []

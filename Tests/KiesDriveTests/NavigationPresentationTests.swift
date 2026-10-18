@@ -954,6 +954,26 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A later preparation stage must be able to supersede an unfinished earlier stage")
     }
 
+    func testFinishedSpeechCommitsQueuedClaimWhenStartCallbackWasLost() {
+        XCTAssertEqual(
+            NavigationAnnouncementDeliveryPolicy.completedClaims(
+                active: "started", queued: "queued"
+            ),
+            "started"
+        )
+        XCTAssertEqual(
+            NavigationAnnouncementDeliveryPolicy.completedClaims(
+                active: Optional<String>.none, queued: "queued"
+            ),
+            "queued"
+        )
+        XCTAssertNil(
+            NavigationAnnouncementDeliveryPolicy.completedClaims(
+                active: Optional<String>.none, queued: Optional<String>.none
+            )
+        )
+    }
+
     func testCommittedReplacementRouteCancelsEveryOldSpokenManeuver() {
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldCancelForRouteReplacement(
             navigationActive: true, hasSpeechWork: true
