@@ -144,6 +144,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: true))
     }
 
+    func testRouteOriginUsesFirstGeometryVertexInsteadOfOverlayRepresentativeCoordinate() {
+        let first = CLLocationCoordinate2D(latitude: 50.01, longitude: 8.01)
+        let midpoint = CLLocationCoordinate2D(latitude: 49.0, longitude: 9.0)
+        XCTAssertEqual(
+            RouteGeometryEndpointPolicy.origin(coordinates: [first], fallback: midpoint).latitude,
+            first.latitude,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            RouteGeometryEndpointPolicy.origin(coordinates: [], fallback: midpoint).longitude,
+            midpoint.longitude,
+            accuracy: 0.000_001
+        )
+    }
+
     func testSpeechRetriesCurrentManeuverImmediatelyAfterInterruptionEnds() {
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
             navigationActive: true, voiceGuidance: true,

@@ -100,6 +100,18 @@ enum RouteComparisonPublicationPolicy {
     }
 }
 
+enum RouteGeometryEndpointPolicy {
+    /// `MKPolyline.coordinate` is a representative overlay coordinate and is
+    /// not guaranteed to be its first vertex. Toll and route-origin lookups
+    /// must use the actual beginning of the selected geometry.
+    static func origin(
+        coordinates: [CLLocationCoordinate2D],
+        fallback: CLLocationCoordinate2D
+    ) -> CLLocationCoordinate2D {
+        coordinates.first ?? fallback
+    }
+}
+
 enum CarPlayAlertPresentationPolicy {
     static func titleVariants(for message: String) -> [String] {
         let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -490,7 +490,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         routeSearchResults = []
         isSearchingAlongRoute = false
         let selectedRoute = alternatives[index]
-        let selectedOrigin = selectedRoute.polyline.coordinate
+        let selectedOrigin = RouteGeometryEndpointPolicy.origin(
+            coordinates: sample(selectedRoute.polyline, maximum: 2),
+            fallback: selectedRoute.polyline.coordinate
+        )
         legs = [selectedRoute]
         resetLiveNavigationProgress()
         seedInitialNavigationPresentation()
