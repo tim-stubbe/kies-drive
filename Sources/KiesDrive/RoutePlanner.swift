@@ -644,6 +644,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                              settings: DriveSettings,
                              requiredWaypoints: [LockedWaypoint] = []) async -> Bool {
         let activationGeneration = UUID()
+        // A destination replacement started during guidance belongs to that
+        // exact session. Stopping or arriving while MapKit is still working
+        // must prevent its delayed result from restarting navigation.
+        let navigationSession = isNavigating ? navigationSessionGeneration : nil
         destinationActivationGeneration = activationGeneration
         destinationSearchGeneration = UUID()
         suggestions = []
@@ -653,7 +657,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         destination = item
         destinationText = item.name ?? item.placemark.title ?? "Ziel"
         replaceRouteLockForRemoteDestination(waypoints: requiredWaypoints)
-        guard await calculate(from: start, settings: settings) else {
+        guard await calculate(
+            from: start, settings: settings,
+            navigationSession: navigationSession
+        ) else {
             // A newer destination may already be calculating. The older
             // request is allowed to fail, but it must never restore its stale
             // destination and route-lock snapshot over the latest selection.
