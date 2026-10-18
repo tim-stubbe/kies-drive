@@ -1510,6 +1510,22 @@ final class LongTripPlanningTests: XCTestCase {
         ), 0.45, accuracy: 0.001)
     }
 
+    func testFuelConfirmationUsesOnlyCurrentLocationAsDistanceBaseline() {
+        let now = Date(timeIntervalSince1970: 45_000)
+        XCTAssertTrue(DrivingFuelObservationSeedPolicy.mayUseLocation(
+            sampleAt: now.addingTimeInterval(-30), now: now
+        ))
+        XCTAssertFalse(DrivingFuelObservationSeedPolicy.mayUseLocation(
+            sampleAt: now.addingTimeInterval(-31), now: now
+        ), "An old coordinate must not consume pre-confirmation distance")
+        XCTAssertFalse(DrivingFuelObservationSeedPolicy.mayUseLocation(
+            sampleAt: now.addingTimeInterval(6), now: now
+        ), "A materially future-dated fix has no reliable age")
+        XCTAssertFalse(DrivingFuelObservationSeedPolicy.mayUseLocation(
+            sampleAt: nil, now: now
+        ))
+    }
+
     func testDrivingFuelPolicyFallsBackFromCorruptedNumericState() {
         let tripID = UUID()
         let corrupted = DrivingFuelState(

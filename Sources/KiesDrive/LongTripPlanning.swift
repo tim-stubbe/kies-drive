@@ -1407,6 +1407,21 @@ enum DrivingFuelPolicy {
     }
 }
 
+enum DrivingFuelObservationSeedPolicy {
+    static let maximumLocationAge: TimeInterval = 30
+
+    /// A confirmed fuel fraction is valid without GPS, but its distance
+    /// odometer baseline may use only a current fix. Anchoring a newly filled
+    /// tank to an old coordinate can otherwise consume the gap immediately on
+    /// the next sample even though it happened before confirmation.
+    static func mayUseLocation(sampleAt: Date?, now: Date,
+                               maximumAge: TimeInterval = maximumLocationAge) -> Bool {
+        guard let sampleAt else { return false }
+        let age = now.timeIntervalSince(sampleAt)
+        return age >= -5 && age <= max(0, maximumAge)
+    }
+}
+
 struct DrivingFuelStateStore {
     let defaults: UserDefaults
     var key = "drive.longTrip.drivingFuelState"

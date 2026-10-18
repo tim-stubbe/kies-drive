@@ -845,9 +845,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func confirmFuelLevel(_ fraction: Double, settings: DriveSettings) {
         guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else { return }
+        let now = Date()
+        let observationLocation = DrivingFuelObservationSeedPolicy.mayUseLocation(
+            sampleAt: lastAcceptedNavigationLocation?.timestamp, now: now
+        ) ? lastAcceptedNavigationLocation : nil
         drivingFuelState = DrivingFuelPolicy.confirmed(
             drivingFuelState, tripID: tripID, fraction: min(1, max(0, fraction)),
-            location: lastAcceptedNavigationLocation
+            location: observationLocation
         )
         drivingFuelStore.save(drivingFuelState)
         buildLongTripPlan(settings: settings)
