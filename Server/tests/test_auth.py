@@ -93,13 +93,13 @@ def test_toll_source_must_match_destination_or_required_via_point():
 
 
 def test_toll_evidence_requires_official_or_independent_corroboration():
-    route_text = "Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
+    route_text = f"Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR {main.date.today().year}"
     unofficial = {"title": route_text, "snippet": "", "url": "https://blog.example/trip"}
     assert main.verified_toll_evidence(
         [unofficial], "Split", "Hochheim am Main", ["Wurzenpass"]
     ) is None
 
-    second = {"title": "Mautkosten: 27,40 EUR Split Hochheim via Wurzenpass",
+    second = {"title": f"Mautkosten: 27,40 EUR Split Hochheim via Wurzenpass {main.date.today().year}",
               "snippet": "", "url": "https://calculator.example/route"}
     evidence = main.verified_toll_evidence(
         [unofficial, second], "Split", "Hochheim am Main", ["Wurzenpass"]
@@ -114,7 +114,7 @@ def test_toll_evidence_requires_official_or_independent_corroboration():
 
 
 def test_toll_evidence_does_not_count_subdomains_as_independent_sources():
-    route_text = "Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
+    route_text = f"Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR {main.date.today().year}"
     sources = [
         {"title": route_text, "snippet": "", "url": "https://route.example.com/trip"},
         {"title": route_text, "snippet": "", "url": "https://blog.example.com/trip"},
@@ -128,7 +128,7 @@ def test_toll_evidence_does_not_count_subdomains_as_independent_sources():
 
 
 def test_no_toll_evidence_requires_official_or_two_independent_sources():
-    text = "Split nach Hochheim über Wurzenpass: gesamte Route mautfrei"
+    text = f"Split nach Hochheim über Wurzenpass: gesamte Route mautfrei {main.date.today().year}"
     one = {"title": text, "snippet": "", "url": "https://blog.example/trip"}
     assert main.verified_no_toll_evidence(
         [one], "Split", "Hochheim am Main", ["Wurzenpass"]
@@ -141,6 +141,19 @@ def test_no_toll_evidence_requires_official_or_two_independent_sources():
     same_publisher = {"title": text, "snippet": "", "url": "https://news.blog.example/trip"}
     assert main.verified_no_toll_evidence(
         [one, same_publisher], "Split", "Hochheim am Main", ["Wurzenpass"]
+    ) is None
+
+
+def test_unofficial_toll_evidence_must_be_current():
+    old = "Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR 2024"
+    sources = [
+        {"title": old, "snippet": "", "url": "https://old.example/trip"},
+        {"title": old, "snippet": "", "url": "https://archive.example.net/trip"},
+    ]
+    assert not main.toll_source_is_current(old, official=False, current_year=2026)
+    assert main.toll_source_is_current(old, official=True, current_year=2026)
+    assert main.verified_toll_evidence(
+        sources, "Split", "Hochheim am Main", ["Wurzenpass"]
     ) is None
 
 

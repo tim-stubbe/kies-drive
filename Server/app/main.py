@@ -529,6 +529,15 @@ OFFICIAL_TOLL_HOSTS = ("asfinag.at", "dars.si", "hac.hr", "autostrade.it",
                        "vinci-autoroutes.com")
 
 
+def toll_source_is_current(text: str, official: bool,
+                           current_year: int | None = None) -> bool:
+    """Unofficial search snippets must explicitly identify current pricing."""
+    if official:
+        return True
+    year = current_year if current_year is not None else date.today().year
+    return re.search(rf"(?<!\d){year}(?!\d)", text) is not None
+
+
 def independent_source_domain(host: str) -> str:
     """Collapse subdomains so one publisher cannot corroborate itself."""
     labels = host.lower().strip(".").split(".")
@@ -555,6 +564,8 @@ def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
+        if not toll_source_is_current(source_text, official):
+            continue
         evidence.append((amount, independent_source_domain(host), source["title"], source["url"], official))
     if official := next((item for item in evidence if item[4]), None):
         return official[0], official[2], official[3]
@@ -579,6 +590,8 @@ def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
+        if not toll_source_is_current(source_text, official):
+            continue
         evidence.append((independent_source_domain(host), source["title"], source["url"], official))
     if official := next((item for item in evidence if item[3]), None):
         return official[1], official[2]
