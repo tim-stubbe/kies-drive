@@ -2225,11 +2225,12 @@ struct DriveSettingsView: View {
                     Text("Die Diagnose bleibt lokal auf diesem Gerät und enthält keine vollständige Standortspur.")
                         .font(.caption).foregroundStyle(.secondary)
                     ShareLink(item: DriveDiagnosticReport.text(
-                        events: diagnosticEvents, appVersion: DriveSettings.appVersionString
+                        events: DriveDiagnosticReport.latestSessionEvents(in: diagnosticEvents),
+                        appVersion: DriveSettings.appVersionString
                     )) {
-                        Label("Diagnosebericht teilen", systemImage: "square.and.arrow.up")
+                        Label("Letzte Fahrdiagnose teilen", systemImage: "square.and.arrow.up")
                     }
-                    .disabled(diagnosticEvents.isEmpty)
+                    .disabled(DriveDiagnosticReport.latestSessionEvents(in: diagnosticEvents).isEmpty)
                     Button("Diagnose zurücksetzen", role: .destructive) {
                         DriveDiagnosticStore.clear()
                         diagnosticEvents = []

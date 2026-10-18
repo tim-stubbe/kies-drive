@@ -570,6 +570,25 @@ struct DriveDiagnosticSummary: Equatable {
 }
 
 enum DriveDiagnosticReport {
+    /// Returns only the drive represented by the latest navigation start.
+    /// Restarts of the same persisted trip keep their shared session ID, while
+    /// unrelated older drives and late asynchronous callbacks are excluded.
+    static func latestSessionEvents(in events: [DriveDiagnosticEvent]) -> [DriveDiagnosticEvent] {
+        guard let latestStart = events.lastIndex(where: { $0.kind == .navigationStarted }) else {
+            return []
+        }
+        let sessionID = events[latestStart].sessionID
+        let start = sessionID.flatMap { id in
+            events.firstIndex { $0.kind == .navigationStarted && $0.sessionID == id }
+        } ?? latestStart
+        let afterLatestStart = events.index(after: latestStart)..<events.endIndex
+        let terminal = afterLatestStart.first(where: {
+            events[$0].kind == .navigationStopped || events[$0].kind == .arrivalReached
+        })
+        let end = terminal ?? events.index(before: events.endIndex)
+        return Array(events[start...end])
+    }
+
     static func text(events: [DriveDiagnosticEvent], appVersion: String) -> String {
         var lines = [
             "Kies Drive Fahrdiagnose",

@@ -2463,6 +2463,33 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(report.contains("Keine vollständige Standortspur"))
     }
 
+    func testDiagnosticReportSelectionExcludesOlderDrivesAndLateCallbacks() throws {
+        let oldSession = UUID()
+        let currentSession = UUID()
+        let events = [
+            DriveDiagnosticEvent(sessionID: oldSession, kind: .navigationStarted, detail: "Alte Fahrt"),
+            DriveDiagnosticEvent(sessionID: oldSession, kind: .rerouteFailed, detail: "Alter Fehler"),
+            DriveDiagnosticEvent(sessionID: oldSession, kind: .navigationStopped, detail: "Beendet"),
+            DriveDiagnosticEvent(sessionID: currentSession, kind: .navigationStarted, detail: "Kroatien"),
+            DriveDiagnosticEvent(sessionID: currentSession, kind: .maneuverAnnounced, detail: "Rechts"),
+            DriveDiagnosticEvent(sessionID: currentSession, kind: .navigationStarted, detail: "Kroatien fortsetzen"),
+            DriveDiagnosticEvent(sessionID: currentSession, kind: .arrivalReached, detail: "Ziel"),
+            DriveDiagnosticEvent(sessionID: currentSession, kind: .rerouteFailed, detail: "Verspätet"),
+        ]
+
+        let selected = DriveDiagnosticReport.latestSessionEvents(in: events)
+
+        XCTAssertEqual(selected.map(\.detail), [
+            "Kroatien", "Rechts", "Kroatien fortsetzen", "Ziel"
+        ])
+        XCTAssertEqual(Set(selected.compactMap(\.sessionID)), Set([currentSession]))
+    }
+
+    func testDiagnosticReportSelectionRequiresANavigationSession() {
+        let events = [DriveDiagnosticEvent(kind: .routeCalculated, detail: "Vorschau")]
+        XCTAssertTrue(DriveDiagnosticReport.latestSessionEvents(in: events).isEmpty)
+    }
+
     func testDiagnosticContextContainsQualityButNeverCoordinates() {
         let location = CLLocation(
             coordinate: .init(latitude: 50.123456, longitude: 8.654321),
