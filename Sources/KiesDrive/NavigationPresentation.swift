@@ -59,6 +59,20 @@ enum DestinationSearchBatchCompletionPolicy {
     }
 }
 
+enum RouteSearchEmptyResultPolicy {
+    static func message(mapMatches: Int, corridorMatches: Int,
+                        acceptableDetours: Int) -> String? {
+        guard acceptableDetours == 0 else { return nil }
+        if mapMatches == 0 {
+            return "Keine passenden Orte entlang der verbleibenden Route gefunden."
+        }
+        if corridorMatches == 0 {
+            return "Treffer gefunden, aber keiner liegt sinnvoll voraus an deiner Route."
+        }
+        return "Treffer gefunden, aber der zusätzliche Fahrweg wäre zu groß."
+    }
+}
+
 enum DestinationActivationBaselinePolicy {
     /// Rapid destination taps form one replacement transaction. Every newer
     /// request must keep the original stable baseline instead of treating the

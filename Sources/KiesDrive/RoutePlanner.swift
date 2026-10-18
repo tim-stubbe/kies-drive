@@ -293,6 +293,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var activeRouteLock: ActiveRouteLock?
     @Published var routeSearchQuery = ""
     @Published var routeSearchResults: [RouteSearchResult] = []
+    @Published var routeSearchMessage: String?
     @Published var isSearchingAlongRoute = false
     @Published private(set) var nextManeuverIdentity: String?
     @Published var nextManeuverInstruction: String?
@@ -543,6 +544,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeAmenitySearches.forEach { $0.cancel() }
         activeAmenitySearches = []
         routeSearchResults = []
+        routeSearchMessage = nil
         isSearchingAlongRoute = false
         let selectedRoute = alternatives[index]
         let selectedOrigin = RouteGeometryEndpointPolicy.origin(
@@ -734,6 +736,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         comparisonSpeedLimitPoints = []
         comparisonSpeedLimits = []
         routeSearchResults = []
+        routeSearchMessage = nil
         isSearchingAlongRoute = false
         longTripPlan = nil
         clearOfflineCache()
@@ -1344,6 +1347,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard !legs.isEmpty, !cleanQuery.isEmpty else {
             routeSearchQuery = cleanQuery
             routeSearchResults = []
+            routeSearchMessage = nil
             isSearchingAlongRoute = false
             return
         }
@@ -1354,6 +1358,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // synchronously; the new request publishes its own complete list only
         // after both POI and detour validation finish.
         routeSearchResults = []
+        routeSearchMessage = nil
         isSearchingAlongRoute = true
         let routeGeneration = routeCalculationGeneration
         routeSearchQuery = cleanQuery
@@ -1566,6 +1571,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             .routeSearchCompleted,
             detail: "POI \(matches.count) · Korridor \(candidates.count) · Umweg geprüft \(shortlist.count) · zulässig \(routeSearchResults.count)"
         )
+        routeSearchMessage = RouteSearchEmptyResultPolicy.message(
+            mapMatches: matches.count,
+            corridorMatches: candidates.count,
+            acceptableDetours: routeSearchResults.count
+        )
         isSearchingAlongRoute = false
     }
 
@@ -1573,7 +1583,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard generation == routeSearchGeneration else { return }
         activeRouteSearches.forEach { $0.cancel() }
         activeRouteSearches = []
-        if clearResults { routeSearchResults = [] }
+        if clearResults {
+            routeSearchResults = []
+            routeSearchMessage = nil
+        }
         isSearchingAlongRoute = false
     }
 
@@ -1744,6 +1757,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                              kind: .userStop)
         let mutatedLock = routeLockStore.activeLock
         routeSearchResults = []
+        routeSearchMessage = nil
         isSearchingAlongRoute = false
         let succeeded = await calculate(
             from: start, settings: settings,

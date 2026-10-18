@@ -125,6 +125,30 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRouteSearchExplainsWhyNoStopCanBeOffered() {
+        XCTAssertEqual(
+            RouteSearchEmptyResultPolicy.message(
+                mapMatches: 0, corridorMatches: 0, acceptableDetours: 0
+            ),
+            "Keine passenden Orte entlang der verbleibenden Route gefunden."
+        )
+        XCTAssertEqual(
+            RouteSearchEmptyResultPolicy.message(
+                mapMatches: 4, corridorMatches: 0, acceptableDetours: 0
+            ),
+            "Treffer gefunden, aber keiner liegt sinnvoll voraus an deiner Route."
+        )
+        XCTAssertEqual(
+            RouteSearchEmptyResultPolicy.message(
+                mapMatches: 4, corridorMatches: 2, acceptableDetours: 0
+            ),
+            "Treffer gefunden, aber der zusätzliche Fahrweg wäre zu groß."
+        )
+        XCTAssertNil(RouteSearchEmptyResultPolicy.message(
+            mapMatches: 4, corridorMatches: 2, acceptableDetours: 1
+        ))
+    }
+
     func testRapidDestinationChangesKeepOriginalRollbackBaseline() {
         let original = DestinationActivationBaselinePolicy.choose(
             existing: Optional<String>.none, current: "Original route"

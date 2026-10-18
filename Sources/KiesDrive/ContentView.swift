@@ -373,6 +373,11 @@ struct DriveContentView: View {
                 ProgressView("Echten Fahrweg prüfen …")
                     .font(.caption).tint(Color.kiesForest)
             }
+            if let message = planner.routeSearchMessage, !planner.isSearchingAlongRoute {
+                Label(message, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             ForEach(planner.routeSearchResults.prefix(4)) { result in
                 let item = result.mapItem
                 HStack(spacing: 11) {
@@ -1296,6 +1301,11 @@ struct DriveContentView: View {
                         Button("Suchen") { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
                     }
                     if planner.isSearchingAlongRoute { ProgressView("Echten Fahrweg prüfen …") }
+                    if let message = planner.routeSearchMessage, !planner.isSearchingAlongRoute {
+                        Label(message, systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     ForEach(planner.routeSearchResults) { result in
                         let item = result.mapItem
                         HStack {
