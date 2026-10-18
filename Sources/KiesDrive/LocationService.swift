@@ -1,6 +1,25 @@
 import Foundation
 @preconcurrency import CoreLocation
 
+struct NavigationLocationRuntimeConfiguration: Equatable {
+    let desiredAccuracy: CLLocationAccuracy
+    let distanceFilter: CLLocationDistance
+    let allowsBackgroundUpdates: Bool
+    let pausesAutomatically: Bool
+}
+
+enum NavigationLocationRuntimePolicy {
+    static func configuration(navigationActive: Bool) -> NavigationLocationRuntimeConfiguration {
+        .init(
+            desiredAccuracy: navigationActive
+                ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyNearestTenMeters,
+            distanceFilter: navigationActive ? 8 : 25,
+            allowsBackgroundUpdates: navigationActive,
+            pausesAutomatically: !navigationActive
+        )
+    }
+}
+
 @MainActor
 final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     /// Gemeinsame Instanz für die SwiftUI-Oberfläche und die CarPlay-Szene.
@@ -38,8 +57,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // "Always" statt nur "when in use", damit Ansagen und CarPlay-
         // Navigation auch bei gesperrtem Bildschirm weiterlaufen.
         manager.requestAlwaysAuthorization()
-        manager.allowsBackgroundLocationUpdates = false
-        manager.pausesLocationUpdatesAutomatically = true
+        applyRuntimeConfiguration()
         #else
         manager.requestAlwaysAuthorization()
         #endif
@@ -54,8 +72,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     /// maximum power for the whole time the app is open.
     func setNavigationActive(_ active: Bool) {
         navigationActive = active
-        manager.desiredAccuracy = active ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyNearestTenMeters
-        manager.distanceFilter = active ? 8 : 25
+        applyRuntimeConfiguration()
         #if os(iOS)
         if NavigationLocationAuthorizationPolicy.shouldRequestAlways(
             navigationActive: active,
@@ -65,6 +82,18 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         }
         manager.allowsBackgroundLocationUpdates = active
         manager.pausesLocationUpdatesAutomatically = !active
+        #endif
+    }
+
+    private func applyRuntimeConfiguration() {
+        let configuration = NavigationLocationRuntimePolicy.configuration(
+            navigationActive: navigationActive
+        )
+        manager.desiredAccuracy = configuration.desiredAccuracy
+        manager.distanceFilter = configuration.distanceFilter
+        #if os(iOS)
+        manager.allowsBackgroundLocationUpdates = configuration.allowsBackgroundUpdates
+        manager.pausesLocationUpdatesAutomatically = configuration.pausesAutomatically
         #endif
     }
 

@@ -251,7 +251,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var speedWarning: Bool = false
     @Published var offlineRoute: CachedRoute?
     @Published var longTripPlan: LongTripPlan?
-    @Published var isNavigating = false
+    @Published var isNavigating = false {
+        didSet {
+            guard isNavigating != oldValue else { return }
+            // Navigation may begin through the phone UI, CarPlay, offline
+            // restore or MCP. Core Location must follow the authoritative
+            // planner state instead of relying on a particular view being
+            // alive to forward this transition.
+            LocationService.shared.setNavigationActive(isNavigating)
+        }
+    }
     @Published var activeRouteLock: ActiveRouteLock?
     @Published var routeSearchQuery = ""
     @Published var routeSearchResults: [RouteSearchResult] = []

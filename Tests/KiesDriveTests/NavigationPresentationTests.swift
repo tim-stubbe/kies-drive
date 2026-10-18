@@ -1654,6 +1654,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 90, speedKmh: 50), .prepare)
     }
 
+    func testActiveNavigationKeepsFullBackgroundLocationConfiguration() {
+        let browsing = NavigationLocationRuntimePolicy.configuration(navigationActive: false)
+        XCTAssertEqual(browsing.desiredAccuracy, kCLLocationAccuracyNearestTenMeters)
+        XCTAssertEqual(browsing.distanceFilter, 25)
+        XCTAssertFalse(browsing.allowsBackgroundUpdates)
+        XCTAssertTrue(browsing.pausesAutomatically)
+
+        let navigating = NavigationLocationRuntimePolicy.configuration(navigationActive: true)
+        XCTAssertEqual(navigating.desiredAccuracy, kCLLocationAccuracyBestForNavigation)
+        XCTAssertEqual(navigating.distanceFilter, 8)
+        XCTAssertTrue(navigating.allowsBackgroundUpdates)
+        XCTAssertFalse(navigating.pausesAutomatically)
+    }
+
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .final]))
