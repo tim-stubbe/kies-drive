@@ -10,7 +10,7 @@ nur noch optionale Zusatzdienste wie Jarvis und Tankpreise.
 
 - App: MapKit-Navigation, Pflichtpunkte, Pausen, Mautvergleich, Route-Lock
 - TrueNAS: `ghcr.io/tim-stubbe/kies-drive:latest`, Port `18080`
-- MCP: `https://<öffentliche-kies-drive-domain>/mcp`; ChatGPT entdeckt dort
+- MCP: `https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive/mcp`; ChatGPT entdeckt dort
   automatisch die Browser-Anmeldung mit OAuth 2.1/PKCE. Es muss kein Token
   kopiert oder im Container hinterlegt werden.
 

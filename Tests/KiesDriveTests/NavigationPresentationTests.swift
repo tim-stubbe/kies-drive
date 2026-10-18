@@ -278,6 +278,13 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
             DriveSettings.serverURLInfoKey: " https://drive.example.test/ "
         ]), "https://drive.example.test")
+        XCTAssertEqual(
+            ServerEndpointPolicy.url(
+                baseURL: "https://drive.example.test/kies-drive",
+                path: "/auth/login"
+            )?.absoluteString,
+            "https://drive.example.test/kies-drive/auth/login"
+        )
     }
 
     func testManagedServerURLRejectsUnsafeOrUnexpandedConfiguration() {

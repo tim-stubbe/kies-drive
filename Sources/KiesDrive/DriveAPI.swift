@@ -5,9 +5,10 @@ import KiesDriveCore
 @MainActor
 final class DriveSettings: ObservableObject {
     static let shared = DriveSettings()
-    nonisolated static let standaloneBaseURL = "http://100.72.226.91:18080"
+    nonisolated static let standaloneBaseURL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive"
     nonisolated static let serverURLInfoKey = "KiesDriveServerURL"
     private static let legacyBaseURLs: Set<String> = [
+        "http://100.72.226.91:18080",
         "https://100.72.226.91:8000",
         "http://100.72.226.91:8000",
         "https://192.168.178.65:8000",
