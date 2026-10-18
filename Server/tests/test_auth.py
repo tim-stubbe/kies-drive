@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pyotp
@@ -377,6 +378,40 @@ def test_mcp_rejects_invalid_navigation_mutations_before_queueing(tmp_path, monk
 
     with main.db() as conn:
         assert conn.execute("SELECT COUNT(*) FROM user_commands").fetchone()[0] == 0
+
+
+def test_stale_remote_command_expires_without_reaching_phone(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "remote-expiry.db"))
+    verification = {}
+    monkeypatch.setattr(
+        main, "send_verification_email",
+        lambda email, token: verification.update(email=email, token=token),
+    )
+    main.AUTH_ATTEMPTS.clear()
+    client = TestClient(main.app)
+    email, password = "expiry@example.com", "a-secure-expiry-password"
+    client.post("/auth/register", json={"email": email, "password": password})
+    client.get("/auth/verify-email", params={"token": verification["token"]})
+    session = client.post("/auth/login", json={"email": email, "password": password}).json()["session"]
+    headers = {"Authorization": f"Bearer {session}"}
+    queued = client.post("/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "set_destination", "arguments": {"query": "Hochheim"}},
+    }).json()
+    command_id = json.loads(queued["result"]["content"][0]["text"])["command_id"]
+    stale_time = datetime.now(timezone.utc) - main.REMOTE_COMMAND_MAX_AGE - timedelta(seconds=1)
+    with main.db() as conn:
+        conn.execute("UPDATE user_commands SET created_at=? WHERE id=?",
+                     (stale_time.isoformat(), command_id))
+
+    assert client.get("/api/navigation/remote/commands", headers=headers).json() == {"commands": []}
+    status = client.post("/mcp", headers=headers, json={
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": "get_command_status", "arguments": {"command_id": command_id}},
+    }).json()
+    data = json.loads(status["result"]["content"][0]["text"])
+    assert data["status"] == "expired"
+    assert data["result"]["ok"] is False
 
 
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):

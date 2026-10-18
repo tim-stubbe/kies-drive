@@ -594,6 +594,23 @@ final class NavigationPresentationTests: XCTestCase {
             liveLegCount: 0, offlineGuidanceActive: false
         ))
     }
+
+    func testExpiredRemoteMutationIsRejectedAgainOnDevice() {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let now = Date(timeIntervalSince1970: 10_000)
+        XCTAssertTrue(DriveRemoteCommandExpiryPolicy.isExpired(
+            formatter.string(from: now.addingTimeInterval(-1)), now: now
+        ))
+        XCTAssertTrue(DriveRemoteCommandExpiryPolicy.isExpired(
+            formatter.string(from: now), now: now
+        ))
+        XCTAssertFalse(DriveRemoteCommandExpiryPolicy.isExpired(
+            formatter.string(from: now.addingTimeInterval(1)), now: now
+        ))
+        XCTAssertFalse(DriveRemoteCommandExpiryPolicy.isExpired(nil, now: now))
+    }
+
     func testExitNumberAndDirectionAreExtracted() {
         let presentation = NavigationManeuverPresentation("Ausfahrt 69 rechts Richtung Neufahrn nehmen")
         XCTAssertEqual(presentation.exitLabel, "Ausfahrt 69")

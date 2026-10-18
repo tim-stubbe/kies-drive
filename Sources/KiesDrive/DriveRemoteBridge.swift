@@ -40,6 +40,12 @@ struct DriveRemoteCommand: Decodable {
     let id: Int
     let command: String
     let arguments: [String: JSONValue]
+    let expiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, command, arguments
+        case expiresAt = "expires_at"
+    }
 }
 
 struct DriveRemoteCommandEnvelope: Decodable { let commands: [DriveRemoteCommand] }
@@ -113,6 +119,18 @@ enum DriveRemoteRouteVisibilityPolicy {
     }
 }
 
+enum DriveRemoteCommandExpiryPolicy {
+    static func isExpired(_ expiresAt: String?, now: Date = Date()) -> Bool {
+        guard let expiresAt,
+              let date = ISO8601DateFormatter.remoteCommand.date(from: expiresAt) else {
+            // Preserve compatibility with an older standalone server. New
+            // servers still expire pending commands before returning them.
+            return false
+        }
+        return now >= date
+    }
+}
+
 @MainActor
 final class DriveRemoteBridge {
     static let shared = DriveRemoteBridge()
@@ -176,6 +194,13 @@ final class DriveRemoteBridge {
                     // lost server acknowledgement; never execute navigation
                     // mutations twice after a radio drop or app restart.
                     result = recorded
+                } else if DriveRemoteCommandExpiryPolicy.isExpired(command.expiresAt) {
+                    result = .init(
+                        ok: false,
+                        message: "Der Remote-Befehl ist abgelaufen und wurde nicht ausgeführt."
+                    )
+                    commandResults[command.id] = result
+                    commandJournal.save(commandResults)
                 } else {
                     do {
                         try await execute(command, at: location.coordinate)
@@ -268,4 +293,12 @@ enum DriveRemoteError: LocalizedError {
         case .unknownCommand: "Unbekannter Remote-Befehl."
         }
     }
+}
+
+private extension ISO8601DateFormatter {
+    static let remoteCommand: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }

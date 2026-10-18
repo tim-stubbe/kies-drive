@@ -10,7 +10,7 @@ import secrets
 import sqlite3
 import time
 from html import escape
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -102,6 +102,7 @@ class RegistrationCompletionRequest(BaseModel):
 
 
 AUTH_ATTEMPTS: dict[str, list[float]] = {}
+REMOTE_COMMAND_MAX_AGE = timedelta(minutes=5)
 
 
 def rate_limit(key: str, maximum: int = 8, window: int = 900) -> None:
@@ -116,6 +117,21 @@ def rate_limit(key: str, maximum: int = 8, window: int = 900) -> None:
 def current_user(authorization: str | None) -> sqlite3.Row:
     with db() as conn:
         return authenticated_user(conn, authorization)
+
+
+def expire_stale_remote_commands(conn: sqlite3.Connection, user_id: int,
+                                 now: datetime | None = None) -> int:
+    cutoff = (now or datetime.now(timezone.utc)) - REMOTE_COMMAND_MAX_AGE
+    result = json.dumps({
+        "ok": False,
+        "message": "Der Remote-Befehl ist abgelaufen und wurde nicht ausgeführt.",
+    }, ensure_ascii=False)
+    cursor = conn.execute(
+        "UPDATE user_commands SET status='expired', result=? "
+        "WHERE user_id=? AND status='pending' AND created_at<?",
+        (result, user_id, cutoff.isoformat()),
+    )
+    return cursor.rowcount
 
 
 @app.get("/healthz")
@@ -683,8 +699,16 @@ async def put_state(request: Request, authorization: str | None = Header(None)):
 def commands(authorization: str | None = Header(None)):
     user = current_user(authorization)
     with db() as conn:
-        rows = conn.execute("SELECT id,command,arguments FROM user_commands WHERE user_id=? AND status='pending' ORDER BY id", (user["id"],)).fetchall()
-    return {"commands": [{"id": r["id"], "command": r["command"], "arguments": json.loads(r["arguments"])} for r in rows]}
+        expire_stale_remote_commands(conn, user["id"])
+        rows = conn.execute(
+            "SELECT id,command,arguments,created_at FROM user_commands "
+            "WHERE user_id=? AND status='pending' ORDER BY id", (user["id"],)
+        ).fetchall()
+    return {"commands": [{
+        "id": r["id"], "command": r["command"],
+        "arguments": json.loads(r["arguments"]),
+        "expires_at": (datetime.fromisoformat(r["created_at"]) + REMOTE_COMMAND_MAX_AGE).isoformat(),
+    } for r in rows]}
 
 
 @app.post("/api/navigation/remote/commands/{command_id}/complete")
@@ -830,6 +854,7 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
                 "content": [{"type": "text", "text": validation_error}], "isError": True}}
         with db() as conn:
             if name == "get_command_status":
+                expire_stale_remote_commands(conn, user["id"])
                 command_id = args.get("command_id")
                 row = conn.execute(
                     "SELECT status,result FROM user_commands WHERE id=? AND user_id=?",
