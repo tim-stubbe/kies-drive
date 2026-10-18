@@ -779,6 +779,20 @@ enum NavigationLocationBatchPolicy {
     }
 }
 
+enum CarPlayCameraUpdatePolicy {
+    /// CarPlay can receive navigation fixes substantially faster than its map
+    /// surface can animate cameras. Starting a new animation for every 8 m
+    /// location update queues motion behind the vehicle at motorway speed.
+    static let minimumInterval: TimeInterval = 0.2
+
+    static func shouldUpdate(last: Date?, current: Date,
+                             minimumInterval: TimeInterval = minimumInterval) -> Bool {
+        guard let last else { return true }
+        let elapsed = current.timeIntervalSince(last)
+        return elapsed < 0 || elapsed >= max(0, minimumInterval)
+    }
+}
+
 enum NavigationLocationAuthorizationPolicy {
     /// iOS commonly answers the first "Always" request with When-In-Use.
     /// Ask for the background upgrade only when guidance actually begins, so

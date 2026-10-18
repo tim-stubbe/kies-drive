@@ -20,6 +20,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var activeTripDestination: CLLocationCoordinate2D?
     private var cameraMode: CameraMode = .follow
     private var lastReliableCourse: CLLocationDirection?
+    private var lastCameraUpdateAt: Date?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
     private var carPlaySearchGeneration = UUID()
     private var activeCarPlaySearch: MKLocalSearch?
@@ -96,6 +97,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         hasShownLocationAccessAlert = false
         routeRestoreInProgress = false
         hasShownRouteRestoreAlert = false
+        lastCameraUpdateAt = nil
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
@@ -227,6 +229,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func followVehicle() {
         cameraMode = .follow
+        lastCameraUpdateAt = nil
         mapView?.setUserTrackingMode(.followWithHeading, animated: true)
     }
 
@@ -804,7 +807,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func updateCamera(for location: CLLocation) {
-        guard RoutePlanner.shared.isNavigating, cameraMode == .follow else { return }
+        guard RoutePlanner.shared.isNavigating, cameraMode == .follow,
+              CarPlayCameraUpdatePolicy.shouldUpdate(
+                last: lastCameraUpdateAt, current: location.timestamp
+              ) else { return }
+        lastCameraUpdateAt = location.timestamp
         if let course = NavigationMotionPolicy.reliableCourse(for: location) {
             lastReliableCourse = course
         }
@@ -821,7 +828,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             pitch: 55,
             heading: heading
         )
-        mapView?.setCamera(camera, animated: true)
+        // Location samples already form a smooth stream. Immediate camera
+        // commits avoid stacking MapKit animations and keeping the car icon
+        // visibly behind its real position at motorway speed.
+        mapView?.setCamera(camera, animated: false)
     }
 
     func mapTemplate(_ mapTemplate: CPMapTemplate, selectedPreviewFor trip: CPTrip, using routeChoice: CPRouteChoice) {}

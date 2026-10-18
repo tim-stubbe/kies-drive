@@ -203,6 +203,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(ordered[1].horizontalAccuracy, 4)
     }
 
+    func testCarPlayCameraDoesNotQueueUpdatesFasterThanMapCanRender() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(CarPlayCameraUpdatePolicy.shouldUpdate(last: nil, current: start))
+        XCTAssertFalse(CarPlayCameraUpdatePolicy.shouldUpdate(
+            last: start, current: start.addingTimeInterval(0.19)
+        ))
+        XCTAssertTrue(CarPlayCameraUpdatePolicy.shouldUpdate(
+            last: start, current: start.addingTimeInterval(0.2)
+        ))
+        XCTAssertTrue(CarPlayCameraUpdatePolicy.shouldUpdate(
+            last: start, current: start.addingTimeInterval(-1)
+        ), "A corrected device clock must not freeze the CarPlay camera")
+    }
+
     func testLocationBatchKeepsUsefulFixesBeforeBadTrailingSample() {
         let now = Date(timeIntervalSince1970: 2_000)
         func location(_ secondsAgo: TimeInterval, latitude: Double,
