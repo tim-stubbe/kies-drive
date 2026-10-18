@@ -1056,6 +1056,11 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayAlongRouteSearchPreservesDestination() {
+        XCTAssertTrue(CarPlaySearchPurpose.destination.replacesDestination)
+        XCTAssertFalse(CarPlaySearchPurpose.routeStop.replacesDestination)
+    }
+
     func testSpeechNormalisesCompactRoadNamesAndUnsafeCharacters() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("\u{FFFC} ↗ A66 • B40 – Richtung Köln (E40)"),

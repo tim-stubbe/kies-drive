@@ -532,6 +532,15 @@ enum NavigationVoiceSelectionPolicy {
     }
 }
 
+enum CarPlaySearchPurpose: Equatable {
+    case destination
+    case routeStop
+
+    /// Selecting an along-route result must preserve the active destination
+    /// and insert a removable comfort stop instead.
+    var replacesDestination: Bool { self == .destination }
+}
+
 enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     case early
     case prepare

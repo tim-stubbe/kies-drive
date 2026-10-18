@@ -26,6 +26,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var lastReliableCourse: CLLocationDirection?
     private var lastCameraUpdateAt: Date?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
+    private var carPlayRouteSearchResults: [ObjectIdentifier: RouteSearchResult] = [:]
+    private var carPlaySearchPurpose: CarPlaySearchPurpose = .destination
     private var carPlaySearchGeneration = UUID()
     private var activeCarPlaySearches: [MKLocalSearch] = []
     private var hasShownLocationAccessAlert = false
@@ -55,6 +57,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeCarPlaySearches.forEach { $0.cancel() }
         activeCarPlaySearches = []
         carPlaySearchResults = [:]
+        carPlayRouteSearchResults = [:]
         cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
         lastReliableCourse = nil
         lastCameraUpdateAt = nil
@@ -106,6 +109,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeCarPlaySearches.forEach { $0.cancel() }
         activeCarPlaySearches = []
         carPlaySearchResults = [:]
+        carPlayRouteSearchResults = [:]
         hasShownLocationAccessAlert = false
         hasShownBackgroundLocationAlert = false
         routeRestoreInProgress = false
@@ -524,6 +528,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
         }
         if !visibleRoutePolylines.isEmpty {
+            routeSearchItems.append(makeAlongRouteSearchItem())
             for (title, query, symbol) in [
                 ("McDonald’s entlang der Route", "McDonald's", "m.circle.fill"),
                 ("Essen entlang der Route", "Restaurant", "fork.knife"),
@@ -577,6 +582,24 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let item = CPListItem(text: "Ziel suchen", detailText: "Orte, Adressen und Firmen",
                               image: UIImage(systemName: "magnifyingglass"))
         item.handler = { [weak self] _, completion in
+            self?.carPlaySearchPurpose = .destination
+            self?.carPlayRouteSearchResults = [:]
+            let search = CPSearchTemplate()
+            search.delegate = self
+            self?.interfaceController?.pushTemplate(search, animated: true) { _, _ in completion() }
+        }
+        return item
+    }
+
+    private func makeAlongRouteSearchItem() -> CPListItem {
+        let item = CPListItem(
+            text: "Auf der Route suchen",
+            detailText: "Eigene Suche als Zwischenstopp",
+            image: UIImage(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+        )
+        item.handler = { [weak self] _, completion in
+            self?.carPlaySearchPurpose = .routeStop
+            self?.carPlaySearchResults = [:]
             let search = CPSearchTemplate()
             search.delegate = self
             self?.interfaceController?.pushTemplate(search, animated: true) { _, _ in completion() }
@@ -596,11 +619,48 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             activeCarPlaySearches.forEach { $0.cancel() }
             activeCarPlaySearches = []
             carPlaySearchResults = [:]
+            carPlayRouteSearchResults = [:]
             finish([])
             return
         }
         let generation = UUID()
         carPlaySearchGeneration = generation
+        if carPlaySearchPurpose == .routeStop {
+            activeCarPlaySearches.forEach { $0.cancel() }
+            activeCarPlaySearches = []
+            carPlaySearchResults = [:]
+            Task { [weak self] in
+                guard let self else {
+                    finish([])
+                    return
+                }
+                await RoutePlanner.shared.searchAlongRoute(query)
+                guard generation == self.carPlaySearchGeneration,
+                      self.carPlaySearchPurpose == .routeStop else {
+                    finish([])
+                    return
+                }
+                var mapped: [ObjectIdentifier: RouteSearchResult] = [:]
+                let items = RoutePlanner.shared.routeSearchResults.prefix(8).map { result in
+                    let name = result.mapItem.name ?? "Zwischenstopp"
+                    let item = CPListItem(
+                        text: name,
+                        detailText: String(
+                            format: "%@%.1f km Umweg",
+                            result.detourIsEstimated ? "ca. " : "",
+                            result.detourMetres / 1_000
+                        ),
+                        image: UIImage(systemName: "plus.circle.fill")
+                    )
+                    mapped[ObjectIdentifier(item)] = result
+                    return item
+                }
+                self.carPlayRouteSearchResults = mapped
+                finish(items)
+            }
+            return
+        }
+        carPlayRouteSearchResults = [:]
         var requests: [MKLocalSearch.Request] = []
         if let coordinate = LocationService.shared.location?.coordinate {
             let local = MKLocalSearch.Request()
@@ -696,6 +756,30 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     func searchTemplate(_ searchTemplate: CPSearchTemplate, selectedResult item: CPListItem,
                         completionHandler: @escaping () -> Void) {
+        if let result = carPlayRouteSearchResults[ObjectIdentifier(item)] {
+            guard let start = LocationService.shared.location?.coordinate else {
+                completionHandler()
+                showFailure("Der aktuelle Standort ist nicht mehr verfügbar.")
+                return
+            }
+            Task { [weak self] in
+                let succeeded = await RoutePlanner.shared.addRouteStop(
+                    result.mapItem, from: start, settings: .shared,
+                    knownRouteProgress: result.routeProgress,
+                    expectedRouteGeneration: result.routeGeneration
+                )
+                completionHandler()
+                if succeeded {
+                    self?.interfaceController?.popToRootTemplate(animated: true, completion: nil)
+                } else {
+                    self?.showFailure(
+                        RoutePlanner.shared.errorMessage ??
+                            "Der Zwischenstopp konnte nicht hinzugefügt werden."
+                    )
+                }
+            }
+            return
+        }
         guard let mapItem = carPlaySearchResults[ObjectIdentifier(item)],
               let start = LocationService.shared.location?.coordinate else {
             completionHandler()
