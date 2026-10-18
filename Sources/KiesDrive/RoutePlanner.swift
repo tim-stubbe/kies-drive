@@ -1637,7 +1637,6 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             allowsFullRecovery: offlineNeedsInitialPositionMatch,
             courseDegrees: NavigationMotionPolicy.reliableCourse(for: location)
         ) else { return }
-        offlineNeedsInitialPositionMatch = false
 
         if OfflineRouteRecoveryPolicy.shouldAttempt(lastAttempt: lastOfflineRecoveryAttempt) {
             lastOfflineRecoveryAttempt = Date()
@@ -1668,6 +1667,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             horizontalAccuracy: location.horizontalAccuracy,
             speedMetresPerSecond: reliableSpeed
         )
+        if offlineNeedsInitialPositionMatch,
+           OfflineInitialPositionMatchPolicy.isReliable(
+                distanceFromRoute: progress.distanceFromRoute,
+                horizontalAccuracy: location.horizontalAccuracy,
+                speedMetresPerSecond: reliableSpeed
+           ) {
+            offlineNeedsInitialPositionMatch = false
+        }
         let isDeparting = NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: progress.distanceFromRoute,
             previousDistance: previousOffRouteDistance,

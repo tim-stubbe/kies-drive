@@ -1240,6 +1240,22 @@ enum OfflineRouteRecoveryPolicy {
     }
 }
 
+enum OfflineInitialPositionMatchPolicy {
+    /// The first cached-route match is authoritative only inside the same
+    /// accuracy/speed-aware corridor used by deviation detection. A far-away
+    /// cached GPS fix must not consume full-route recovery before the first
+    /// trustworthy post-launch location arrives.
+    static func isReliable(distanceFromRoute: CLLocationDistance,
+                           horizontalAccuracy: CLLocationAccuracy,
+                           speedMetresPerSecond: Double) -> Bool {
+        !NavigationDeviationPolicy.isOutsideCorridor(
+            distanceFromRoute: distanceFromRoute,
+            horizontalAccuracy: horizontalAccuracy,
+            speedMetresPerSecond: speedMetresPerSecond
+        )
+    }
+}
+
 /// A persistent trip lock must survive a transient MapKit outage. Automatic
 /// restoration is retried at a calm cadence instead of being permanently
 /// consumed by the first failed request or hammering MapKit on every GPS fix.

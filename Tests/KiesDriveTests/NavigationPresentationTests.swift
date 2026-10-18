@@ -1588,6 +1588,17 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineInitialRecoveryWaitsForPositionInsideRouteCorridor() {
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.isReliable(
+            distanceFromRoute: 2_000, horizontalAccuracy: 20,
+            speedMetresPerSecond: 25
+        ))
+        XCTAssertTrue(OfflineInitialPositionMatchPolicy.isReliable(
+            distanceFromRoute: 35, horizontalAccuracy: 10,
+            speedMetresPerSecond: 12
+        ))
+    }
+
     func testOfflineRecoveryPublishesOnlyACommittedActiveOnlineRoute() {
         XCTAssertTrue(OfflineRouteRecoveryPolicy.acceptsOnlineResult(
             calculationSucceeded: true, navigationActive: true,
