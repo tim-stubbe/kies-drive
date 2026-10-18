@@ -982,6 +982,28 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 0)
     }
 
+    func testDiagnosticSummaryOnlyWarnsForClusteredGPSFailures() throws {
+        let start = Date(timeIntervalSince1970: 10_000)
+        let spread = [
+            DriveDiagnosticEvent(kind: .navigationStarted, date: start, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .locationRejected, date: start.addingTimeInterval(60), detail: "GPS"),
+            DriveDiagnosticEvent(kind: .locationRejected, date: start.addingTimeInterval(3_600), detail: "GPS"),
+            DriveDiagnosticEvent(kind: .locationRejected, date: start.addingTimeInterval(7_200), detail: "GPS"),
+        ]
+        let clustered = [
+            DriveDiagnosticEvent(kind: .navigationStarted, date: start, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .locationRejected, date: start.addingTimeInterval(10), detail: "GPS"),
+            DriveDiagnosticEvent(kind: .locationRejected, date: start.addingTimeInterval(25), detail: "GPS"),
+            DriveDiagnosticEvent(kind: .locationRejected, date: start.addingTimeInterval(50), detail: "GPS"),
+        ]
+
+        XCTAssertEqual(try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: spread)).quality, .good)
+        let warning = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: clustered))
+        XCTAssertEqual(warning.quality, .attention)
+        XCTAssertEqual(warning.rejectedLocations, 3)
+        XCTAssertTrue(warning.recommendation.contains("GPS"))
+    }
+
     func testDiagnosticSummaryFlagsMissedFinalCue() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),

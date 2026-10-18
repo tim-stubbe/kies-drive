@@ -318,6 +318,21 @@ struct DriveDiagnosticSummary: Equatable {
     let resolvedRouteIssues: Int
     let recommendation: String
 
+    private static func maximumBurst(of kind: DriveDiagnosticKind,
+                                     in events: ArraySlice<DriveDiagnosticEvent>,
+                                     window: TimeInterval = 60) -> Int {
+        let dates = events.filter { $0.kind == kind }.map(\.date).sorted()
+        var start = 0
+        var maximum = 0
+        for end in dates.indices {
+            while start < end, dates[end].timeIntervalSince(dates[start]) > window {
+                start += 1
+            }
+            maximum = max(maximum, end - start + 1)
+        }
+        return maximum
+    }
+
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
         guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
         let afterStart = events.index(after: start)..<events.endIndex
@@ -334,6 +349,7 @@ struct DriveDiagnosticSummary: Equatable {
         let totalOfflineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
         let failures = unresolved.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
+        let rejectedBurst = maximumBurst(of: .locationRejected, in: session)
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
         let lastSpeechRecovery = session.lastIndex(where: { $0.kind == .maneuverAnnounced })
         let unresolvedSpeech = lastSpeechRecovery.map {
@@ -359,9 +375,9 @@ struct DriveDiagnosticSummary: Equatable {
             } else {
                 recommendation = "Die letzte Neuberechnung ist noch fehlgeschlagen; die alte Route blieb aktiv."
             }
-        } else if rejected >= 3 || reroutes >= 3 {
+        } else if rejectedBurst >= 3 || reroutes >= 3 {
             quality = .attention
-            recommendation = rejected >= 3
+            recommendation = rejectedBurst >= 3
                 ? "Mehrere GPS-Messungen waren unzuverlässig; freie Sicht zum Himmel verbessert die Führung."
                 : "Die Route wurde mehrfach neu berechnet; den Diagnosebericht nach der Fahrt prüfen."
         } else {
