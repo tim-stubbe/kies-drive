@@ -972,6 +972,18 @@ final class NavigationPresentationTests: XCTestCase {
             stages: [.early, .prepare, .final]
         ), "A completed final distance cue must not be repeated behind the junction")
         XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
+            stages: [.early, .prepare], inFlightStages: [.now]
+        ), "An immediate cue still playing at the junction must not be interrupted and repeated")
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
+            stages: [.early], inFlightStages: [.final]
+        ), "An actionable final cue already in flight is decisive")
+        XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "0:1:Rechts abbiegen", nextKey: "0:2:Links halten",
+            stages: [.early], inFlightStages: [.prepare]
+        ), "A non-decisive preparation cue must not mask a missing final cue")
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: "0:1:Rechts abbiegen", nextKey: "0:1:Rechts abbiegen",
             stages: [.early, .prepare]
         ))

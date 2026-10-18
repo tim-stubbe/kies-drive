@@ -2144,9 +2144,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard diagnosticManeuverKey != key else { return false }
         let previousKey = diagnosticManeuverKey
         let previousInstruction = diagnosticManeuverInstruction
+        let previousInFlightStages = previousKey.map { pendingStages(for: $0) } ?? []
         let shouldRecover = ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: previousKey, nextKey: key,
-            stages: previousKey.map { announcedManeuverStages[$0] ?? [] } ?? []
+            stages: previousKey.map { announcedManeuverStages[$0] ?? [] } ?? [],
+            inFlightStages: previousInFlightStages
         )
         var recovered = false
         if shouldRecover, let previousKey, let previousInstruction {
@@ -2174,8 +2176,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 maneuverClaims: claims
             )
         }
-        closeOutstandingManeuverDiagnostic(
-            reason: recovered ? .recoveryQueued : .routeTransition
+        let decisiveCueAlreadyInFlight = ManeuverDiagnosticPolicy.deliveredDecisiveCue(
+            stages: previousInFlightStages
+        )
+        closeOutstandingManeuverDiagnostic(reason:
+            recovered || decisiveCueAlreadyInFlight ? .recoveryQueued : .routeTransition
         )
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction

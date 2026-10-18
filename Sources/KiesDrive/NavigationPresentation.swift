@@ -600,9 +600,14 @@ enum ManeuverDiagnosticPolicy {
     /// Route replacements clear the previous key before publishing their new
     /// steps, so this applies only to a genuine in-route maneuver transition.
     static func shouldRecoverFinalCue(previousKey: String?, nextKey: String,
-                                      stages: Set<NavigationAnnouncementStage>) -> Bool {
+                                      stages: Set<NavigationAnnouncementStage>,
+                                      inFlightStages: Set<NavigationAnnouncementStage> = []) -> Bool {
         guard let previousKey, previousKey != nextKey else { return false }
-        return !deliveredDecisiveCue(stages: stages)
+        // An immediate cue can still be playing while the first GPS fix on
+        // the road after the junction arrives. Treat that cue as decisive for
+        // transition purposes: interrupting it with a second, late "Jetzt"
+        // would repeat the turn behind the driver and can be actively unsafe.
+        return !deliveredDecisiveCue(stages: stages.union(inFlightStages))
     }
 }
 
