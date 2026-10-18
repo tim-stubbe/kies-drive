@@ -5025,6 +5025,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func mayInsertRouteStop(at coordinate: CLLocationCoordinate2D) -> Bool {
+        guard RouteStopEndpointPolicy.isValid(coordinate) else {
+            errorMessage = "Dieser Zwischenstopp hat keinen gültigen Standort."
+            return false
+        }
         guard RouteStopEndpointPolicy.isDistinctFromDestination(
             stop: coordinate,
             destination: destination?.placemark.coordinate

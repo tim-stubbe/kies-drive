@@ -3829,6 +3829,17 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(RouteStopEndpointPolicy.isDistinctFromDestination(
             stop: destination, destination: nil
         ))
+        XCTAssertFalse(RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: .init(latitude: .nan, longitude: 8), destination: nil
+        ))
+        XCTAssertFalse(RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: .init(latitude: 91, longitude: 8), destination: nil
+        ))
+        XCTAssertFalse(RouteStopEndpointPolicy.isDistinctFromDestination(
+            stop: .init(latitude: 50, longitude: -181), destination: destination
+        ))
+        XCTAssertTrue(RouteStopEndpointPolicy.isValid(destination))
+        XCTAssertFalse(RouteStopEndpointPolicy.isValid(.init(latitude: 50, longitude: .infinity)))
     }
 
     func testRouteSearchCompletionFinishesSpinnerWhenOwnedSearchBecomesStale() {

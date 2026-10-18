@@ -2434,6 +2434,12 @@ enum RouteSearchPolicy {
 }
 
 enum RouteStopEndpointPolicy {
+    static func isValid(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        coordinate.latitude.isFinite && coordinate.longitude.isFinite &&
+            (-90...90).contains(coordinate.latitude) &&
+            (-180...180).contains(coordinate.longitude)
+    }
+
     /// A POI at the final destination is not an intermediate stop. Treating it
     /// as mandatory creates a duplicate final leg and can send the driver
     /// around a block after already arriving. The tolerance absorbs ordinary
@@ -2443,9 +2449,8 @@ enum RouteStopEndpointPolicy {
         destination: CLLocationCoordinate2D?,
         toleranceMetres: CLLocationDistance = 100
     ) -> Bool {
-        guard let destination,
-              stop.latitude.isFinite, stop.longitude.isFinite,
-              destination.latitude.isFinite, destination.longitude.isFinite else { return true }
+        guard isValid(stop) else { return false }
+        guard let destination, isValid(destination) else { return true }
         return CLLocation(latitude: stop.latitude, longitude: stop.longitude).distance(
             from: CLLocation(latitude: destination.latitude, longitude: destination.longitude)
         ) > max(0, toleranceMetres)
