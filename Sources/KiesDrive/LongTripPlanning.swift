@@ -82,6 +82,17 @@ enum TollVariantRoutePolicy {
     }
 }
 
+enum TollDestinationLabelPolicy {
+    static func label(lockedDestinationName: String?, mapItemName: String?,
+                      enteredText: String, placemarkTitle: String?) -> String {
+        for candidate in [lockedDestinationName, mapItemName, enteredText, placemarkTitle] {
+            let value = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !value.isEmpty { return value }
+        }
+        return "Unbekanntes Ziel"
+    }
+}
+
 struct TollLookupSnapshot: Equatable {
     let routeIdentity: String
     let origin: CLLocationCoordinate2D

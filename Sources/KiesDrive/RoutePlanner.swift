@@ -2713,8 +2713,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                               settings: DriveSettings) async {
         guard let destination else { return }
         let routeGeneration = routeCalculationGeneration
-        let destinationName = destination.placemark.title ?? destination.name ?? destinationText
         let lock = routeLockStore.activeLock
+        let destinationName = TollDestinationLabelPolicy.label(
+            lockedDestinationName: lock?.destinationName,
+            mapItemName: destination.name,
+            enteredText: destinationText,
+            placemarkTitle: destination.placemark.title
+        )
         let visited = Set(lock?.visitedWaypointIDs ?? [])
         let openTollWaypoints = lock?.waypoints.filter {
             $0.required && !visited.contains($0.id) && $0.isTollEvidenceAnchor

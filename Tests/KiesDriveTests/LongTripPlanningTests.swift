@@ -189,6 +189,21 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollLookupPrefersLockedDestinationOverBadPlacemarkMetadata() {
+        XCTAssertEqual(TollDestinationLabelPolicy.label(
+            lockedDestinationName: "Hochheim am Main",
+            mapItemName: "Hochheim am Main",
+            enteredText: "Hochheim am Main",
+            placemarkTitle: "Schweiz"
+        ), "Hochheim am Main")
+        XCTAssertEqual(TollDestinationLabelPolicy.label(
+            lockedDestinationName: nil,
+            mapItemName: nil,
+            enteredText: "Split, Kroatien",
+            placemarkTitle: "Unbekannter Ort"
+        ), "Split, Kroatien")
+    }
+
     func testTollComparisonPublishesOnlyCompleteVariantPair() {
         let standard = TollLookupBatchItem(
             avoidTolls: false, routeIdentity: "route|standard",
