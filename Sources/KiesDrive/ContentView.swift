@@ -1285,7 +1285,11 @@ struct DriveContentView: View {
                 currentLocation: location.location,
                 destination: planner.destination,
                 followsLocation: isFollowingLocation,
-                showsRouteOverview: isShowingRouteOverview
+                showsRouteOverview: isShowingRouteOverview,
+                onUserInteraction: {
+                    isFollowingLocation = false
+                    isShowingRouteOverview = false
+                }
             )
         } else if showsNavigationUI {
             mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
@@ -1392,7 +1396,10 @@ struct DriveContentView: View {
         }
         #if os(iOS)
         .onMapCameraChange(frequency: .onEnd) { _ in
-            if position.positionedByUser { isFollowingLocation = false }
+            if position.positionedByUser {
+                isFollowingLocation = false
+                isShowingRouteOverview = false
+            }
         }
         #endif
         .mapControls {

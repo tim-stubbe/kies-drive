@@ -13,6 +13,7 @@ struct OfflineTileMapView: View {
     let destination: MKMapItem?
     let followsLocation: Bool
     let showsRouteOverview: Bool
+    let onUserInteraction: () -> Void
 
     var body: some View {
         OfflinePlatformMap(
@@ -21,7 +22,8 @@ struct OfflineTileMapView: View {
             currentLocation: currentLocation,
             destination: destination,
             followsLocation: followsLocation,
-            showsRouteOverview: showsRouteOverview
+            showsRouteOverview: showsRouteOverview,
+            onUserInteraction: onUserInteraction
         )
         .overlay(alignment: .topTrailing) {
             Label("Offline", systemImage: "arrow.down.circle.fill")
@@ -88,6 +90,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
     private var packageID: String?
     private var lastOverview = false
     private var lastRouteSignature: String?
+    var onUserInteraction: (() -> Void)?
 
     func update(_ mapView: MKMapView, package: InstalledOfflineMapPackage, routes: [MKPolyline],
                 currentLocation: CLLocation?, destination: MKMapItem?, followsLocation: Bool,
@@ -151,6 +154,18 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
         }
         return MKOverlayRenderer(overlay: overlay)
     }
+
+    #if os(iOS)
+    func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+        // MKMapView also calls this delegate method for our own camera updates.
+        // Only an active gesture means the driver deliberately left follow or
+        // overview mode; otherwise every GPS update would disable following.
+        let isUserGesture = mapView.gestureRecognizers?.contains {
+            $0.state == .began || $0.state == .changed
+        } == true
+        if isUserGesture { onUserInteraction?() }
+    }
+    #endif
 }
 
 #if os(iOS)
@@ -161,6 +176,7 @@ private struct OfflinePlatformMap: UIViewRepresentable {
     let destination: MKMapItem?
     let followsLocation: Bool
     let showsRouteOverview: Bool
+    let onUserInteraction: () -> Void
 
     func makeCoordinator() -> OfflineMapCoordinator { OfflineMapCoordinator() }
     func makeUIView(context: Context) -> MKMapView {
@@ -172,6 +188,7 @@ private struct OfflinePlatformMap: UIViewRepresentable {
         return view
     }
     func updateUIView(_ view: MKMapView, context: Context) {
+        context.coordinator.onUserInteraction = onUserInteraction
         context.coordinator.update(view, package: package, routes: routes, currentLocation: currentLocation,
                                    destination: destination, followsLocation: followsLocation,
                                    showsRouteOverview: showsRouteOverview)
@@ -185,6 +202,7 @@ private struct OfflinePlatformMap: NSViewRepresentable {
     let destination: MKMapItem?
     let followsLocation: Bool
     let showsRouteOverview: Bool
+    let onUserInteraction: () -> Void
 
     func makeCoordinator() -> OfflineMapCoordinator { OfflineMapCoordinator() }
     func makeNSView(context: Context) -> MKMapView {
