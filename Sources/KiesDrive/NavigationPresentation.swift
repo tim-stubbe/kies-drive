@@ -935,6 +935,19 @@ enum CarPlayCameraUpdatePolicy {
     }
 }
 
+enum CarPlayCameraMode: Equatable {
+    case follow, overview, free
+}
+
+enum CarPlayCameraLifecyclePolicy {
+    /// A newly connected dashboard must always start by following the car.
+    /// Retaining a manual pan from the previous cable/wireless session leaves
+    /// the map stranded while the driver is already moving.
+    static func modeAfterConnection(previous: CarPlayCameraMode) -> CarPlayCameraMode {
+        .follow
+    }
+}
+
 enum CarPlayRouteLinePolicy {
     /// A seven-point route is easy to follow in the driving camera but hides
     /// junction geometry and even small towns in the full-trip overview.

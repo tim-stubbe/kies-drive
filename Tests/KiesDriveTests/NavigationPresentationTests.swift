@@ -249,6 +249,18 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A corrected device clock must not freeze the CarPlay camera")
     }
 
+    func testCarPlayReconnectAlwaysRestoresVehicleFollowing() {
+        XCTAssertEqual(
+            CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: .free), .follow
+        )
+        XCTAssertEqual(
+            CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: .overview), .follow
+        )
+        XCTAssertEqual(
+            CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: .follow), .follow
+        )
+    }
+
     func testCarPlayOverviewUsesAThinnerRouteWithoutWeakeningFollowMode() {
         XCTAssertEqual(CarPlayRouteLinePolicy.width(isOverview: false), 7)
         XCTAssertEqual(CarPlayRouteLinePolicy.width(isOverview: true), 4.5)

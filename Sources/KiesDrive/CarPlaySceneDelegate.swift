@@ -9,7 +9,6 @@ import UIKit
 @MainActor
 final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate,
                                   CPSearchTemplateDelegate {
-    private enum CameraMode { case follow, overview, free }
     private enum OneShotSearchOutcome {
         case results([MKMapItem])
         case failed
@@ -23,7 +22,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var navigationSession: CPNavigationSession?
     private var activeTrip: CPTrip?
     private var activeTripDestination: CLLocationCoordinate2D?
-    private var cameraMode: CameraMode = .follow
+    private var cameraMode: CarPlayCameraMode = .follow
     private var lastReliableCourse: CLLocationDirection?
     private var lastCameraUpdateAt: Date?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
@@ -51,6 +50,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func connect(interfaceController: CPInterfaceController, window: CPWindow?) {
+        cancellables.removeAll()
+        activeCarPlaySearches.forEach { $0.cancel() }
+        activeCarPlaySearches = []
+        carPlaySearchResults = [:]
+        cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
+        lastReliableCourse = nil
+        lastCameraUpdateAt = nil
         self.interfaceController = interfaceController
         carWindow = window
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
@@ -103,6 +109,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         routeRestoreInProgress = false
         hasShownRouteRestoreAlert = false
         lastCameraUpdateAt = nil
+        lastReliableCourse = nil
+        cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
