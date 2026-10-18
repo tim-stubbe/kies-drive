@@ -34,6 +34,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var hasShownBackgroundLocationAlert = false
     private var routeRestoreInProgress = false
     private var hasShownRouteRestoreAlert = false
+    private var routeRecoveryPresentationState: CarPlayRouteRecoveryPresentationState = .normal
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -117,6 +118,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         hasShownBackgroundLocationAlert = false
         routeRestoreInProgress = false
         hasShownRouteRestoreAlert = false
+        routeRecoveryPresentationState = .normal
         lastCameraUpdateAt = nil
         lastReliableCourse = nil
         cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
@@ -160,6 +162,19 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 // replacing CPManeuver objects here causes visible flicker and
                 // can briefly remove the instruction at busy junctions.
                 self?.updateGuidanceEstimates()
+            }
+            .store(in: &cancellables)
+
+        Publishers.CombineLatest(
+            planner.$isRecalculating.removeDuplicates(),
+            planner.$isManeuverGuidanceReliable.removeDuplicates()
+        )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] recalculating, guidanceReliable in
+                self?.presentRouteRecoveryStateIfNeeded(
+                    recalculating: recalculating,
+                    guidanceReliable: guidanceReliable
+                )
             }
             .store(in: &cancellables)
 
@@ -956,6 +971,31 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             titleVariants: [cleaned, "Tankstopp einplanen"],
             subtitleVariants: nil,
             image: UIImage(systemName: "fuelpump.fill"),
+            primaryAction: acknowledge,
+            secondaryAction: nil,
+            duration: 8
+        )
+        mapTemplate.present(navigationAlert: alert, animated: true)
+    }
+
+    private func presentRouteRecoveryStateIfNeeded(
+        recalculating: Bool,
+        guidanceReliable: Bool
+    ) {
+        let state = CarPlayRouteRecoveryPresentationPolicy.state(
+            recalculating: recalculating,
+            guidanceReliable: guidanceReliable
+        )
+        guard state != routeRecoveryPresentationState else { return }
+        routeRecoveryPresentationState = state
+        let titles = CarPlayRouteRecoveryPresentationPolicy.titleVariants(for: state)
+        guard RoutePlanner.shared.isNavigating, !titles.isEmpty, let mapTemplate else { return }
+        let acknowledge = CPAlertAction(title: "OK", style: .default) { _ in }
+        let alert = CPNavigationAlert(
+            titleVariants: titles,
+            subtitleVariants: nil,
+            image: UIImage(systemName: state == .searching
+                           ? "arrow.triangle.2.circlepath" : "exclamationmark.triangle.fill"),
             primaryAction: acknowledge,
             secondaryAction: nil,
             duration: 8

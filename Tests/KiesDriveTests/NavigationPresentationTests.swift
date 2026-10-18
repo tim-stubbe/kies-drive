@@ -372,6 +372,25 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayExplainsRouteRecoveryWithoutRevivingOldManeuver() {
+        XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
+            recalculating: false, guidanceReliable: true
+        ), .normal)
+        XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
+            recalculating: true, guidanceReliable: false
+        ), .searching)
+        XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
+            recalculating: false, guidanceReliable: false
+        ), .unavailable)
+        XCTAssertTrue(CarPlayRouteRecoveryPresentationPolicy.titleVariants(for: .normal).isEmpty)
+        XCTAssertTrue(CarPlayRouteRecoveryPresentationPolicy.titleVariants(
+            for: .searching
+        ).first?.contains("gesucht") == true)
+        XCTAssertTrue(CarPlayRouteRecoveryPresentationPolicy.titleVariants(
+            for: .unavailable
+        ).first?.contains("sicher") == true)
+    }
+
     func testCarPlayOverviewUsesAThinnerRouteWithoutWeakeningFollowMode() {
         XCTAssertEqual(CarPlayRouteLinePolicy.width(isOverview: false), 7)
         XCTAssertEqual(CarPlayRouteLinePolicy.width(isOverview: true), 4.5)

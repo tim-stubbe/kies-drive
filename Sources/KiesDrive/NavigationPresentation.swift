@@ -791,6 +791,34 @@ enum CarPlayGuidancePresentationPolicy {
     }
 }
 
+enum CarPlayRouteRecoveryPresentationState: Equatable {
+    case normal
+    case searching
+    case unavailable
+}
+
+enum CarPlayRouteRecoveryPresentationPolicy {
+    /// Old maneuver cards are deliberately removed after a confirmed route
+    /// departure. CarPlay still needs an explicit, non-directional explanation
+    /// so an empty dashboard does not look like guidance silently stopped.
+    static func state(recalculating: Bool,
+                      guidanceReliable: Bool) -> CarPlayRouteRecoveryPresentationState {
+        if recalculating { return .searching }
+        return guidanceReliable ? .normal : .unavailable
+    }
+
+    static func titleVariants(for state: CarPlayRouteRecoveryPresentationState) -> [String] {
+        switch state {
+        case .normal:
+            return []
+        case .searching:
+            return ["Neue Route wird gesucht", "Route wird neu berechnet"]
+        case .unavailable:
+            return ["Route verlassen – bitte sicher weiterfahren", "Neuberechnung derzeit nicht möglich"]
+        }
+    }
+}
+
 enum CarPlayTripStartPolicy {
     /// `activateDestination` can already have started local guidance before
     /// CarPlay delivers its `startedTrip` delegate callback. Starting again
