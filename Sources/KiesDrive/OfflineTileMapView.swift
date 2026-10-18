@@ -90,26 +90,18 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
     private var packageID: String?
     private var lastOverview = false
     private var lastRouteSignature: String?
+    private var lastDestinationSignature: String?
     private var lastReliableHeading: CLLocationDirection?
     var onUserInteraction: (() -> Void)?
 
     func update(_ mapView: MKMapView, package: InstalledOfflineMapPackage, routes: [MKPolyline],
                 currentLocation: CLLocation?, destination: MKMapItem?, followsLocation: Bool,
                 showsRouteOverview: Bool) {
-        if packageID != package.id {
+        let packageChanged = packageID != package.id
+        if packageChanged {
             mapView.removeOverlays(mapView.overlays)
             mapView.addOverlay(LocalXYZTileOverlay(package: package), level: .aboveLabels)
             packageID = package.id
-        }
-
-        mapView.removeOverlays(mapView.overlays.filter { $0 is MKPolyline })
-        routes.forEach { mapView.addOverlay($0, level: .aboveRoads) }
-        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-        if let destination {
-            let pin = MKPointAnnotation()
-            pin.title = destination.name ?? "Ziel"
-            pin.coordinate = destination.placemark.coordinate
-            mapView.addAnnotation(pin)
         }
 
         let routeSignature = routes.map { route in
@@ -117,6 +109,24 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
             return "\(route.pointCount):\(rect.origin.x):\(rect.origin.y):\(rect.size.width):\(rect.size.height)"
         }.joined(separator: "|")
         let routeGeometryChanged = routeSignature != lastRouteSignature
+        if packageChanged || routeGeometryChanged {
+            mapView.removeOverlays(mapView.overlays.filter { $0 is MKPolyline })
+            routes.forEach { mapView.addOverlay($0, level: .aboveRoads) }
+        }
+        let destinationSignature = destination.map {
+            "\($0.name ?? "Ziel"):\($0.placemark.coordinate.latitude):\($0.placemark.coordinate.longitude)"
+        }
+        if destinationSignature != lastDestinationSignature {
+            mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+            if let destination {
+                let pin = MKPointAnnotation()
+                pin.title = destination.name ?? "Ziel"
+                pin.coordinate = destination.placemark.coordinate
+                mapView.addAnnotation(pin)
+            }
+            lastDestinationSignature = destinationSignature
+        }
+
         if OfflineMapCameraPolicy.shouldFitOverview(
             showsOverview: showsRouteOverview,
             showedOverviewPreviously: lastOverview,
