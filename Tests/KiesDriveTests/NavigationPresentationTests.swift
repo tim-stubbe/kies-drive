@@ -3890,16 +3890,23 @@ final class NavigationPresentationTests: XCTestCase {
         ), .offline)
     }
 
-    func testForegroundCalculationFallsBackOnlyWhenNoLiveRouteSurvives() {
-        XCTAssertFalse(ForegroundRouteFallbackPolicy.shouldStartOffline(
-            onlineCalculationSucceeded: true, hasLiveRoute: false
-        ))
-        XCTAssertFalse(ForegroundRouteFallbackPolicy.shouldStartOffline(
-            onlineCalculationSucceeded: false, hasLiveRoute: true
-        ), "A transient failure must not replace still-usable live geometry")
-        XCTAssertTrue(ForegroundRouteFallbackPolicy.shouldStartOffline(
-            onlineCalculationSucceeded: false, hasLiveRoute: false
-        ))
+    func testForegroundCalculationUsesOnlyExactlyMatchingFallbackGeometry() {
+        XCTAssertEqual(ForegroundRouteFallbackPolicy.mode(
+            onlineCalculationSucceeded: true, hasMatchingLiveRoute: false,
+            hasMatchingOfflineRoute: false
+        ), .online)
+        XCTAssertEqual(ForegroundRouteFallbackPolicy.mode(
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: true,
+            hasMatchingOfflineRoute: true
+        ), .matchingLive, "A matching live route should remain a non-disruptive preview")
+        XCTAssertEqual(ForegroundRouteFallbackPolicy.mode(
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: false,
+            hasMatchingOfflineRoute: true
+        ), .offline, "Mismatched live constraints must not block exact cached guidance")
+        XCTAssertEqual(ForegroundRouteFallbackPolicy.mode(
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: false,
+            hasMatchingOfflineRoute: false
+        ), .unavailable)
     }
 
     func testStaleLiveRouteRequiresExactActiveConstraints() {

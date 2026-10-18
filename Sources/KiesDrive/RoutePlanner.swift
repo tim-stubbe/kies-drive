@@ -2284,16 +2284,51 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func calculateWithOfflineFallback(from start: CLLocationCoordinate2D,
                                       settings: DriveSettings) async -> Bool {
         let onlineCalculationSucceeded = await calculate(from: start, settings: settings)
-        guard ForegroundRouteFallbackPolicy.shouldStartOffline(
-            onlineCalculationSucceeded: onlineCalculationSucceeded,
-            hasLiveRoute: !legs.isEmpty
-        ) else { return onlineCalculationSucceeded }
-        let restored = startOfflineGuidanceIfAvailable(replacingLiveRoute: false)
-        if restored {
-            errorMessage = nil
-            lastAnnouncement = "Gespeicherte Route wird offline fortgesetzt"
+        let activeConstraintIdentity = routeLockStore.activeLock.map {
+            OfflineRouteConstraintIdentityPolicy.identity(for: $0)
         }
-        return restored
+        let hasMatchingLiveRoute = !legs.isEmpty && LiveRouteRestoreEligibilityPolicy.mayReuse(
+            destinationMatches: destination.map {
+                NavigationDestinationIdentityPolicy.matches(
+                    liveRouteDestinationCoordinate, $0.placemark.coordinate
+                )
+            } ?? false,
+            installedConstraintIdentity: liveRouteConstraintIdentity,
+            activeConstraintIdentity: activeConstraintIdentity
+        )
+        let hasMatchingOfflineRoute = offlineRoute.map {
+            OfflineRouteGuidanceEligibilityPolicy.mayStart(
+                available: OfflineRouteAvailabilityPolicy.isUsable(
+                    savedAt: $0.savedAt,
+                    cacheName: $0.destinationName,
+                    cacheCoordinate: $0.destinationCoordinate?.clLocationCoordinate,
+                    destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
+                    destinationCoordinate: destination?.placemark.coordinate,
+                    belongsToActiveTrip: belongsToActiveTrip($0)
+                ),
+                belongsToExactActiveTrip: belongsToActiveTrip($0)
+            ) && $0.legs.flatMap(\.steps).contains { ($0.coordinates?.count ?? 0) > 1 }
+        } ?? false
+        switch ForegroundRouteFallbackPolicy.mode(
+            onlineCalculationSucceeded: onlineCalculationSucceeded,
+            hasMatchingLiveRoute: hasMatchingLiveRoute,
+            hasMatchingOfflineRoute: hasMatchingOfflineRoute
+        ) {
+        case .online:
+            return true
+        case .matchingLive:
+            errorMessage = nil
+            return true
+        case .offline:
+            let restored = startOfflineGuidanceIfAvailable(replacingLiveRoute: !legs.isEmpty)
+            if restored {
+                errorMessage = nil
+                lastAnnouncement = "Gespeicherte Route wird offline fortgesetzt"
+            }
+            return restored
+        case .unavailable:
+            return false
+        }
     }
 
     /// Speichert die aktuell berechnete Route + Tankstellenliste lokal, damit

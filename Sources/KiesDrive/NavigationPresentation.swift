@@ -2357,12 +2357,18 @@ enum RouteRestoreModePolicy {
 }
 
 enum ForegroundRouteFallbackPolicy {
+    enum Mode: Equatable { case online, matchingLive, offline, unavailable }
+
     /// A failed foreground request may resume the persisted offline trip only
-    /// when no live geometry is still usable. Exact trip and constraint
-    /// identity are verified separately before cached guidance is installed.
-    static func shouldStartOffline(onlineCalculationSucceeded: Bool,
-                                   hasLiveRoute: Bool) -> Bool {
-        !onlineCalculationSucceeded && !hasLiveRoute
+    /// when no exactly matching live geometry is still usable. Destination,
+    /// waypoint and option identity are verified before choosing this mode.
+    static func mode(onlineCalculationSucceeded: Bool,
+                     hasMatchingLiveRoute: Bool,
+                     hasMatchingOfflineRoute: Bool) -> Mode {
+        if onlineCalculationSucceeded { return .online }
+        if hasMatchingLiveRoute { return .matchingLive }
+        if hasMatchingOfflineRoute { return .offline }
+        return .unavailable
     }
 }
 
