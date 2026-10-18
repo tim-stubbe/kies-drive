@@ -859,6 +859,37 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(Set(breaks.compactMap { $0.candidate?.id }).count, 1, "A stop must not be suggested twice")
     }
 
+    func testOpeningStatusIsUsedOnlyForNearTermArrival() {
+        XCTAssertFalse(PlannedStopOpeningStatusPolicy.mayUse(
+            isOpen: false, secondsUntilArrival: 20 * 60
+        ))
+        XCTAssertTrue(PlannedStopOpeningStatusPolicy.mayUse(
+            isOpen: false, secondsUntilArrival: 3 * 3600
+        ))
+        XCTAssertFalse(PlannedStopOpeningStatusPolicy.mayUse(
+            isOpen: false, secondsUntilArrival: nil
+        ))
+        XCTAssertTrue(PlannedStopOpeningStatusPolicy.mayUse(
+            isOpen: nil, secondsUntilArrival: 5 * 60
+        ))
+        XCTAssertTrue(PlannedStopOpeningStatusPolicy.mayUse(
+            isOpen: true, secondsUntilArrival: 5 * 60
+        ))
+    }
+
+    func testBreakPlannerCanUseCurrentlyClosedStopHoursAhead() {
+        let candidate = BreakCandidate(
+            id: "later", name: "Raststätte später", coordinate: .init(),
+            progress: 0.4, detourMetres: 100, isOpen: false
+        )
+        let planned = BreakPlanner().plan(
+            drivingTime: 5 * 3600, candidates: [candidate]
+        )
+
+        XCTAssertEqual(planned.first?.candidate?.id, "later")
+        XCTAssertTrue(planned.first?.explanation.contains("Öffnungsstatus") == true)
+    }
+
     func testRouteTravelTimeProgressAccountsForSlowLegs() {
         let segments: [(distance: Double, travelTime: TimeInterval)] = [
             (100_000, 3 * 3600),
@@ -1878,6 +1909,29 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(stops.count, 1)
         XCTAssertEqual(stops.first?.candidate?.id, "station")
         XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
+    }
+
+    func testFuelPlannerTreatsDistantClosedStatusAsStale() {
+        let candidate = BreakCandidate(
+            id: "later-fuel", name: "Tankstelle später", coordinate: .init(),
+            progress: 0.48, detourMetres: 200, isOpen: false, supportsFuel: true
+        )
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, usableTankFraction: 0.8
+        )
+        let distant = FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: [candidate], routeTravelTime: 7 * 3600
+        )
+        let near = FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: [candidate], routeTravelTime: 30 * 60
+        )
+
+        XCTAssertEqual(distant.first?.candidate?.id, "later-fuel")
+        XCTAssertTrue(distant.first?.explanation.contains("Öffnungsstatus") == true)
+        XCTAssertNil(near.first?.candidate)
     }
 
     func testFuelPlannerRejectsNonFiniteTripAndVehicleInputs() {

@@ -743,12 +743,27 @@ struct PlannedFuelStop: Identifiable, Equatable {
     }
 }
 
+enum PlannedStopOpeningStatusPolicy {
+    /// Provider opening flags describe the lookup moment, not the estimated
+    /// arrival several hours later. A currently closed place is useful only
+    /// when the arrival is far enough away that the flag is no longer a safe
+    /// prediction; the UI still labels that status as needing verification.
+    static let staleAfter: TimeInterval = 45 * 60
+
+    static func mayUse(isOpen: Bool?, secondsUntilArrival: TimeInterval?) -> Bool {
+        guard isOpen == false else { return true }
+        guard let secondsUntilArrival, secondsUntilArrival.isFinite else { return false }
+        return secondsUntilArrival >= staleAfter
+    }
+}
+
 struct FuelStopPlanner {
     /// Respects the configured departure level and reserves the profile's
     /// unusable fraction. Stops are placed before the reserve, never at the
     /// theoretical last kilometre of the tank.
     func plan(distanceMetres: Double, consumptionLPer100km: Double,
-              vehicle: VehicleProfile, candidates: [BreakCandidate]) -> [PlannedFuelStop] {
+              vehicle: VehicleProfile, candidates: [BreakCandidate],
+              routeTravelTime: TimeInterval? = nil) -> [PlannedFuelStop] {
         guard distanceMetres.isFinite, distanceMetres > 0,
               consumptionLPer100km.isFinite, consumptionLPer100km > 0,
               vehicle.tankCapacityLitres.isFinite, vehicle.tankCapacityLitres > 0,
@@ -762,7 +777,15 @@ struct FuelStopPlanner {
         let departureSafeRange = departureUsableLitres / consumptionLPer100km * 100_000
         let fullSafeRange = fullUsableLitres / consumptionLPer100km * 100_000
         guard fullSafeRange > 0, distanceMetres > departureSafeRange else { return [] }
-        var remaining = candidates.filter { $0.isOpen != false && $0.supportsFuel }
+        var remaining = candidates.filter { candidate in
+            let arrival = routeTravelTime.flatMap { travelTime -> TimeInterval? in
+                guard travelTime.isFinite, travelTime >= 0 else { return nil }
+                return (candidate.timeProgress ?? candidate.progress) * travelTime
+            }
+            return candidate.supportsFuel && PlannedStopOpeningStatusPolicy.mayUse(
+                isOpen: candidate.isOpen, secondsUntilArrival: arrival
+            )
+        }
         var lastStopDistance = 0.0
         var currentSafeRange = departureSafeRange
         var result: [PlannedFuelStop] = []
@@ -800,7 +823,8 @@ struct FuelStopPlanner {
                 id: "fuel-\(index)", candidate: best,
                 afterDistanceMetres: stopDistance, routeProgress: progress,
                 explanation: best.map {
-                    "Tankstopp vor der Reserve · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres)) m Umweg"
+                    "Tankstopp vor der Reserve · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres)) m Umweg" +
+                        ($0.isOpen == false ? " · Öffnungsstatus bei Ankunft prüfen." : "")
                 }
                     ?? "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
             ))
@@ -1407,7 +1431,12 @@ struct BreakPlanner {
               alreadyDrivenSinceBreak: TimeInterval = 0) -> [PlannedBreak] {
         let elapsed = min(maximumContinuousDriving, max(0, alreadyDrivenSinceBreak))
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
-        var remaining = candidates.filter { $0.isOpen != false }
+        var remaining = candidates.filter { candidate in
+            let arrival = (candidate.timeProgress ?? candidate.progress) * drivingTime
+            return PlannedStopOpeningStatusPolicy.mayUse(
+                isOpen: candidate.isOpen, secondsUntilArrival: arrival
+            )
+        }
         var remainingFuelStops = plannedFuelStops
         // Negative means the current continuous-driving interval began before
         // this remaining route. PlannedBreak.afterDriving stays relative to
@@ -1709,7 +1738,8 @@ struct RouteComparison {
         let fuelStops = fuelStopPlanner.plan(
             distanceMetres: route.distanceMetres,
             consumptionLPer100km: routeFuel.averageConsumptionLPer100km,
-            vehicle: vehicle, candidates: route.breakCandidates
+            vehicle: vehicle, candidates: route.breakCandidates,
+            routeTravelTime: drivingTime
         ).map { installedFuelStop($0, routeStartProgress: route.installedRouteStartProgress) }
         // Prefer one useful stop over a rest break and a fuel stop a few
         // minutes apart. The normal pause window still applies, so a distant
