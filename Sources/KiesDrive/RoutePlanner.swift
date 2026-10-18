@@ -2316,13 +2316,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             stop: stop, currentProgress: currentProgress,
             installedRouteDistance: totalDistance
         )
+        let reminderID = NavigationFuelReminderPolicy.reminderID(for: stop)
         guard let stage = NavigationFuelReminderPolicy.stage(
             distanceMetres: distance,
             deliveredKeys: drivingFuelState.deliveredReminderKeys,
-            stopID: stop.id
+            stopID: reminderID
         ) else { return }
         drivingFuelState.deliveredReminderKeys.formUnion(
-            NavigationFuelReminderPolicy.keysThrough(stopID: stop.id, stage: stage)
+            NavigationFuelReminderPolicy.keysThrough(stopID: reminderID, stage: stage)
         )
         drivingFuelStore.save(drivingFuelState)
         fuelReminderText = NavigationFuelReminderPolicy.text(
@@ -2330,7 +2331,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         if DriveSettings.shared.voiceGuidance, let fuelReminderText {
             drivingFuelState.pendingSpokenReminderKey = NavigationFuelReminderPolicy.key(
-                stopID: stop.id, stage: stage
+                stopID: reminderID, stage: stage
             )
             drivingFuelState.pendingSpokenReminderText = fuelReminderText
             drivingFuelStore.save(drivingFuelState)

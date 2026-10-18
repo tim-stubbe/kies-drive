@@ -1115,6 +1115,19 @@ enum NavigationFuelReminderPolicy {
         "\(stopID):\(stage.rawValue)"
     }
 
+    /// `FuelStopPlanner` numbers a newly planned remaining journey from one
+    /// again. Persisting only `fuel-1` would suppress the next real stop after
+    /// the plan refreshes. Concrete stations use their provider identity;
+    /// theoretical stops use a coarse installed-route section that stays
+    /// stable across small traffic/reroute adjustments.
+    static func reminderID(for stop: PlannedFuelStop) -> String {
+        if let candidate = stop.candidate { return "station:\(candidate.id)" }
+        let progress = stop.insertionRouteProgress.isFinite
+            ? min(1, max(0, stop.insertionRouteProgress)) : 0
+        let section = min(19, max(0, Int(progress * 20)))
+        return "\(stop.id):section-\(section)"
+    }
+
     static func keysThrough(stopID: String, stage: Stage) -> Set<String> {
         Set(Stage.allCases.filter { $0.rawValue <= stage.rawValue }.map {
             key(stopID: stopID, stage: $0)
@@ -1162,10 +1175,11 @@ enum NavigationFuelReminderSpeechDeliveryPolicy {
                            currentProgress: Double) -> Bool {
         guard let pendingKey, currentProgress.isFinite else { return false }
         return stops.contains { stop in
-            PlannedRouteStopVisibilityPolicy.isAhead(
+            let reminderID = NavigationFuelReminderPolicy.reminderID(for: stop)
+            return PlannedRouteStopVisibilityPolicy.isAhead(
                 stop.insertionRouteProgress, current: currentProgress
             ) && NavigationFuelReminderPolicy.Stage.allCases.contains { stage in
-                NavigationFuelReminderPolicy.key(stopID: stop.id, stage: stage) == pendingKey
+                NavigationFuelReminderPolicy.key(stopID: reminderID, stage: stage) == pendingKey
             }
         }
     }

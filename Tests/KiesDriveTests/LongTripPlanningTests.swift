@@ -188,7 +188,9 @@ final class LongTripPlanningTests: XCTestCase {
             afterDistanceMetres: 180_000, routeProgress: 0.65,
             explanation: "Geplanter Tankstopp"
         )
-        let key = NavigationFuelReminderPolicy.key(stopID: stop.id, stage: .soon)
+        let key = NavigationFuelReminderPolicy.key(
+            stopID: NavigationFuelReminderPolicy.reminderID(for: stop), stage: .soon
+        )
 
         XCTAssertTrue(NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
             pendingKey: key, stops: [stop], currentProgress: 0.4
@@ -254,6 +256,44 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(
             DrivingFuelState.self, from: JSONEncoder().encode(state)
         ), state)
+    }
+
+    func testFuelReminderIdentitySurvivesRefreshWithoutSuppressingLaterStop() {
+        let first = PlannedFuelStop(
+            id: "fuel-1", candidate: nil, afterDistanceMetres: 80_000,
+            routeProgress: 0.4, explanation: "Erster Stopp",
+            installedRouteProgress: 0.4
+        )
+        let refreshedLater = PlannedFuelStop(
+            id: "fuel-1", candidate: nil, afterDistanceMetres: 90_000,
+            routeProgress: 0.5, explanation: "Späterer Stopp",
+            installedRouteProgress: 0.75
+        )
+        XCTAssertNotEqual(
+            NavigationFuelReminderPolicy.reminderID(for: first),
+            NavigationFuelReminderPolicy.reminderID(for: refreshedLater)
+        )
+
+        let station = BreakCandidate(
+            id: "provider-station", name: "Tankstelle", coordinate: .init(),
+            progress: 0.4, installedRouteProgress: 0.4,
+            detourMetres: 100, isOpen: true, supportsFuel: true
+        )
+        let shiftedSameStation = BreakCandidate(
+            id: "provider-station", name: "Tankstelle", coordinate: .init(),
+            progress: 0.42, installedRouteProgress: 0.42,
+            detourMetres: 120, isOpen: true, supportsFuel: true
+        )
+        XCTAssertEqual(
+            NavigationFuelReminderPolicy.reminderID(for: .init(
+                id: "fuel-1", candidate: station, afterDistanceMetres: 80_000,
+                routeProgress: 0.4, explanation: ""
+            )),
+            NavigationFuelReminderPolicy.reminderID(for: .init(
+                id: "fuel-1", candidate: shiftedSameStation, afterDistanceMetres: 82_000,
+                routeProgress: 0.42, explanation: ""
+            ))
+        )
     }
 
     func testBreakCandidateShortlistIsBoundedAndDistributed() {
