@@ -731,6 +731,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeRouteLock = previousLock
             return false
         }
+        // `calculate` committed the route, but actor reentrancy allows a new
+        // destination selection or an explicit navigation stop to occur
+        // before this continuation resumes. Only the still-current selection
+        // may finish the previous trip and start guidance.
+        guard DestinationActivationRollbackPolicy.isCurrent(
+            request: activationGeneration, current: destinationActivationGeneration
+        ), NavigationAsyncWorkPolicy.mayCommitCalculation(
+            navigationActive: isNavigating,
+            session: navigationSession,
+            currentSession: navigationSessionGeneration,
+            work: nil,
+            currentWork: rerouteGeneration
+        ) else { return false }
         finishReplacedUsageTripIfNeeded(previousTripID: previousLock?.id,
                                         nextTripID: routeLockStore.activeLock?.id)
         startNavigation(voiceGuidance: settings.voiceGuidance)

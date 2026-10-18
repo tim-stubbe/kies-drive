@@ -1375,8 +1375,12 @@ enum DestinationSubtitlePolicy {
 /// Destination activation is transactional: a failed request may restore its
 /// own snapshot only while it is still the latest user selection.
 enum DestinationActivationRollbackPolicy {
-    static func shouldRollback(request: UUID, current: UUID) -> Bool {
+    static func isCurrent(request: UUID, current: UUID) -> Bool {
         request == current
+    }
+
+    static func shouldRollback(request: UUID, current: UUID) -> Bool {
+        isCurrent(request: request, current: current)
     }
 }
 

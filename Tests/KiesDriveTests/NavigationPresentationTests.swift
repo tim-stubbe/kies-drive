@@ -1833,6 +1833,12 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(DestinationActivationRollbackPolicy.shouldRollback(
             request: latest, current: latest
         ))
+        XCTAssertFalse(DestinationActivationRollbackPolicy.isCurrent(
+            request: older, current: latest
+        ))
+        XCTAssertTrue(DestinationActivationRollbackPolicy.isCurrent(
+            request: latest, current: latest
+        ))
     }
 
     func testRouteEnrichmentRequiresMatchingRouteAndRequest() {
