@@ -184,6 +184,13 @@ struct DriveUsageSessionState: Codable, Equatable {
     var movingTime: TimeInterval = 0
 }
 
+enum DriveUsageTripTransitionPolicy {
+    static func shouldFinalize(sessionTripID: UUID?, previousTripID: UUID?, nextTripID: UUID?) -> Bool {
+        guard let sessionTripID, let previousTripID, let nextTripID else { return false }
+        return sessionTripID == previousTripID && previousTripID != nextTripID
+    }
+}
+
 struct DriveUsageSessionStore {
     let defaults: UserDefaults
     var key = "drive.usageSession.v1"

@@ -469,6 +469,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func installCroatiaSplitTripLock() {
         let lock = ActiveRouteLock.croatiaSplit()
+        finishReplacedUsageTripIfNeeded(previousTripID: routeLockStore.activeLock?.id,
+                                        nextTripID: lock.id)
         routeLockStore.save(lock)
         activeRouteLock = lock
         destinationText = lock.destinationName
@@ -483,6 +485,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func installHochheimViaWurzenpassTripLock() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass()
+        finishReplacedUsageTripIfNeeded(previousTripID: routeLockStore.activeLock?.id,
+                                        nextTripID: lock.id)
         routeLockStore.save(lock)
         activeRouteLock = lock
         destinationText = lock.destinationName
@@ -556,6 +560,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeRouteLock = previousLock
             return false
         }
+        finishReplacedUsageTripIfNeeded(previousTripID: previousLock?.id,
+                                        nextTripID: routeLockStore.activeLock?.id)
         startNavigation(voiceGuidance: settings.voiceGuidance)
         return true
     }
@@ -2181,6 +2187,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         usageSessionState = .init()
         usageSessionStore.clear()
         usageSessionLastLocation = nil
+    }
+
+    private func finishReplacedUsageTripIfNeeded(previousTripID: UUID?, nextTripID: UUID?) {
+        guard DriveUsageTripTransitionPolicy.shouldFinalize(
+            sessionTripID: usageSessionState.tripID,
+            previousTripID: previousTripID,
+            nextTripID: nextTripID
+        ) else { return }
+        if isNavigating { stopNavigation() }
+        finishUsageSession()
     }
 
     func clearUsageStatistics() {

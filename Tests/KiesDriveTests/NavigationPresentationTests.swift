@@ -1689,6 +1689,24 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(statistics.lastTripDistanceMetres, 7_500)
     }
 
+    func testUsageTripTransitionFinalizesOnlyAReplacedMatchingTrip() {
+        let previous = UUID()
+        let next = UUID()
+
+        XCTAssertTrue(DriveUsageTripTransitionPolicy.shouldFinalize(
+            sessionTripID: previous, previousTripID: previous, nextTripID: next
+        ))
+        XCTAssertFalse(DriveUsageTripTransitionPolicy.shouldFinalize(
+            sessionTripID: previous, previousTripID: previous, nextTripID: previous
+        ))
+        XCTAssertFalse(DriveUsageTripTransitionPolicy.shouldFinalize(
+            sessionTripID: UUID(), previousTripID: previous, nextTripID: next
+        ))
+        XCTAssertFalse(DriveUsageTripTransitionPolicy.shouldFinalize(
+            sessionTripID: previous, previousTripID: previous, nextTripID: nil
+        ))
+    }
+
     func testUsageSessionSurvivesPauseWithoutPersistingLocations() throws {
         let suite = "DriveUsageSessionTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
