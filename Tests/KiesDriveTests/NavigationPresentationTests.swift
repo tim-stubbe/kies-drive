@@ -2092,6 +2092,40 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 0)
     }
 
+    func testDiagnosticStoreKeepsSessionIdentityAcrossRouteRestore() throws {
+        let suite = "DriveDiagnosticSessionTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Kroatien", defaults: defaults)
+        DriveDiagnosticStore.append(.rerouteFailed, detail: "Kein Netz", defaults: defaults)
+        // A restored trip starts guidance again after an app restart.
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Offline · Kroatien", defaults: defaults)
+        DriveDiagnosticStore.append(.rerouteSucceeded, detail: "Route wieder da", defaults: defaults)
+
+        let events = DriveDiagnosticStore.load(defaults: defaults)
+        XCTAssertEqual(events[0].sessionID, events[2].sessionID)
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.eventCount, 4)
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
+    func testDiagnosticStoreCreatesNewSessionAfterExplicitStop() throws {
+        let suite = "DriveDiagnosticStopSessionTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Alte Fahrt", defaults: defaults)
+        DriveDiagnosticStore.append(.navigationStopped, detail: "Beendet", defaults: defaults)
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Neue Fahrt", defaults: defaults)
+
+        let events = DriveDiagnosticStore.load(defaults: defaults)
+        XCTAssertNotEqual(events[0].sessionID, events[2].sessionID)
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.eventCount, 1)
+    }
+
     func testDiagnosticSummaryOnlyWarnsForClusteredGPSFailures() throws {
         let start = Date(timeIntervalSince1970: 10_000)
         let spread = [

@@ -269,12 +269,17 @@ enum DriveDiagnosticDetail {
 
 struct DriveDiagnosticEvent: Codable, Identifiable, Equatable {
     let id: UUID
+    /// Persists across an app restart while the same navigation is still
+    /// active. Older diagnostic archives decode with a nil session ID.
+    let sessionID: UUID?
     let kind: DriveDiagnosticKind
     let date: Date
     let detail: String
 
-    init(id: UUID = UUID(), kind: DriveDiagnosticKind, date: Date = Date(), detail: String) {
+    init(id: UUID = UUID(), sessionID: UUID? = nil,
+         kind: DriveDiagnosticKind, date: Date = Date(), detail: String) {
         self.id = id
+        self.sessionID = sessionID
         self.kind = kind
         self.date = date
         self.detail = detail
@@ -284,6 +289,7 @@ struct DriveDiagnosticEvent: Codable, Identifiable, Equatable {
 enum DriveDiagnosticStore {
     static let didChange = Notification.Name("KiesDriveDiagnosticStoreDidChange")
     private static let key = "drive.diagnostics.v1"
+    private static let activeSessionKey = "drive.diagnostics.active-session.v1"
     private static let maximumCount = 100
     private static let maximumPriorityCount = 30
 
@@ -300,12 +306,27 @@ enum DriveDiagnosticStore {
 
     static func append(_ kind: DriveDiagnosticKind, detail: String, defaults: UserDefaults = .standard) {
         var events = load(defaults: defaults)
-        events.append(.init(kind: kind, detail: detail))
+        let sessionID: UUID?
+        if kind == .navigationStarted {
+            if let stored = defaults.string(forKey: activeSessionKey).flatMap(UUID.init(uuidString:)) {
+                sessionID = stored
+            } else {
+                let created = UUID()
+                defaults.set(created.uuidString, forKey: activeSessionKey)
+                sessionID = created
+            }
+        } else {
+            sessionID = defaults.string(forKey: activeSessionKey).flatMap(UUID.init(uuidString:))
+        }
+        events.append(.init(sessionID: sessionID, kind: kind, detail: detail))
         if events.count > maximumCount {
             events = bounded(events)
         }
         if let data = try? JSONEncoder().encode(events) {
             defaults.set(data, forKey: key)
+            if kind == .navigationStopped || kind == .arrivalReached {
+                defaults.removeObject(forKey: activeSessionKey)
+            }
             NotificationCenter.default.post(name: didChange, object: nil)
         }
     }
@@ -313,11 +334,15 @@ enum DriveDiagnosticStore {
     static func bounded(_ events: [DriveDiagnosticEvent]) -> [DriveDiagnosticEvent] {
         guard events.count > maximumCount else { return events }
         let latestStartIndex = events.lastIndex { $0.kind == .navigationStarted }
-        let session = latestStartIndex.map { events[$0...] } ?? events[...]
+        let latestSessionID = latestStartIndex.flatMap { events[$0].sessionID }
+        let sessionStartIndex = latestSessionID.flatMap { id in
+            events.firstIndex { $0.kind == .navigationStarted && $0.sessionID == id }
+        } ?? latestStartIndex
+        let session = sessionStartIndex.map { events[$0...] } ?? events[...]
         let priority = session.filter { priorityKinds.contains($0.kind) }
             .suffix(maximumPriorityCount)
         var retained = Set(priority.map(\.id))
-        if let latestStartIndex { retained.insert(events[latestStartIndex].id) }
+        if let sessionStartIndex { retained.insert(events[sessionStartIndex].id) }
         for event in events.reversed() where retained.count < maximumCount {
             retained.insert(event.id)
         }
@@ -328,6 +353,7 @@ enum DriveDiagnosticStore {
 
     static func clear(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: key)
+        defaults.removeObject(forKey: activeSessionKey)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 }
@@ -410,7 +436,14 @@ struct DriveDiagnosticSummary: Equatable {
     }
 
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
-        guard let start = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
+        guard let latestStart = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
+        let sessionID = events[latestStart].sessionID
+        // A restored route emits another navigationStarted marker. When it
+        // carries the same persisted ID, include the whole drive instead of
+        // hiding problems that occurred before the app restart or long pause.
+        let start = sessionID.flatMap { id in
+            events.firstIndex { $0.kind == .navigationStarted && $0.sessionID == id }
+        } ?? latestStart
         let afterStart = events.index(after: start)..<events.endIndex
         let terminal = afterStart.first(where: {
             events[$0].kind == .navigationStopped || events[$0].kind == .arrivalReached
