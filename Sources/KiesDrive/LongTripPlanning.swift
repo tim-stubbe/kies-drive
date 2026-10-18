@@ -12,6 +12,26 @@ struct VehicleProfile: Codable, Equatable {
     /// Estimated fuel level at departure. One means full; the reserved share
     /// from `usableTankFraction` remains unavailable for route planning.
     var initialFuelFraction: Double = 1
+
+    var sanitized: VehicleProfile {
+        .init(
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Mein Fahrzeug" : name,
+            baseConsumptionLPer100km: Self.valid(
+                baseConsumptionLPer100km, fallback: 6.5, range: 1...40
+            ),
+            referenceSpeedKmh: Self.valid(referenceSpeedKmh, fallback: 100, range: 30...200),
+            fuelPricePerLitre: Self.valid(fuelPricePerLitre, fallback: 1.75, range: 0...10),
+            tankCapacityLitres: Self.valid(tankCapacityLitres, fallback: 50, range: 5...250),
+            usableTankFraction: Self.valid(usableTankFraction, fallback: 0.85, range: 0.5...0.95),
+            initialFuelFraction: Self.valid(initialFuelFraction, fallback: 1, range: 0...1)
+        )
+    }
+
+    private static func valid(_ value: Double, fallback: Double,
+                              range: ClosedRange<Double>) -> Double {
+        value.isFinite && range.contains(value) ? value : fallback
+    }
 }
 
 struct SpeedScenario: Codable, Identifiable, Equatable {
@@ -20,7 +40,10 @@ struct SpeedScenario: Codable, Identifiable, Equatable {
     var targetSpeedKmh: Double
 
     static func target(_ speed: Double) -> Self {
-        .init(id: "target-\(Int(speed))", name: "Zieltempo \(Int(speed)) km/h", targetSpeedKmh: speed)
+        let safeSpeed = speed.isFinite ? min(220, max(80, speed)) : 150
+        return .init(id: "target-\(Int(safeSpeed))",
+                     name: "Zieltempo \(Int(safeSpeed)) km/h",
+                     targetSpeedKmh: safeSpeed)
     }
 }
 
@@ -172,6 +195,7 @@ struct FuelModel {
     /// effective speeds. This bounded U-shaped curve is a transparent planning
     /// estimate, not a replacement for measured telemetry.
     func estimate(distanceMetres: Double, effectiveSpeedKmh: Double, profile: VehicleProfile) -> FuelEstimate {
+        let profile = profile.sanitized
         let reference = max(30, profile.referenceSpeedKmh)
         let speed = max(0, effectiveSpeedKmh)
         let speedRatio = max(0.3, speed / reference)

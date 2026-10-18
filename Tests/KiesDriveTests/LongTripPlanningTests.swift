@@ -3,6 +3,31 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testVehicleAndSpeedInputsRecoverFromCorruptedStoredValues() {
+        let profile = VehicleProfile(
+            name: " ", baseConsumptionLPer100km: .nan,
+            referenceSpeedKmh: .infinity, fuelPricePerLitre: -1,
+            tankCapacityLitres: .infinity, usableTankFraction: 4,
+            initialFuelFraction: -.infinity
+        ).sanitized
+
+        XCTAssertEqual(profile.name, "Mein Fahrzeug")
+        XCTAssertEqual(profile.baseConsumptionLPer100km, 6.5)
+        XCTAssertEqual(profile.referenceSpeedKmh, 100)
+        XCTAssertEqual(profile.fuelPricePerLitre, 1.75)
+        XCTAssertEqual(profile.tankCapacityLitres, 50)
+        XCTAssertEqual(profile.usableTankFraction, 0.85)
+        XCTAssertEqual(profile.initialFuelFraction, 1)
+        XCTAssertEqual(SpeedScenario.target(.nan).targetSpeedKmh, 150)
+        XCTAssertEqual(SpeedScenario.target(500).targetSpeedKmh, 220)
+        XCTAssertEqual(DriveSettings.sanitizedNumber(
+            NSNumber(value: Double.nan), fallback: 6.5, range: 1...40
+        ), 6.5)
+        XCTAssertEqual(DriveSettings.sanitizedNumber(
+            NSNumber(value: 7.2), fallback: 6.5, range: 1...40
+        ), 7.2)
+    }
+
     func testBreakReminderStateWritesOnlyRealChanges() {
         XCTAssertNil(DrivingRestReminderStatePolicy.changedRawValues(
             current: [], stages: []

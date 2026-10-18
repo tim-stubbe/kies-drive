@@ -52,11 +52,34 @@ final class DriveSettings: ObservableObject {
         voiceGuidance = UserDefaults.standard.object(forKey: "drive.voiceGuidance") as? Bool ?? true
         homeAddress = UserDefaults.standard.string(forKey: "drive.homeAddress") ?? ""
 
-        consumptionLPer100km = UserDefaults.standard.object(forKey: "drive.consumptionLPer100km") as? Double ?? 6.5
-        tankCapacityL = UserDefaults.standard.object(forKey: "drive.tankCapacityL") as? Double ?? 50.0
-        departureFuelPercent = UserDefaults.standard.object(forKey: "drive.departureFuelPercent") as? Double ?? 100
-        fuelPricePerLitre = UserDefaults.standard.object(forKey: "drive.fuelPricePerLitre") as? Double ?? 1.75
-        targetSpeedKmh = UserDefaults.standard.object(forKey: "drive.targetSpeedKmh") as? Double ?? 150
+        consumptionLPer100km = Self.sanitizedNumber(
+            UserDefaults.standard.object(forKey: "drive.consumptionLPer100km"),
+            fallback: 6.5, range: 1...40
+        )
+        tankCapacityL = Self.sanitizedNumber(
+            UserDefaults.standard.object(forKey: "drive.tankCapacityL"),
+            fallback: 50, range: 5...250
+        )
+        departureFuelPercent = Self.sanitizedNumber(
+            UserDefaults.standard.object(forKey: "drive.departureFuelPercent"),
+            fallback: 100, range: 0...100
+        )
+        fuelPricePerLitre = Self.sanitizedNumber(
+            UserDefaults.standard.object(forKey: "drive.fuelPricePerLitre"),
+            fallback: 1.75, range: 0...10
+        )
+        targetSpeedKmh = Self.sanitizedNumber(
+            UserDefaults.standard.object(forKey: "drive.targetSpeedKmh"),
+            fallback: 150, range: 80...220
+        )
+    }
+
+    nonisolated static func sanitizedNumber(_ stored: Any?, fallback: Double,
+                                            range: ClosedRange<Double>) -> Double {
+        guard let value = stored as? NSNumber else { return fallback }
+        let number = value.doubleValue
+        guard number.isFinite, range.contains(number) else { return fallback }
+        return number
     }
 
     nonisolated static func configuredBaseURL(info: [String: Any] = Bundle.main.infoDictionary ?? [:]) -> String {
