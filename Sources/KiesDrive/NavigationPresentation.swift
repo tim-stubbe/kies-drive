@@ -1917,6 +1917,19 @@ enum NavigationRouteRejoinPolicy {
         consecutiveInsideFixes >= requiredConsecutiveInsideFixes
     }
 
+    /// Proximity alone cannot prove a rejoin on parallel roads or at a
+    /// flyover. Once the car is moving quickly enough for Core Location's
+    /// course to be meaningful, the local route direction must agree too.
+    /// While stopped or without course data, retain distance-only matching.
+    static func acceptsInsideFix(isOutsideCorridor: Bool,
+                                 courseDifferenceDegrees: Double?,
+                                 speedMetresPerSecond: Double) -> Bool {
+        guard !isOutsideCorridor else { return false }
+        guard speedMetresPerSecond >= 5.5,
+              courseDifferenceDegrees != nil else { return true }
+        return NavigationCourseMatchingPolicy.isPlausible(courseDifferenceDegrees)
+    }
+
     /// A slow MapKit request must not replace the original route after the
     /// driver has already returned to it. The same stable-match requirement
     /// used to restore maneuver guidance also owns cancellation of that work.

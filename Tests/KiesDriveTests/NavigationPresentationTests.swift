@@ -811,6 +811,34 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 4))
     }
 
+    func testRouteRejoinRejectsMovingParallelRoadWithDifferentDirection() {
+        XCTAssertTrue(NavigationRouteRejoinPolicy.acceptsInsideFix(
+            isOutsideCorridor: false,
+            courseDifferenceDegrees: 12,
+            speedMetresPerSecond: 20
+        ))
+        XCTAssertFalse(NavigationRouteRejoinPolicy.acceptsInsideFix(
+            isOutsideCorridor: false,
+            courseDifferenceDegrees: 100,
+            speedMetresPerSecond: 20
+        ))
+        XCTAssertTrue(NavigationRouteRejoinPolicy.acceptsInsideFix(
+            isOutsideCorridor: false,
+            courseDifferenceDegrees: 100,
+            speedMetresPerSecond: 0
+        ), "A stationary compass must not block distance-only recovery")
+        XCTAssertTrue(NavigationRouteRejoinPolicy.acceptsInsideFix(
+            isOutsideCorridor: false,
+            courseDifferenceDegrees: nil,
+            speedMetresPerSecond: 20
+        ), "Missing course data must remain recoverable")
+        XCTAssertFalse(NavigationRouteRejoinPolicy.acceptsInsideFix(
+            isOutsideCorridor: true,
+            courseDifferenceDegrees: 0,
+            speedMetresPerSecond: 20
+        ))
+    }
+
     func testStableRouteRejoinCancelsOnlyAnObsoleteActiveReroute() {
         XCTAssertFalse(NavigationRouteRejoinPolicy.shouldCancelAutomaticReroute(
             isRecalculating: true, guidanceReliable: false, consecutiveInsideFixes: 2

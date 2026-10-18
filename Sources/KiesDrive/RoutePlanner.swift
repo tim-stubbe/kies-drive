@@ -3760,9 +3760,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             horizontalAccuracy: location.horizontalAccuracy,
             speedMetresPerSecond: reliableSpeed
         ) || isWrongWay
+        let isReliableRejoinFix = NavigationRouteRejoinPolicy.acceptsInsideFix(
+            isOutsideCorridor: isOutsideCorridor,
+            courseDifferenceDegrees: nearestMetric.courseDifferenceDegrees,
+            speedMetresPerSecond: reliableSpeed
+        )
         if isOutsideCorridor {
             onRouteRecoveryFixCount = 0
-        } else if !isManeuverGuidanceReliable {
+        } else if !isManeuverGuidanceReliable, isReliableRejoinFix {
             onRouteRecoveryFixCount += 1
             if NavigationRouteRejoinPolicy.isConfirmed(
                 consecutiveInsideFixes: onRouteRecoveryFixCount
