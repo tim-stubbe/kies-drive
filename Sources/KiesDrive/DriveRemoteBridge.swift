@@ -150,6 +150,16 @@ enum DriveRemoteSyncPolicy {
     }
 }
 
+enum DriveRemoteLocationRefreshPolicy {
+    static let minimumCheckInterval: TimeInterval = 15
+
+    static func mayCheck(lastCheck: Date?, now: Date = Date()) -> Bool {
+        guard let lastCheck else { return true }
+        let elapsed = now.timeIntervalSince(lastCheck)
+        return elapsed < 0 || elapsed >= minimumCheckInterval
+    }
+}
+
 enum DriveRemoteRouteVisibilityPolicy {
     static func hasRoute(liveLegCount: Int, offlineGuidanceActive: Bool) -> Bool {
         liveLegCount > 0 || offlineGuidanceActive
@@ -175,6 +185,8 @@ final class DriveRemoteBridge {
     private let commandJournal = DriveRemoteCommandJournal.live
     private var commandResults = DriveRemoteCommandJournal.live.load()
     private var syncing = false
+    private var checkingForRemoteWork = false
+    private var lastRemoteWorkCheck: Date?
     private var pollingTask: Task<Void, Never>?
 
     func start() {
@@ -187,10 +199,29 @@ final class DriveRemoteBridge {
                    let location = LocationService.shared.location,
                    DriveRemoteSyncPolicy.accepts(location) {
                     await self.sync(location: location)
+                } else if DriveSettings.shared.isReady {
+                    await self.requestFreshLocationIfRemoteWorkIsPending()
                 }
                 let interval = DriveRemoteSyncPolicy.interval(navigationActive: planner.isNavigating)
                 try? await Task.sleep(for: .seconds(interval))
             }
+        }
+    }
+
+    private func requestFreshLocationIfRemoteWorkIsPending() async {
+        guard !checkingForRemoteWork,
+              DriveRemoteLocationRefreshPolicy.mayCheck(lastCheck: lastRemoteWorkCheck) else {
+            return
+        }
+        checkingForRemoteWork = true
+        lastRemoteWorkCheck = Date()
+        defer { checkingForRemoteWork = false }
+        do {
+            if !(try await DriveAPI.remoteCommands()).isEmpty {
+                LocationService.shared.requestFreshLocationForRemoteCommand()
+            }
+        } catch {
+            // Remote availability never changes local navigation behaviour.
         }
     }
 

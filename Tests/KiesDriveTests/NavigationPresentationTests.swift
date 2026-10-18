@@ -1668,6 +1668,20 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(navigating.pausesAutomatically)
     }
 
+    func testRemoteLocationRefreshChecksAreRateLimitedButRecoverFromClockChanges() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(DriveRemoteLocationRefreshPolicy.mayCheck(lastCheck: nil, now: now))
+        XCTAssertFalse(DriveRemoteLocationRefreshPolicy.mayCheck(
+            lastCheck: now.addingTimeInterval(-14), now: now
+        ))
+        XCTAssertTrue(DriveRemoteLocationRefreshPolicy.mayCheck(
+            lastCheck: now.addingTimeInterval(-15), now: now
+        ))
+        XCTAssertTrue(DriveRemoteLocationRefreshPolicy.mayCheck(
+            lastCheck: now.addingTimeInterval(5), now: now
+        ))
+    }
+
     func testManeuverDiagnosticsDetectMissingFinalCue() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .prepare]))
         XCTAssertFalse(ManeuverDiagnosticPolicy.missedFinalCue(stages: [.early, .final]))

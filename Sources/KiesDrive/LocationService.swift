@@ -85,6 +85,19 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #endif
     }
 
+    /// A remote route command can arrive while the phone has been stationary
+    /// long enough that the last distance-filtered fix is no longer live.
+    /// Ask Core Location for one current fix; the normal delegate path then
+    /// validates it and executes the still-pending command.
+    func requestFreshLocationForRemoteCommand() {
+        #if os(iOS) && !targetEnvironment(simulator)
+        guard authorization == .authorizedAlways || authorization == .authorizedWhenInUse else {
+            return
+        }
+        manager.requestLocation()
+        #endif
+    }
+
     private func applyRuntimeConfiguration() {
         let configuration = NavigationLocationRuntimePolicy.configuration(
             navigationActive: navigationActive
