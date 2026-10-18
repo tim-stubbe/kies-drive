@@ -1270,18 +1270,36 @@ struct DrivingFuelStateStore {
 
     func load() -> DrivingFuelState {
         guard let data = defaults.data(forKey: key),
-              let state = try? JSONDecoder().decode(DrivingFuelState.self, from: data) else {
+              let decoded = try? JSONDecoder().decode(DrivingFuelState.self, from: data) else {
             return DrivingFuelState()
+        }
+        let state = persistenceSnapshot(decoded)
+        // One-time privacy migration for releases that persisted the last
+        // exact GPS fix. Rewrite immediately instead of waiting for another
+        // drive checkpoint.
+        if decoded.lastCoordinate != nil || decoded.lastSampleAt != nil,
+           let sanitized = try? JSONEncoder().encode(state) {
+            defaults.set(sanitized, forKey: key)
         }
         return state
     }
 
     func save(_ state: DrivingFuelState) {
-        guard let data = try? JSONEncoder().encode(state) else { return }
+        guard let data = try? JSONEncoder().encode(persistenceSnapshot(state)) else { return }
         defaults.set(data, forKey: key)
     }
 
     func clear() { defaults.removeObject(forKey: key) }
+
+    /// The live point is needed only to measure the next short segment. It is
+    /// never required to estimate remaining fuel across a restart and must
+    /// not become a stored location record.
+    private func persistenceSnapshot(_ state: DrivingFuelState) -> DrivingFuelState {
+        var snapshot = state
+        snapshot.lastCoordinate = nil
+        snapshot.lastSampleAt = nil
+        return snapshot
+    }
 }
 
 enum RemainingRoutePlanningPolicy {

@@ -1432,7 +1432,7 @@ final class LongTripPlanningTests: XCTestCase {
         ), 0.5, accuracy: 0.001)
     }
 
-    func testDrivingFuelStateStorePersistsAndClears() throws {
+    func testDrivingFuelStateStorePersistsAggregateWithoutLocation() throws {
         let suite = "KiesDriveTests.DrivingFuel.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -1444,9 +1444,40 @@ final class LongTripPlanningTests: XCTestCase {
             lastSampleAt: Date(timeIntervalSince1970: 60_000)
         )
         store.save(expected)
-        XCTAssertEqual(store.load(), expected)
+        var persisted = expected
+        persisted.lastCoordinate = nil
+        persisted.lastSampleAt = nil
+        XCTAssertEqual(store.load(), persisted)
+        let data = try XCTUnwrap(defaults.data(forKey: store.key))
+        let encoded = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(encoded.localizedCaseInsensitiveContains("latitude"))
+        XCTAssertFalse(encoded.localizedCaseInsensitiveContains("longitude"))
         store.clear()
         XCTAssertEqual(store.load(), DrivingFuelState())
+    }
+
+    func testDrivingFuelStateStoreMigratesLegacySavedCoordinateImmediately() throws {
+        let suite = "KiesDriveTests.DrivingFuelMigration.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DrivingFuelStateStore(defaults: defaults)
+        let legacy = DrivingFuelState(
+            tripID: UUID(), observedFuelFraction: 0.6,
+            distanceSinceObservationMetres: 42_000,
+            lastCoordinate: .init(latitude: 50.1, longitude: 8.6),
+            lastSampleAt: Date(timeIntervalSince1970: 60_000)
+        )
+        defaults.set(try JSONEncoder().encode(legacy), forKey: store.key)
+
+        let migrated = store.load()
+
+        XCTAssertNil(migrated.lastCoordinate)
+        XCTAssertNil(migrated.lastSampleAt)
+        XCTAssertEqual(migrated.distanceSinceObservationMetres, 42_000)
+        let data = try XCTUnwrap(defaults.data(forKey: store.key))
+        let encoded = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(encoded.localizedCaseInsensitiveContains("latitude"))
+        XCTAssertFalse(encoded.localizedCaseInsensitiveContains("longitude"))
     }
 
     func testRemainingRoutePlanningDropsPassedStopsAndRebasesAheadStops() {
