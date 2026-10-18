@@ -1091,6 +1091,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             liveRouteDestinationCoordinate = destination.placemark.coordinate
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
+            // Enrichment belongs to the geometry that produced it. Preserve
+            // the old data while MapKit is still calculating, but discard it
+            // at the same commit boundary as the replacement route. Otherwise
+            // a successful reroute can briefly recommend a station, break,
+            // speed limit or toll amount from the abandoned road.
+            stations = []
+            amenityBreakCandidates = []
+            speedLimitPoints = []
+            speedLimits = []
+            speedWarning = false
+            researchedStandardToll = .unknown(reason: "Maut für die neue Route wird geprüft.")
+            researchedAvoidingToll = .unknown(reason: "Mautfreie Alternative wird geprüft.")
+            longTripPlan = nil
             stopPlanningGeneration = UUID()
             measuredBreakDetours = [:]
             resetLiveNavigationProgress()
