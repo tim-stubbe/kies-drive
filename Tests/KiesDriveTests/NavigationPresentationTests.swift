@@ -1877,9 +1877,33 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testRouteSearchAheadCheckUsesDistanceProgress() {
-        XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.49, currentProgress: 0.50))
-        XCTAssertFalse(RouteSearchPolicy.isAhead(candidateProgress: 0.40, currentProgress: 0.50))
-        XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.75, currentProgress: 0.50))
+        XCTAssertTrue(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.49, currentProgress: 0.50,
+            totalRouteDistance: 100_000
+        ))
+        XCTAssertFalse(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.40, currentProgress: 0.50,
+            totalRouteDistance: 100_000
+        ))
+        XCTAssertTrue(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.75, currentProgress: 0.50,
+            totalRouteDistance: 100_000
+        ))
+    }
+
+    func testRouteSearchBackwardToleranceDoesNotScaleToManyKilometres() {
+        XCTAssertTrue(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.4975, currentProgress: 0.50,
+            totalRouteDistance: 800_000
+        ), "Two kilometres of GPS/projection tolerance remain acceptable")
+        XCTAssertFalse(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.48, currentProgress: 0.50,
+            totalRouteDistance: 800_000
+        ), "A continental route must not turn two percent into 16 km behind")
+        XCTAssertFalse(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.5, currentProgress: 0.5,
+            totalRouteDistance: 0
+        ))
     }
 
     func testRouteSearchQueriesOnlyTheRemainingRoute() {

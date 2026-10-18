@@ -832,7 +832,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ) else { return nil }
             guard projection.distance <= 5_000,
                   RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
-                                            currentProgress: currentRouteProgress),
+                                            currentProgress: currentRouteProgress,
+                                            totalRouteDistance: totalDistance),
                   let anchors = RouteSearchPolicy.detourAnchors(
                     routeCoordinates: routeCoordinates, progress: projection.progress
                   ) else { return nil }
@@ -3111,7 +3112,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guard let match = routePoints.enumerated().min(by: { $0.element.distance(from: point) < $1.element.distance(from: point) }),
                   match.element.distance(from: point) < 4_000,
                   RouteSearchPolicy.isAhead(candidateProgress: routeProgress[match.offset],
-                                            currentProgress: currentProgress) else { return nil }
+                                            currentProgress: currentProgress,
+                                            totalRouteDistance: totalDistance) else { return nil }
             return (station, routeProgress[match.offset], match.element.distance(from: point))
         }
         // Keep at most one strong candidate per route section. This gives the

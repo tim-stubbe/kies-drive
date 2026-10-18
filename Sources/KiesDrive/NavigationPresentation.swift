@@ -1450,8 +1450,16 @@ enum RouteSearchPolicy {
         return candidateIndex >= max(0, currentIndex - tolerance)
     }
 
-    static func isAhead(candidateProgress: Double, currentProgress: Double) -> Bool {
-        candidateProgress >= max(0, currentProgress - 0.02)
+    static func isAhead(candidateProgress: Double, currentProgress: Double,
+                        totalRouteDistance: CLLocationDistance,
+                        maximumBackwardToleranceMetres: CLLocationDistance = 2_000) -> Bool {
+        guard candidateProgress.isFinite, currentProgress.isFinite,
+              totalRouteDistance.isFinite, totalRouteDistance > 0 else { return false }
+        let tolerance = min(
+            0.02,
+            max(0, maximumBackwardToleranceMetres) / totalRouteDistance
+        )
+        return candidateProgress >= max(0, currentProgress - tolerance)
     }
 
     /// Removes the materially completed part before issuing MapKit searches.
