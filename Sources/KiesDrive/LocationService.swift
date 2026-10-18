@@ -167,6 +167,14 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
                     )
                 )
             }
+        } else {
+            // A trip lock can remain active during a long rest even when an
+            // online/offline route is not currently running. Continue only
+            // the fatigue clock so a genuine stop is not lost; route progress
+            // and usage kilometres remain exclusive to active navigation.
+            for sample in guidanceSamples {
+                planner.observePausedTripRest(at: sample)
+            }
         }
 
         Task {

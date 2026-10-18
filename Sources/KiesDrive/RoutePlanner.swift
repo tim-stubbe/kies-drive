@@ -797,6 +797,33 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         buildLongTripPlan(settings: settings)
     }
 
+    /// Keeps the fatigue clock truthful while a persistent trip is paused or
+    /// waiting for route restoration. This deliberately updates neither route
+    /// progress nor driven-distance statistics: it only observes whether the
+    /// vehicle is still moving or has completed a real restorative stop.
+    func observePausedTripRest(at location: CLLocation) {
+        guard !isNavigating,
+              let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id,
+              let speed = NavigationMotionPolicy.reliableSpeed(for: location)
+        else { return }
+        let previousContinuousDriving = drivingRestState.continuousDriving
+        drivingRestState = DrivingRestPolicy.updated(
+            drivingRestState, tripID: tripID, at: location.timestamp,
+            speedMetresPerSecond: speed
+        )
+        if NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: lastDrivingStatePersistedAt, now: location.timestamp
+        ) || (previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0) {
+            drivingRestStore.save(drivingRestState)
+            lastDrivingStatePersistedAt = location.timestamp
+        }
+        if previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0 {
+            deliveredBreakReminderStages = []
+            breakReminderText = nil
+            buildLongTripPlan(settings: .shared)
+        }
+    }
+
     func estimatedFuelFraction(settings: DriveSettings) -> Double {
         guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else {
             return min(1, max(0, settings.departureFuelPercent / 100))
