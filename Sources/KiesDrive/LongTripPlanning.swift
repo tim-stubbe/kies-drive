@@ -891,6 +891,10 @@ struct DrivingRestState: Codable, Equatable {
     var continuousDriving: TimeInterval = 0
     var lastSampleAt: Date?
     var stationarySince: Date?
+    /// Movement state of the preceding reliable sample. This lets the fatigue
+    /// clock count the interval leading into a stop once, without treating
+    /// every observed stationary minute as additional driving time.
+    var lastSampleWasMoving: Bool?
     var deliveredReminderRawValues: Set<Int> = []
     /// A reminder can be visually delivered while its status-priority speech
     /// is rejected by an active maneuver, Siri or a call. Persist the stage so
@@ -899,18 +903,20 @@ struct DrivingRestState: Codable, Equatable {
 
     init(tripID: UUID? = nil, continuousDriving: TimeInterval = 0,
          lastSampleAt: Date? = nil, stationarySince: Date? = nil,
+         lastSampleWasMoving: Bool? = nil,
          deliveredReminderRawValues: Set<Int> = [],
          pendingSpokenReminderRawValue: Int? = nil) {
         self.tripID = tripID
         self.continuousDriving = continuousDriving
         self.lastSampleAt = lastSampleAt
         self.stationarySince = stationarySince
+        self.lastSampleWasMoving = lastSampleWasMoving
         self.deliveredReminderRawValues = deliveredReminderRawValues
         self.pendingSpokenReminderRawValue = pendingSpokenReminderRawValue
     }
 
     private enum CodingKeys: String, CodingKey {
-        case tripID, continuousDriving, lastSampleAt, stationarySince
+        case tripID, continuousDriving, lastSampleAt, stationarySince, lastSampleWasMoving
         case deliveredReminderRawValues, pendingSpokenReminderRawValue
     }
 
@@ -920,6 +926,7 @@ struct DrivingRestState: Codable, Equatable {
         continuousDriving = try values.decodeIfPresent(TimeInterval.self, forKey: .continuousDriving) ?? 0
         lastSampleAt = try values.decodeIfPresent(Date.self, forKey: .lastSampleAt)
         stationarySince = try values.decodeIfPresent(Date.self, forKey: .stationarySince)
+        lastSampleWasMoving = try values.decodeIfPresent(Bool.self, forKey: .lastSampleWasMoving)
         deliveredReminderRawValues = try values.decodeIfPresent(
             Set<Int>.self, forKey: .deliveredReminderRawValues
         ) ?? []
@@ -944,6 +951,7 @@ enum DrivingRestPolicy {
             continuousDriving: 0,
             lastSampleAt: date,
             stationarySince: date,
+            lastSampleWasMoving: false,
             deliveredReminderRawValues: []
         )
     }
@@ -956,6 +964,7 @@ enum DrivingRestPolicy {
               speedMetresPerSecond < movingThresholdMetresPerSecond else { return state }
         if state.stationarySince == nil { state.stationarySince = date }
         if state.lastSampleAt.map({ date >= $0 }) ?? true { state.lastSampleAt = date }
+        state.lastSampleWasMoving = false
         return state
     }
 
@@ -966,6 +975,8 @@ enum DrivingRestPolicy {
               speedMetresPerSecond >= 0 else { return state }
 
         let priorSample = state.lastSampleAt
+        let wasMoving = state.lastSampleWasMoving ?? (state.stationarySince == nil)
+        let isMoving = speedMetresPerSecond >= movingThresholdMetresPerSecond
         let interval = priorSample.map { date.timeIntervalSince($0) } ?? 0
         guard interval >= 0 else {
             // Preserve already accumulated driving time, but rebase the
@@ -974,22 +985,22 @@ enum DrivingRestPolicy {
             // catches up; treating the gap as driving or rest would invent
             // evidence we do not have.
             state.lastSampleAt = date
-            state.stationarySince = speedMetresPerSecond < movingThresholdMetresPerSecond
-                ? date : nil
+            state.stationarySince = isMoving ? nil : date
+            state.lastSampleWasMoving = isMoving
             return state
         }
         state.lastSampleAt = date
 
-        // A traffic light, congestion or a short stop is not restorative.
-        // Count every continuously observed interval until a full break is
-        // confirmed. If the stop later reaches `restResetDuration`, the value
-        // is reset below; unknown gaps remain excluded by the bounded sample
-        // interval so we still never invent driving time without evidence.
-        if interval <= maximumCountedSampleGap {
+        // A short stop does not reset fatigue, but its stationary minutes are
+        // not driving either. Count the interval after a moving sample once
+        // (the car may have stopped near its end), then freeze the clock until
+        // movement resumes or a full break resets it. Unknown gaps remain
+        // excluded so we never invent driving time without evidence.
+        if interval <= maximumCountedSampleGap, wasMoving {
             state.continuousDriving += interval
         }
 
-        if speedMetresPerSecond >= movingThresholdMetresPerSecond {
+        if isMoving {
             if let stationarySince = state.stationarySince,
                date.timeIntervalSince(stationarySince) >= restResetDuration {
                 state.continuousDriving = 0
@@ -1007,6 +1018,7 @@ enum DrivingRestPolicy {
                 state.continuousDriving = 0
             }
         }
+        state.lastSampleWasMoving = isMoving
         return state
     }
 }

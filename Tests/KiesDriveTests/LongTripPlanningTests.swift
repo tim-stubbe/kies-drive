@@ -1379,7 +1379,7 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 111 * 60, accuracy: 0.001)
     }
 
-    func testDrivingRestPolicyCountsShortStationaryStopUntilMovementResumes() {
+    func testDrivingRestPolicyFreezesDuringShortStationaryStopWithoutResetting() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 28_000)
         var state = DrivingRestState(
@@ -1400,8 +1400,8 @@ final class LongTripPlanningTests: XCTestCase {
         )
 
         XCTAssertNil(state.stationarySince)
-        XCTAssertEqual(state.continuousDriving, 101 * 60, accuracy: 0.001,
-                       "A ten-minute stop is not a qualifying fatigue break")
+        XCTAssertEqual(state.continuousDriving, 91 * 60, accuracy: 0.001,
+                       "A short stop must not reset fatigue or count parked minutes as driving")
     }
 
     func testDrivingRestStateStorePersistsWithoutLocationData() throws {
