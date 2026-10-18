@@ -548,6 +548,36 @@ final class RoutePersistenceTests: XCTestCase {
         )
     }
 
+    func testMissedRealStopKeepsEveryLaterRouteConstraintMandatory() {
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
+            destination: .init(latitude: 5, longitude: 0),
+            waypoints: [
+                .init(id: "first-pass", name: "Erster Pass",
+                      coordinate: .init(latitude: 1, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .routeConstraint),
+                .init(id: "food", name: "Restaurant",
+                      coordinate: .init(latitude: 2, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .userStop),
+                .init(id: "second-pass", name: "Zweiter Pass",
+                      coordinate: .init(latitude: 3, longitude: 0), required: true,
+                      optionsAfter: .init(avoidTolls: false, avoidHighways: true),
+                      kind: .routeConstraint),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: (0...5).map { .init(latitude: Double($0), longitude: 0) },
+            visitedWaypointIDs: [], status: .active,
+            createdAt: Date(), updatedAt: Date()
+        )
+
+        XCTAssertEqual(
+            lock.passedWaypointIDs(at: .init(latitude: 4.1, longitude: 0)),
+            ["first-pass"],
+            "Returning to a missed real stop must not remove later road constraints"
+        )
+    }
+
     func testRestoreDoesNotSkipWaypointAtAmbiguousRouteCrossing() {
         let now = Date(timeIntervalSince1970: 1)
         let crossingRoute = [

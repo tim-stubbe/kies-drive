@@ -282,15 +282,24 @@ extension ActiveRouteLock {
             for: current, in: corridorPoints, previousProgress: lastRouteProgress
         ), currentMatch.distance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
 
-        return waypoints.compactMap { waypoint in
-            guard waypoint.mayAutoCompleteWhenPassed else { return nil }
+        let visited = Set(visitedWaypointIDs ?? [])
+        var passed: [String] = []
+        for waypoint in waypoints where waypoint.required {
+            if visited.contains(waypoint.id) { continue }
+            // A real fuel/food/user stop is a hard ordering boundary. If it
+            // was missed, restoration must route back to it and then enforce
+            // every later road constraint again; marking those later anchors
+            // complete here could silently bypass a required pass or country
+            // rule on the return leg.
+            guard waypoint.mayAutoCompleteWhenPassed else { break }
             guard let match = RouteCorridorRestorePolicy.earliestNearBestMatch(
                 for: waypoint.coordinate, in: corridorPoints
-            ) else { return nil }
+            ), match.index < currentMatch.index else { break }
             // Keep the next corridor point active. A small index margin avoids
             // skipping a mandatory pass when GPS lies just beyond its sample.
-            return match.index < currentMatch.index ? waypoint.id : nil
+            passed.append(waypoint.id)
         }
+        return passed
     }
 
     /// Heimfahrt nach Hochheim am Main. Der Punkt liegt direkt auf der B109
