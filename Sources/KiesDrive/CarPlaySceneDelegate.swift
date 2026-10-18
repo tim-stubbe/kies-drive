@@ -326,6 +326,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             tripActionItems.append(fullTank)
 
+            let completedBreak = CPListItem(
+                text: "Pause beendet",
+                detailText: "Fahrzeit zurücksetzen und weitere Pausen neu planen",
+                image: UIImage(systemName: "cup.and.saucer.fill")
+            )
+            completedBreak.handler = { [weak self] _, completion in
+                let succeeded = planner.confirmRestBreak(settings: .shared)
+                completion()
+                if succeeded {
+                    self?.showDestinationsAndStopsReplacingCurrentList()
+                } else {
+                    self?.showFailure(planner.errorMessage ?? "Die Pause konnte nicht bestätigt werden.")
+                }
+            }
+            tripActionItems.append(completedBreak)
+
             let lockedWaypoints = planner.activeRouteLock?.waypoints ?? []
             let actions = CarPlayPlannedStopPolicy.actions(
                 plan: planner.longTripPlan,

@@ -449,6 +449,27 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertNotNil(state.stationarySince)
     }
 
+    func testConfirmedBreakResetsDrivingTimeAndReminderHistory() {
+        let tripID = UUID()
+        let date = Date(timeIntervalSince1970: 18_000)
+        let existing = DrivingRestState(
+            tripID: tripID,
+            continuousDriving: 110 * 60,
+            lastSampleAt: date.addingTimeInterval(-60),
+            deliveredReminderRawValues: [
+                NavigationBreakReminderPolicy.Stage.plan.rawValue,
+                NavigationBreakReminderPolicy.Stage.soon.rawValue,
+            ]
+        )
+
+        let state = DrivingRestPolicy.confirmedBreak(existing, tripID: tripID, at: date)
+
+        XCTAssertEqual(state.continuousDriving, 0)
+        XCTAssertEqual(state.lastSampleAt, date)
+        XCTAssertEqual(state.stationarySince, date)
+        XCTAssertTrue(state.deliveredReminderRawValues.isEmpty)
+    }
+
     func testDrivingRestPolicyDoesNotInventMovementAcrossLongUnknownGap() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 20_000)

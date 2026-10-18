@@ -386,15 +386,14 @@ struct DriveContentView: View {
             Label("Reiseplanung", systemImage: "sparkles")
                 .font(.headline).foregroundStyle(Color.kiesForest)
             if planner.isNavigating {
-                Button {
-                    planner.confirmFullTank(settings: settings)
-                } label: {
-                    Label("Vollgetankt bestätigen", systemImage: "fuelpump.circle.fill")
-                        .font(.caption.weight(.semibold))
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        tripConfirmationButtons
+                    }
+                    VStack(alignment: .leading) {
+                        tripConfirmationButtons
+                    }
                 }
-                .buttonStyle(.bordered)
-                .tint(Color.kiesForest)
-                .accessibilityHint("Setzt die Tankplanung ab dem aktuellen Standort auf hundert Prozent")
             }
             ForEach(plan.results.prefix(3)) { result in
                 VStack(alignment: .leading, spacing: 7) {
@@ -460,6 +459,29 @@ struct DriveContentView: View {
             }
         }
         .driveCard()
+    }
+
+    @ViewBuilder
+    private var tripConfirmationButtons: some View {
+        Button {
+            planner.confirmFullTank(settings: settings)
+        } label: {
+            Label("Vollgetankt", systemImage: "fuelpump.circle.fill")
+                .font(.caption.weight(.semibold))
+        }
+        .buttonStyle(.bordered)
+        .tint(Color.kiesForest)
+        .accessibilityHint("Setzt die Tankplanung ab dem aktuellen Standort auf hundert Prozent")
+
+        Button {
+            planner.confirmRestBreak(settings: settings)
+        } label: {
+            Label("Pause beendet", systemImage: "cup.and.saucer.fill")
+                .font(.caption.weight(.semibold))
+        }
+        .buttonStyle(.bordered)
+        .tint(Color.kiesForest)
+        .accessibilityHint("Setzt die ununterbrochene Fahrzeit zurück und plant spätere Pausen neu")
     }
 
     private var routeFuelCard: some View {

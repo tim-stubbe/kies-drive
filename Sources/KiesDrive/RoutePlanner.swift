@@ -461,6 +461,28 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         confirmFuelLevel(1, settings: settings)
     }
 
+    @discardableResult
+    func confirmRestBreak(settings: DriveSettings, at date: Date = Date()) -> Bool {
+        guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else {
+            errorMessage = "Es ist keine aktive Reise vorhanden."
+            return false
+        }
+        if let location = lastAcceptedNavigationLocation,
+           let speed = NavigationMotionPolicy.reliableSpeed(for: location),
+           speed >= DrivingRestPolicy.movingThresholdMetresPerSecond {
+            errorMessage = "Eine Pause kann nur im Stand bestätigt werden."
+            return false
+        }
+        drivingRestState = DrivingRestPolicy.confirmedBreak(
+            drivingRestState, tripID: tripID, at: date
+        )
+        drivingRestStore.save(drivingRestState)
+        breakReminderText = nil
+        lastLongTripPlanRefreshAt = date
+        buildLongTripPlan(settings: settings)
+        return true
+    }
+
     func confirmFuelLevel(_ fraction: Double, settings: DriveSettings) {
         guard let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id else { return }
         drivingFuelState = DrivingFuelPolicy.confirmed(
