@@ -3,6 +3,33 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testSingleRoutePlanExplainsWhyTollComparisonIsUnavailable() {
+        let route = RoutePlanningInput(
+            id: "fixed", title: "Feste Route", distanceMetres: 100_000,
+            mapKitExpectedTravelTime: 4_000, unlimitedMotorwayFraction: 0,
+            typicalUnlimitedSpeedKmh: 130,
+            toll: .unknown(reason: "Noch nicht belegt"), breakCandidates: []
+        )
+        let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
+            routes: [route], scenarios: [.target(130)], vehicle: .init()
+        )
+        XCTAssertTrue(plan.note.contains("allen Pflichtpunkten und Routenvorgaben"))
+    }
+
+    func testTwoRealRoutesDoNotClaimComparisonIsUnavailable() {
+        func route(_ id: String) -> RoutePlanningInput {
+            .init(id: id, title: id, distanceMetres: 100_000,
+                  mapKitExpectedTravelTime: 4_000, unlimitedMotorwayFraction: 0,
+                  typicalUnlimitedSpeedKmh: 130,
+                  toll: .unknown(reason: "Test"), breakCandidates: [])
+        }
+        let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
+            routes: [route("standard"), route("avoid")],
+            scenarios: [.target(130)], vehicle: .init()
+        )
+        XCTAssertFalse(plan.note.contains("Ein Mautvergleich erscheint nur"))
+    }
+
     func testVehicleAndSpeedInputsRecoverFromCorruptedStoredValues() {
         let profile = VehicleProfile(
             name: " ", baseConsumptionLPer100km: .nan,

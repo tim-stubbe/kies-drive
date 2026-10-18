@@ -1436,10 +1436,14 @@ struct RouteComparison {
                        alreadyDrivenSinceBreak: alreadyDrivenSinceBreak)
             }
         }
+        var note = "ETA basiert auf MapKit-Verkehrsdaten. Das Zieltempo verändert nur den geeigneten Anteil ohne bekanntes Limit; Pausen kommen anschließend hinzu."
+        if routes.count < 2 {
+            note += " Ein Mautvergleich erscheint nur, wenn eine echte zweite Route mit allen Pflichtpunkten und Routenvorgaben verfügbar ist."
+        }
         return LongTripPlan(
             createdAt: now,
             results: results,
-            note: "ETA basiert auf MapKit-Verkehrsdaten. Das Zieltempo verändert nur den geeigneten Anteil ohne bekanntes Limit; Pausen kommen anschließend hinzu."
+            note: note
         )
     }
 
