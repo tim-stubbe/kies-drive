@@ -106,6 +106,17 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(secondTap, ["required-pass"])
     }
 
+    func testRapidRouteOptionChangesKeepOriginalRollbackBaseline() {
+        let original = RouteMutationBaselinePolicy.choose(
+            existing: Optional<[Bool]>.none, current: [false, false]
+        )
+        let secondToggle = RouteMutationBaselinePolicy.choose(
+            existing: Optional(original), current: [true, false]
+        )
+
+        XCTAssertEqual(secondToggle, [false, false])
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(

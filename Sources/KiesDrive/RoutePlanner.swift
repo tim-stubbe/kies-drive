@@ -337,6 +337,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
     private var routeOptionMutationGeneration = UUID()
+    private struct RouteOptionMutationSnapshot {
+        let lock: ActiveRouteLock?
+        let avoidTolls: Bool
+        let avoidHighways: Bool
+    }
+    private var routeOptionMutationSnapshot: RouteOptionMutationSnapshot?
     private struct RouteStopMutationSnapshot {
         let lock: ActiveRouteLock?
         let stations: [FuelStation]
@@ -874,6 +880,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func updateLockedRouteOptions(waypointID: String?, avoidTolls: Bool?, avoidHighways: Bool?) {
         routeOptionMutationGeneration = UUID()
+        routeOptionMutationSnapshot = nil
+        applyLockedRouteOptions(
+            waypointID: waypointID, avoidTolls: avoidTolls, avoidHighways: avoidHighways
+        )
+    }
+
+    private func applyLockedRouteOptions(
+        waypointID: String?, avoidTolls: Bool?, avoidHighways: Bool?
+    ) {
         routeLockStore.update { lock in
             if let waypointID, let index = lock.waypoints.firstIndex(where: { $0.id == waypointID }) {
                 var options = lock.waypoints[index].optionsAfter ?? lock.defaultOptions
@@ -902,18 +917,29 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             errorMessage = "Der angegebene Routenabschnitt wurde nicht gefunden."
             return false
         }
-        let previousLock = routeLockStore.activeLock
-        let previousSettings = (avoidTolls: settings.avoidTolls,
-                                avoidHighways: settings.avoidHighways)
         let mutationGeneration = UUID()
+        routeOptionMutationGeneration = mutationGeneration
+        let rollback = RouteMutationBaselinePolicy.choose(
+            existing: routeOptionMutationSnapshot,
+            current: RouteOptionMutationSnapshot(
+                lock: routeLockStore.activeLock,
+                avoidTolls: settings.avoidTolls,
+                avoidHighways: settings.avoidHighways
+            )
+        )
+        routeOptionMutationSnapshot = rollback
+        defer {
+            if mutationGeneration == routeOptionMutationGeneration {
+                routeOptionMutationSnapshot = nil
+            }
+        }
         if RouteOptionScopePolicy.mutatesGlobalSettings(waypointID: waypointID) {
             if let avoidTolls { settings.avoidTolls = avoidTolls }
             if let avoidHighways { settings.avoidHighways = avoidHighways }
         }
-        updateLockedRouteOptions(
+        applyLockedRouteOptions(
             waypointID: waypointID, avoidTolls: avoidTolls, avoidHighways: avoidHighways
         )
-        routeOptionMutationGeneration = mutationGeneration
         let mutatedLock = routeLockStore.activeLock
         let mutatedSettings = (avoidTolls: settings.avoidTolls,
                                avoidHighways: settings.avoidHighways)
@@ -922,13 +948,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
             ) {
-                routeLockStore.replace(with: previousLock)
-                activeRouteLock = previousLock
+                routeLockStore.replace(with: rollback.lock)
+                activeRouteLock = rollback.lock
             }
             if settings.avoidTolls == mutatedSettings.avoidTolls,
                settings.avoidHighways == mutatedSettings.avoidHighways {
-                settings.avoidTolls = previousSettings.avoidTolls
-                settings.avoidHighways = previousSettings.avoidHighways
+                settings.avoidTolls = rollback.avoidTolls
+                settings.avoidHighways = rollback.avoidHighways
             }
             return false
         }
