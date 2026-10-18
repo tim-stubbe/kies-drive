@@ -770,8 +770,14 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func updateGuidanceEstimates() {
-        guard let session = navigationSession, let maneuver = session.upcomingManeuvers.first else { return }
-        session.updateEstimates(maneuverTravelEstimates(), for: maneuver)
+        guard let session = navigationSession else { return }
+        // A confirmed route departure intentionally removes every stale
+        // CPManeuver. Trip-level distance and ETA are still safe, useful
+        // context and must continue updating while MapKit searches for the
+        // replacement route or cached guidance is being rejoined.
+        if let maneuver = session.upcomingManeuvers.first {
+            session.updateEstimates(maneuverTravelEstimates(), for: maneuver)
+        }
         if let trip = activeTrip { mapTemplate?.updateEstimates(travelEstimates(), for: trip) }
     }
 
