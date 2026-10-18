@@ -331,6 +331,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testConfirmedDeviationSuppressesUnsafeOldRouteAnnouncements() {
+        XCTAssertTrue(NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
+            navigationActive: true, rerouting: false, confirmedOffRoute: false
+        ))
+        XCTAssertFalse(NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
+            navigationActive: true, rerouting: true, confirmedOffRoute: true
+        ))
+        XCTAssertFalse(NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
+            navigationActive: true, rerouting: false, confirmedOffRoute: true
+        ), "A failed reroute must not revive spoken instructions from the abandoned road")
+        XCTAssertFalse(NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
+            navigationActive: false, rerouting: false, confirmedOffRoute: false
+        ))
+    }
+
     func testRerouteWatchdogEndsOnlyAfterBoundedWait() {
         let startedAt = Date(timeIntervalSince1970: 10_000)
         XCTAssertFalse(NavigationRerouteWatchdogPolicy.hasTimedOut(

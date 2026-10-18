@@ -978,6 +978,14 @@ enum NavigationDeviationCorridorPolicy {
     }
 }
 
+enum NavigationManeuverSafetyPolicy {
+    static func mayAnnounceLiveManeuver(navigationActive: Bool,
+                                        rerouting: Bool,
+                                        confirmedOffRoute: Bool) -> Bool {
+        navigationActive && !rerouting && !confirmedOffRoute
+    }
+}
+
 /// Failed MapKit requests must not turn a genuine deviation into a spoken
 /// recalculation loop. Successful reroutes retain the short normal cooldown;
 /// repeated failures back off while the old route remains visible.
