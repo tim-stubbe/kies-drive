@@ -187,6 +187,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var speedLimitLoadGeneration = UUID()
     private var tollLoadGeneration = UUID()
     private var routeCalculationGeneration = UUID()
+    /// Volatile identity for MapKit route objects. Unlike the offline cache,
+    /// live `MKRoute` values cannot be persisted, but they still must never be
+    /// resumed for a different destination after a failed recalculation.
+    private var liveRouteDestinationCoordinate: CLLocationCoordinate2D?
     private var destinationSearchGeneration = UUID()
     private var destinationActivationGeneration = UUID()
     private var routeSearchGeneration = UUID()
@@ -438,6 +442,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         item.name = lock.destinationName
         destination = item
         let onlineCalculationSucceeded = await calculate(from: current, settings: settings)
+        let hasMatchingLiveRoute = !legs.isEmpty && NavigationDestinationIdentityPolicy.matches(
+            liveRouteDestinationCoordinate, lock.destination.clLocationCoordinate
+        )
         let hasMatchingOfflineRoute = offlineRoute.map {
             OfflineRouteAvailabilityPolicy.isUsable(
                 savedAt: $0.savedAt,
@@ -450,7 +457,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         } ?? false
         switch RouteRestoreModePolicy.mode(
             onlineCalculationSucceeded: onlineCalculationSucceeded,
-            hasLiveRoute: !legs.isEmpty,
+            hasMatchingLiveRoute: hasMatchingLiveRoute,
             hasMatchingOfflineRoute: hasMatchingOfflineRoute
         ) {
         case .online, .staleLive:
@@ -480,6 +487,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         stopNavigation()
         lastAutomaticRestoreAttempt = nil
         legs = []
+        liveRouteDestinationCoordinate = nil
         alternatives = []
     }
 
@@ -496,6 +504,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         stopNavigation()
         lastAutomaticRestoreAttempt = nil
         legs = []
+        liveRouteDestinationCoordinate = nil
         alternatives = []
     }
 
@@ -1034,6 +1043,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
+            liveRouteDestinationCoordinate = destination.placemark.coordinate
             alternatives = computedAlternatives
             comparisonRoute = computedComparison
             stopPlanningGeneration = UUID()
@@ -1278,6 +1288,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         if replacingLiveRoute {
             legs = []
+            liveRouteDestinationCoordinate = nil
             alternatives = []
             comparisonRoute = nil
         }

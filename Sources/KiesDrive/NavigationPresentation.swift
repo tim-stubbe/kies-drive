@@ -1036,11 +1036,11 @@ enum RouteLockRestorePolicy {
 enum RouteRestoreModePolicy {
     enum Mode: Equatable { case online, offline, staleLive, unavailable }
 
-    static func mode(onlineCalculationSucceeded: Bool, hasLiveRoute: Bool,
+    static func mode(onlineCalculationSucceeded: Bool, hasMatchingLiveRoute: Bool,
                      hasMatchingOfflineRoute: Bool) -> Mode {
-        if onlineCalculationSucceeded && hasLiveRoute { return .online }
+        if onlineCalculationSucceeded && hasMatchingLiveRoute { return .online }
         if hasMatchingOfflineRoute { return .offline }
-        if hasLiveRoute { return .staleLive }
+        if hasMatchingLiveRoute { return .staleLive }
         return .unavailable
     }
 }

@@ -1282,21 +1282,25 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testTripRestorePrefersFreshOnlineThenOfflineBeforeStaleLiveRoute() {
         XCTAssertEqual(RouteRestoreModePolicy.mode(
-            onlineCalculationSucceeded: true, hasLiveRoute: true,
+            onlineCalculationSucceeded: true, hasMatchingLiveRoute: true,
             hasMatchingOfflineRoute: true
         ), .online)
         XCTAssertEqual(RouteRestoreModePolicy.mode(
-            onlineCalculationSucceeded: false, hasLiveRoute: true,
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: true,
             hasMatchingOfflineRoute: true
         ), .offline)
         XCTAssertEqual(RouteRestoreModePolicy.mode(
-            onlineCalculationSucceeded: false, hasLiveRoute: true,
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: true,
             hasMatchingOfflineRoute: false
         ), .staleLive)
         XCTAssertEqual(RouteRestoreModePolicy.mode(
-            onlineCalculationSucceeded: false, hasLiveRoute: false,
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: false,
             hasMatchingOfflineRoute: false
         ), .unavailable)
+        XCTAssertEqual(RouteRestoreModePolicy.mode(
+            onlineCalculationSucceeded: false, hasMatchingLiveRoute: false,
+            hasMatchingOfflineRoute: true
+        ), .offline)
     }
 
     func testNavigationDestinationIdentityUsesRoadLevelTolerance() {
