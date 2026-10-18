@@ -128,6 +128,48 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollRouteIdentityChangesForMaterialRerouteToSameDestination() {
+        let destination = CLLocationCoordinate2D(latitude: 50.01, longitude: 8.35)
+        let direct = TollRouteIdentityPolicy.identity(
+            destination: destination,
+            via: [.init(latitude: 48.0, longitude: 11.0)],
+            distanceMetres: 500_000,
+            routeAnchors: [
+                .init(latitude: 48, longitude: 11),
+                .init(latitude: 49, longitude: 9),
+                destination,
+            ]
+        )
+        let diverted = TollRouteIdentityPolicy.identity(
+            destination: destination,
+            via: [.init(latitude: 48.0, longitude: 11.0)],
+            distanceMetres: 535_000,
+            routeAnchors: [
+                .init(latitude: 48, longitude: 11),
+                .init(latitude: 49, longitude: 10),
+                destination,
+            ]
+        )
+
+        XCTAssertNotEqual(direct, diverted)
+    }
+
+    func testTollRouteIdentityIgnoresMetreLevelGeometryNoise() {
+        let destination = CLLocationCoordinate2D(latitude: 50.01, longitude: 8.35)
+        let first = TollRouteIdentityPolicy.identity(
+            destination: destination, via: [], distanceMetres: 500_020,
+            routeAnchors: [.init(latitude: 49.0001, longitude: 9.0001), destination]
+        )
+        let noisy = TollRouteIdentityPolicy.identity(
+            destination: .init(latitude: 50.0101, longitude: 8.3501),
+            via: [], distanceMetres: 500_080,
+            routeAnchors: [.init(latitude: 49.0002, longitude: 9.0002),
+                           .init(latitude: 50.0101, longitude: 8.3501)]
+        )
+
+        XCTAssertEqual(first, noisy)
+    }
+
     func testTollComparisonPublishesOnlyCompleteVariantPair() {
         let standard = TollLookupBatchItem(
             avoidTolls: false, routeIdentity: "route|standard",

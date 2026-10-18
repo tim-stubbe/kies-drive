@@ -2565,12 +2565,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let destinationName = destination.placemark.title ?? destination.name ?? destinationText
         let lock = routeLockStore.activeLock
         let visited = Set(lock?.visitedWaypointIDs ?? [])
-        let via = lock?.waypoints.filter {
+        let openTollWaypoints = lock?.waypoints.filter {
             $0.required && !visited.contains($0.id) && $0.isTollEvidenceAnchor
-        }.map(\.name) ?? []
+        } ?? []
+        let via = openTollWaypoints.map(\.name)
         let destinationCoordinate = destination.placemark.coordinate
-        let baseRouteIdentity = String(format: "%.5f:%.5f", destinationCoordinate.latitude,
-                                       destinationCoordinate.longitude) + "|" + via.joined(separator: "|")
+        let routeAnchors = legs.flatMap { sample($0.polyline, maximum: 12) }
+        let baseRouteIdentity = TollRouteIdentityPolicy.identity(
+            destination: destinationCoordinate,
+            via: openTollWaypoints.map(\.coordinate),
+            distanceMetres: totalDistance,
+            routeAnchors: routeAnchors
+        )
         let generation = UUID()
         tollLoadGeneration = generation
         // Search evidence normally names towns, not raw coordinates. Resolve

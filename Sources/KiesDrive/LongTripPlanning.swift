@@ -52,6 +52,28 @@ enum TollLookupBatchPolicy {
     }
 }
 
+enum TollRouteIdentityPolicy {
+    /// Toll evidence is route-specific. Destination and named constraints are
+    /// insufficient because a closure can send the same trip over a different
+    /// tolled road. A compact, rounded geometry signature keeps cache keys
+    /// stable across metre-level MapKit noise while invalidating a material
+    /// reroute.
+    static func identity(destination: CLLocationCoordinate2D,
+                         via: [DriveCoordinate],
+                         distanceMetres: CLLocationDistance,
+                         routeAnchors: [CLLocationCoordinate2D]) -> String {
+        let destinationPart = coordinate(destination)
+        let viaPart = via.map { coordinate($0.clLocationCoordinate) }.joined(separator: ";")
+        let distancePart = String(Int((max(0, distanceMetres) / 500).rounded()) * 500)
+        let routePart = routeAnchors.map(coordinate).joined(separator: ";")
+        return [destinationPart, viaPart, distancePart, routePart].joined(separator: "|")
+    }
+
+    private static func coordinate(_ value: CLLocationCoordinate2D) -> String {
+        String(format: "%.3f,%.3f", value.latitude, value.longitude)
+    }
+}
+
 struct TollLookupSnapshot: Equatable {
     let routeIdentity: String
     let origin: CLLocationCoordinate2D
