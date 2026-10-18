@@ -894,16 +894,21 @@ struct DriveContentView: View {
 
     private var navigationInstructionCard: some View {
         let previewInstruction = "Ausfahrt 12 rechts Richtung Wiesbaden auf die A66"
-        let maneuver = NavigationManeuverPresentation(isSimulatorNavigationPreview ? previewInstruction : (planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen"))
-        let maneuverDistance = isSimulatorNavigationPreview ? 450 : planner.nextManeuverDistance
-        let followingInstruction = isSimulatorNavigationPreview ? "Links halten Richtung Frankfurt" : planner.upcomingManeuverInstructions.dropFirst().first
+        let display = NavigationInstructionDisplayPolicy.display(
+            instruction: isSimulatorNavigationPreview ? previewInstruction : (planner.nextManeuverInstruction ?? planner.nextInstruction),
+            distance: isSimulatorNavigationPreview ? 450 : planner.nextManeuverDistance,
+            upcomingInstructions: isSimulatorNavigationPreview
+                ? [previewInstruction, "Links halten", "Geradeaus"]
+                : planner.upcomingManeuverInstructions,
+            guidanceReliable: isSimulatorNavigationPreview || planner.isManeuverGuidanceReliable,
+            recalculating: planner.isRecalculating
+        )
+        let maneuver = NavigationManeuverPresentation(display.instruction)
+        let followingInstruction = display.upcomingInstructions.dropFirst().first
         return VStack(alignment: .leading, spacing: 10) {
-            if isSimulatorNavigationPreview || !planner.upcomingManeuverInstructions.isEmpty {
+            if !display.upcomingInstructions.isEmpty {
                 HStack(spacing: 18) {
-                    let instructions = isSimulatorNavigationPreview
-                        ? [previewInstruction, "Links halten", "Geradeaus"]
-                        : Array(planner.upcomingManeuverInstructions.prefix(5))
-                    ForEach(Array(instructions.enumerated()), id: \.offset) { index, instruction in
+                    ForEach(Array(display.upcomingInstructions.prefix(5).enumerated()), id: \.offset) { index, instruction in
                         Image(systemName: NavigationManeuverPresentation(instruction).direction.symbolName)
                             .font(.system(size: 25, weight: .bold))
                             .foregroundStyle(index == 0 ? .white : .white.opacity(0.28))
@@ -912,11 +917,12 @@ struct DriveContentView: View {
                 }
             }
             HStack(spacing: 14) {
-                Image(systemName: maneuver.direction.symbolName)
+                Image(systemName: display.guidanceUnavailable
+                      ? "exclamationmark.triangle.fill" : maneuver.direction.symbolName)
                     .font(.system(size: 42, weight: .bold)).frame(width: 54)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        if let distance = maneuverDistance {
+                        if let distance = display.distance {
                             Text(formatDistance(distance)).font(.title.bold())
                         }
                         Spacer()
@@ -948,7 +954,10 @@ struct DriveContentView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(settings.voiceGuidance ? "Sprachansagen ausschalten" : "Sprachansagen einschalten")
             }
-            if planner.isRecalculating {
+            if display.guidanceUnavailable && !planner.isRecalculating {
+                Label("Keine alte Abbiegung verwenden", systemImage: "shield.lefthalf.filled")
+                    .font(.caption.weight(.semibold)).opacity(0.9)
+            } else if planner.isRecalculating {
                 Label("Neue Route wird gesucht", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption.weight(.semibold)).opacity(0.9)
             } else if planner.isUsingOfflineGuidance {
@@ -978,13 +987,20 @@ struct DriveContentView: View {
 
     private var compactNavigationInstructionCard: some View {
         let previewInstruction = "Rechts abbiegen auf Raiffeisenstraße"
-        let maneuver = NavigationManeuverPresentation(isSimulatorNavigationPreview
-            ? previewInstruction
-            : (planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen"))
+        let display = NavigationInstructionDisplayPolicy.display(
+            instruction: isSimulatorNavigationPreview
+                ? previewInstruction : (planner.nextManeuverInstruction ?? planner.nextInstruction),
+            distance: planner.nextManeuverDistance,
+            upcomingInstructions: planner.upcomingManeuverInstructions,
+            guidanceReliable: isSimulatorNavigationPreview || planner.isManeuverGuidanceReliable,
+            recalculating: planner.isRecalculating
+        )
+        let maneuver = NavigationManeuverPresentation(display.instruction)
         return HStack(spacing: 14) {
-            Image(systemName: maneuver.direction.symbolName)
+            Image(systemName: display.guidanceUnavailable
+                  ? "exclamationmark.triangle.fill" : maneuver.direction.symbolName)
                 .font(.system(size: 38, weight: .bold)).frame(width: 48)
-            Text(maneuver.instruction)
+            Text(display.instruction)
                 .font(.system(size: 20, weight: .bold)).lineLimit(2).minimumScaleFactor(0.76)
             Spacer(minLength: 4)
             Button {

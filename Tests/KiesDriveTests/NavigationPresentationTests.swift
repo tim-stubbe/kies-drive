@@ -366,6 +366,38 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testConfirmedDeviationHidesStaleTurnCard() {
+        let searching = NavigationInstructionDisplayPolicy.display(
+            instruction: "Rechts abbiegen", distance: 80,
+            upcomingInstructions: ["Rechts abbiegen", "Links abbiegen"],
+            guidanceReliable: false, recalculating: true
+        )
+        XCTAssertEqual(searching.instruction, "Neue Route wird gesucht")
+        XCTAssertNil(searching.distance)
+        XCTAssertTrue(searching.upcomingInstructions.isEmpty)
+        XCTAssertTrue(searching.guidanceUnavailable)
+
+        let failed = NavigationInstructionDisplayPolicy.display(
+            instruction: "Rechts abbiegen", distance: 80,
+            upcomingInstructions: ["Rechts abbiegen"],
+            guidanceReliable: false, recalculating: false
+        )
+        XCTAssertEqual(failed.instruction, "Route verlassen – sicher weiterfahren")
+        XCTAssertNil(failed.distance)
+    }
+
+    func testReliableGuidanceKeepsLiveTurnCard() {
+        let display = NavigationInstructionDisplayPolicy.display(
+            instruction: "Links halten", distance: 450,
+            upcomingInstructions: ["Links halten", "Ausfahrt nehmen"],
+            guidanceReliable: true, recalculating: false
+        )
+        XCTAssertEqual(display.instruction, "Links halten")
+        XCTAssertEqual(display.distance, 450)
+        XCTAssertEqual(display.upcomingInstructions, ["Links halten", "Ausfahrt nehmen"])
+        XCTAssertFalse(display.guidanceUnavailable)
+    }
+
     func testRerouteWatchdogEndsOnlyAfterBoundedWait() {
         let startedAt = Date(timeIntervalSince1970: 10_000)
         XCTAssertFalse(NavigationRerouteWatchdogPolicy.hasTimedOut(

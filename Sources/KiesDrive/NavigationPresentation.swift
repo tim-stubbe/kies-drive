@@ -1031,6 +1031,39 @@ enum NavigationManeuverSafetyPolicy {
     }
 }
 
+struct NavigationInstructionDisplay: Equatable {
+    let instruction: String
+    let distance: CLLocationDistance?
+    let upcomingInstructions: [String]
+    let guidanceUnavailable: Bool
+}
+
+enum NavigationInstructionDisplayPolicy {
+    /// Once a departure is confirmed, the previous road's maneuver is unsafe
+    /// even if MapKit cannot return a replacement route. Keep the map visible,
+    /// but replace the stale turn card until route matching is trustworthy.
+    static func display(instruction: String?,
+                        distance: CLLocationDistance?,
+                        upcomingInstructions: [String],
+                        guidanceReliable: Bool,
+                        recalculating: Bool) -> NavigationInstructionDisplay {
+        guard guidanceReliable else {
+            return .init(
+                instruction: recalculating ? "Neue Route wird gesucht" : "Route verlassen – sicher weiterfahren",
+                distance: nil,
+                upcomingInstructions: [],
+                guidanceUnavailable: true
+            )
+        }
+        return .init(
+            instruction: instruction ?? "Route folgen",
+            distance: distance,
+            upcomingInstructions: upcomingInstructions,
+            guidanceUnavailable: false
+        )
+    }
+}
+
 /// Failed MapKit requests must not turn a genuine deviation into a spoken
 /// recalculation loop. Successful reroutes retain the short normal cooldown;
 /// repeated failures back off while the old route remains visible.
