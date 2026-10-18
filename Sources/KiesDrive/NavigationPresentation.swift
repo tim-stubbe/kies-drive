@@ -32,6 +32,15 @@ enum DestinationSearchCompletionPolicy {
     }
 }
 
+enum DestinationActivationBaselinePolicy {
+    /// Rapid destination taps form one replacement transaction. Every newer
+    /// request must keep the original stable baseline instead of treating the
+    /// previous in-flight destination as a valid rollback target.
+    static func choose<Value>(existing: Value?, current: @autoclosure () -> Value) -> Value {
+        existing ?? current()
+    }
+}
+
 enum DestinationSearchRankingPolicy {
     static func relevanceScore(query: String, name: String?, title: String?) -> Double {
         let query = normalised(query)

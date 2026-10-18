@@ -343,6 +343,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var liveRouteDestinationCoordinate: CLLocationCoordinate2D?
     private var destinationSearchGeneration = UUID()
     private var destinationActivationGeneration = UUID()
+    private struct DestinationActivationSnapshot {
+        let destination: MKMapItem?
+        let destinationText: String
+        let lock: ActiveRouteLock?
+    }
+    private var destinationActivationSnapshot: DestinationActivationSnapshot?
     private var routeSearchGeneration = UUID()
     private var activeDestinationSearches: [MKLocalSearch] = []
     private var activeRouteSearches: [MKLocalSearch] = []
@@ -962,11 +968,22 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // must prevent its delayed result from restarting navigation.
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         destinationActivationGeneration = activationGeneration
+        let rollback = DestinationActivationBaselinePolicy.choose(
+            existing: destinationActivationSnapshot,
+            current: DestinationActivationSnapshot(
+                destination: destination,
+                destinationText: destinationText,
+                lock: routeLockStore.activeLock
+            )
+        )
+        destinationActivationSnapshot = rollback
+        defer {
+            if activationGeneration == destinationActivationGeneration {
+                destinationActivationSnapshot = nil
+            }
+        }
         destinationSearchGeneration = UUID()
         suggestions = []
-        let previousDestination = destination
-        let previousDestinationText = destinationText
-        let previousLock = routeLockStore.activeLock
         destination = item
         destinationText = item.name ?? item.placemark.title ?? "Ziel"
         replaceRouteLockForRemoteDestination(waypoints: requiredWaypoints)
@@ -980,10 +997,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guard DestinationActivationRollbackPolicy.shouldRollback(
                 request: activationGeneration, current: destinationActivationGeneration
             ) else { return false }
-            destination = previousDestination
-            destinationText = previousDestinationText
-            routeLockStore.replace(with: previousLock)
-            activeRouteLock = previousLock
+            destination = rollback.destination
+            destinationText = rollback.destinationText
+            routeLockStore.replace(with: rollback.lock)
+            activeRouteLock = rollback.lock
             return false
         }
         // `calculate` committed the route, but actor reentrancy allows a new
@@ -999,7 +1016,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             work: nil,
             currentWork: rerouteGeneration
         ) else { return false }
-        finishReplacedUsageTripIfNeeded(previousTripID: previousLock?.id,
+        finishReplacedUsageTripIfNeeded(previousTripID: rollback.lock?.id,
                                         nextTripID: routeLockStore.activeLock?.id)
         startNavigation(voiceGuidance: settings.voiceGuidance)
         return true

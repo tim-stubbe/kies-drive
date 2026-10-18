@@ -83,6 +83,18 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRapidDestinationChangesKeepOriginalRollbackBaseline() {
+        let original = DestinationActivationBaselinePolicy.choose(
+            existing: Optional<String>.none, current: "Original route"
+        )
+        let secondTap = DestinationActivationBaselinePolicy.choose(
+            existing: Optional(original), current: "First in-flight destination"
+        )
+
+        XCTAssertEqual(original, "Original route")
+        XCTAssertEqual(secondTap, "Original route")
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(
