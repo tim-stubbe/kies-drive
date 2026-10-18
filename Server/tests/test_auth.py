@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pyotp
+import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
@@ -385,7 +386,10 @@ def test_mcp_reports_remote_command_completion(tmp_path, monkeypatch):
     }).json()
     queued_data = json.loads(queued["result"]["content"][0]["text"])
     command_id = queued_data["command_id"]
-    assert queued_data == {"accepted": True, "command_id": command_id, "status": "pending"}
+    assert queued_data == {
+        "accepted": True, "command_id": command_id, "status": "pending",
+        "deduplicated": False, "superseded_commands": 0,
+    }
 
     pending = client.post("/mcp", headers=headers, json={
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
@@ -442,6 +446,63 @@ def test_mcp_rejects_invalid_navigation_mutations_before_queueing(tmp_path, monk
 
     with main.db() as conn:
         assert conn.execute("SELECT COUNT(*) FROM user_commands").fetchone()[0] == 0
+
+
+def test_remote_command_queue_deduplicates_retries_and_supersedes_old_route_intent(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "commands.db"))
+    now = main.datetime(2026, 10, 19, tzinfo=main.timezone.utc)
+    with main.db() as conn:
+        conn.execute(
+            "INSERT INTO users(email,password_hash,email_verified_at,created_at) VALUES(?,?,?,?)",
+            ("queue@example.com", "unused", now.isoformat(), now.isoformat()),
+        )
+        user_id = conn.execute("SELECT id FROM users").fetchone()["id"]
+
+        first, duplicate, superseded = main.enqueue_remote_command(
+            conn, user_id, "add_route_stop", {"query": "McDonalds"}, now
+        )
+        retried, was_duplicate, retry_superseded = main.enqueue_remote_command(
+            conn, user_id, "add_route_stop", {"query": "McDonalds"}, now
+        )
+        assert retried == first
+        assert duplicate is False
+        assert was_duplicate is True
+        assert superseded == retry_superseded == 0
+
+        destination, was_duplicate, superseded = main.enqueue_remote_command(
+            conn, user_id, "set_destination", {"query": "Hochheim"}, now
+        )
+        assert destination != first
+        assert was_duplicate is False
+        assert superseded == 1
+        old = conn.execute(
+            "SELECT status,result FROM user_commands WHERE id=?", (first,)
+        ).fetchone()
+        assert old["status"] == "superseded"
+        assert "neueres Remote-Ziel" in json.loads(old["result"])["message"]
+        pending = conn.execute(
+            "SELECT command FROM user_commands WHERE user_id=? AND status='pending'",
+            (user_id,),
+        ).fetchall()
+        assert [row["command"] for row in pending] == ["set_destination"]
+
+
+def test_remote_command_queue_is_bounded_while_phone_is_offline(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "bounded.db"))
+    now = main.datetime(2026, 10, 19, tzinfo=main.timezone.utc)
+    monkeypatch.setattr(main, "REMOTE_PENDING_COMMAND_LIMIT", 2)
+    with main.db() as conn:
+        conn.execute(
+            "INSERT INTO users(email,password_hash,email_verified_at,created_at) VALUES(?,?,?,?)",
+            ("bounded@example.com", "unused", now.isoformat(), now.isoformat()),
+        )
+        user_id = conn.execute("SELECT id FROM users").fetchone()["id"]
+        main.enqueue_remote_command(conn, user_id, "add_route_stop", {"query": "A"}, now)
+        main.enqueue_remote_command(conn, user_id, "add_route_stop", {"query": "B"}, now)
+        with pytest.raises(main.HTTPException) as error:
+            main.enqueue_remote_command(conn, user_id, "add_route_stop", {"query": "C"}, now)
+        assert error.value.status_code == 429
 
 
 def test_stale_remote_command_expires_without_reaching_phone(tmp_path, monkeypatch):

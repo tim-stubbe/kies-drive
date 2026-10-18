@@ -103,6 +103,7 @@ class RegistrationCompletionRequest(BaseModel):
 
 AUTH_ATTEMPTS: dict[str, list[float]] = {}
 REMOTE_COMMAND_MAX_AGE = timedelta(minutes=5)
+REMOTE_PENDING_COMMAND_LIMIT = 24
 MAX_REMOTE_STATE_BYTES = 256 * 1024
 
 
@@ -133,6 +134,51 @@ def expire_stale_remote_commands(conn: sqlite3.Connection, user_id: int,
         (result, user_id, cutoff.isoformat()),
     )
     return cursor.rowcount
+
+
+def enqueue_remote_command(conn: sqlite3.Connection, user_id: int, command: str,
+                           arguments: dict[str, Any],
+                           now: datetime | None = None) -> tuple[int, bool, int]:
+    """Queue current route intent without replaying retries or stale actions."""
+    current = now or datetime.now(timezone.utc)
+    expire_stale_remote_commands(conn, user_id, current)
+    encoded = json.dumps(arguments, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"), allow_nan=False)
+    existing = conn.execute(
+        "SELECT id FROM user_commands WHERE user_id=? AND status='pending' "
+        "AND command=? AND arguments=? ORDER BY id DESC LIMIT 1",
+        (user_id, command, encoded),
+    ).fetchone()
+    if existing:
+        return existing["id"], True, 0
+
+    superseded = 0
+    if command == "set_destination":
+        result = json.dumps({
+            "ok": False,
+            "message": "Durch ein neueres Remote-Ziel ersetzt.",
+        }, ensure_ascii=False)
+        superseded = conn.execute(
+            "UPDATE user_commands SET status='superseded', result=? "
+            "WHERE user_id=? AND status='pending' AND command IN "
+            "('set_destination','set_route_options','restore_route','add_route_stop')",
+            (result, user_id),
+        ).rowcount
+
+    pending = conn.execute(
+        "SELECT COUNT(*) AS count FROM user_commands "
+        "WHERE user_id=? AND status='pending'", (user_id,)
+    ).fetchone()["count"]
+    if pending >= REMOTE_PENDING_COMMAND_LIMIT:
+        raise HTTPException(
+            429,
+            "Zu viele Remote-Aktionen warten auf das iPhone. Bitte Kies Drive zuerst verbinden.",
+        )
+    cursor = conn.execute(
+        "INSERT INTO user_commands(user_id,command,arguments,created_at) VALUES(?,?,?,?)",
+        (user_id, command, encoded, current.isoformat()),
+    )
+    return cursor.lastrowid, False, superseded
 
 
 def remote_state_freshness(payload: dict[str, Any], stored_at: str | None,
@@ -1037,9 +1083,12 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
                         "message": None if live or name == "get_active_route" else
                             "Das iPhone liefert gerade keine aktuellen Fahrdaten."}
             elif name in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
-                cur = conn.execute("INSERT INTO user_commands(user_id,command,arguments,created_at) VALUES(?,?,?,?)",
-                                   (user["id"], name, json.dumps(args), datetime.now(timezone.utc).isoformat()))
-                data = {"accepted": True, "command_id": cur.lastrowid, "status": "pending"}
+                command_id, deduplicated, superseded = enqueue_remote_command(
+                    conn, user["id"], name, args
+                )
+                data = {"accepted": True, "command_id": command_id,
+                        "status": "pending", "deduplicated": deduplicated,
+                        "superseded_commands": superseded}
             else:
                 raise HTTPException(400, "Unbekanntes Tool")
         result = {"content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}]}
