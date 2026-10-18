@@ -818,6 +818,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testMissedCueIsNeverRecoveredAfterTheOldJunctionIsClearlyBehind() {
+        XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "old", nextKey: "new", stages: [],
+            previousDistance: 40, speedMetresPerSecond: 25
+        ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "old", nextKey: "new", stages: [],
+            previousDistance: 180, speedMetresPerSecond: 25
+        ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "old", nextKey: "new", stages: [],
+            previousDistance: .infinity, speedMetresPerSecond: 25
+        ))
+    }
+
     func testOnlineAndOfflineManeuverSpeechShareDenseTurnWording() {
         XCTAssertEqual(
             NavigationManeuverSpeechPolicy.text(

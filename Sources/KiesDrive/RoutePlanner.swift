@@ -188,6 +188,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var activeManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
     private var diagnosticManeuverKey: String?
     private var diagnosticManeuverInstruction: String?
+    private var diagnosticManeuverDistance: CLLocationDistance?
     private var offRouteSince: Date?
     private var offRouteFixCount = 0
     private var onRouteRecoveryFixCount = 0
@@ -440,6 +441,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeManeuverSpeech = [:]
             diagnosticManeuverKey = nil
             diagnosticManeuverInstruction = nil
+            diagnosticManeuverDistance = nil
             activeUtterance = nil
             activeSpeechPriority = nil
             #if os(iOS)
@@ -2060,6 +2062,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeManeuverSpeech = [:]
         diagnosticManeuverKey = nil
         diagnosticManeuverInstruction = nil
+        diagnosticManeuverDistance = nil
         resetDeviationTracking()
         arrivalStrikes = 0
         arrivalCandidateSince = nil
@@ -2407,14 +2410,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func recordManeuverTransition(key: String, instruction: String,
                                           distance: CLLocationDistance,
                                           guidanceSpeedMps: Double) -> Bool {
-        guard diagnosticManeuverKey != key else { return false }
+        guard diagnosticManeuverKey != key else {
+            diagnosticManeuverDistance = distance
+            return false
+        }
         let previousKey = diagnosticManeuverKey
         let previousInstruction = diagnosticManeuverInstruction
+        let previousDistance = diagnosticManeuverDistance
         let previousInFlightStages = previousKey.map { pendingStages(for: $0) } ?? []
         let shouldRecover = ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: previousKey, nextKey: key,
             stages: previousKey.map { announcedManeuverStages[$0] ?? [] } ?? [],
-            inFlightStages: previousInFlightStages
+            inFlightStages: previousInFlightStages,
+            previousDistance: previousDistance ?? .greatestFiniteMagnitude,
+            speedMetresPerSecond: guidanceSpeedMps
         )
         var recovered = false
         if shouldRecover, let previousKey, let previousInstruction {
@@ -2450,6 +2459,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         diagnosticManeuverKey = key
         diagnosticManeuverInstruction = instruction
+        diagnosticManeuverDistance = distance
         return recovered
     }
 
@@ -2468,6 +2478,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         diagnosticManeuverKey = nil
         diagnosticManeuverInstruction = nil
+        diagnosticManeuverDistance = nil
     }
 
     private func pendingStages(for key: String) -> Set<NavigationAnnouncementStage> {

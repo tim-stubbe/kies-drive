@@ -666,8 +666,19 @@ enum ManeuverDiagnosticPolicy {
     /// steps, so this applies only to a genuine in-route maneuver transition.
     static func shouldRecoverFinalCue(previousKey: String?, nextKey: String,
                                       stages: Set<NavigationAnnouncementStage>,
-                                      inFlightStages: Set<NavigationAnnouncementStage> = []) -> Bool {
+                                      inFlightStages: Set<NavigationAnnouncementStage> = [],
+                                      previousDistance: CLLocationDistance = 0,
+                                      speedMetresPerSecond: Double = 0) -> Bool {
         guard let previousKey, previousKey != nextKey else { return false }
+        // A late "Jetzt" is safe only when the last trustworthy fix already
+        // placed the vehicle immediately at that junction. If the last known
+        // distance was larger, the cursor transition is evidence that the
+        // maneuver is behind us; speaking it now could send the driver back
+        // onto the abandoned road. The regular announcement path will speak
+        // the new current maneuver instead.
+        let immediateDistance = min(100, max(30, max(0, speedMetresPerSecond) * 2))
+        guard previousDistance.isFinite, previousDistance >= 0,
+              previousDistance <= immediateDistance else { return false }
         // An immediate cue can still be playing while the first GPS fix on
         // the road after the junction arrives. Treat that cue as decisive for
         // transition purposes: interrupting it with a second, late "Jetzt"
