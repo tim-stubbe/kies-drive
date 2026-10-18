@@ -892,9 +892,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationSpeechClaimTimeoutPolicy.isExpired(
             issuedAt: issuedAt, now: issuedAt.addingTimeInterval(20), active: true
         ))
-        XCTAssertFalse(NavigationSpeechClaimTimeoutPolicy.isExpired(
+        XCTAssertTrue(NavigationSpeechClaimTimeoutPolicy.isExpired(
             issuedAt: issuedAt, now: issuedAt.addingTimeInterval(-1), active: false
-        ))
+        ), "Clock rollback must release a speech claim that could otherwise block forever")
     }
 
     func testManeuverDeliveryCommitsOnlyAfterCompletePlayback() {

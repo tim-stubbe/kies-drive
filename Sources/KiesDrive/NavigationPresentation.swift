@@ -495,7 +495,11 @@ enum NavigationSpeechClaimTimeoutPolicy {
 
     static func isExpired(issuedAt: Date, now: Date, active: Bool) -> Bool {
         let age = now.timeIntervalSince(issuedAt)
-        guard age >= 0 else { return false }
+        // A wall-clock rollback invalidates the timeout basis. Keeping a
+        // claim whose issue time now lies in the future can block that
+        // maneuver indefinitely if AVSpeechSynthesizer also lost its callback.
+        // Expire it so the current GPS fix can safely queue fresh wording.
+        guard age >= 0 else { return true }
         return age >= (active ? activeTimeout : pendingTimeout)
     }
 }
