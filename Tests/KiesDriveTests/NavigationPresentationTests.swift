@@ -262,6 +262,12 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testSpeechRetriesCurrentManeuverImmediatelyAfterInterruptionEnds() {
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldRetryImmediately(
+            systemAllowsResume: true
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldRetryImmediately(
+            systemAllowsResume: false
+        ))
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
             navigationActive: true, voiceGuidance: true,
             guidanceReliable: true, hasUsableLocation: true

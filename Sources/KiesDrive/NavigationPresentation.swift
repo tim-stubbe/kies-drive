@@ -856,6 +856,14 @@ enum NavigationSpeechInterruptionPolicy {
     ) -> Bool {
         navigationActive && voiceGuidance && guidanceReliable && hasUsableLocation
     }
+
+    /// iOS can end an interruption before the competing call/Siri session has
+    /// actually released audio. Retry immediately only when the system marks
+    /// the session resumable; otherwise the next location fix makes a fresh,
+    /// explicit activation attempt without falsely claiming delivery.
+    static func shouldRetryImmediately(systemAllowsResume: Bool) -> Bool {
+        systemAllowsResume
+    }
 }
 
 enum NavigationSpeechCancellationPolicy {

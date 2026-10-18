@@ -3504,8 +3504,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if hasActiveSpeechWork { cancelCurrentSpeechWork() }
         #if os(iOS)
         let audioSession = AVAudioSession.sharedInstance()
-        try? audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-        try? audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        do {
+            try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            // No claim has been registered yet. Returning false keeps the
+            // current maneuver/reminder eligible for a later GPS fix instead
+            // of waiting on an utterance that cannot become audible.
+            return false
+        }
         #endif
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.preferredGermanVoice()
@@ -3547,7 +3554,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             cancelCurrentSpeechWork()
         case .ended:
             audioSessionInterrupted = false
-            retryCurrentManeuverAfterSpeechBecomesAvailable()
+            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let mayResume = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+                .contains(.shouldResume)
+            if NavigationSpeechInterruptionPolicy.shouldRetryImmediately(
+                systemAllowsResume: mayResume
+            ) {
+                retryCurrentManeuverAfterSpeechBecomesAvailable()
+            }
         @unknown default:
             audioSessionInterrupted = true
             cancelCurrentSpeechWork()
