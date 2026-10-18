@@ -1209,6 +1209,24 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testStoppingGuidanceSeedsRestOnlyFromRecentStationaryEvidence() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        XCTAssertEqual(DrivingRestPauseSeedPolicy.stationarySpeed(
+            sampleAt: now.addingTimeInterval(-10), reliableSpeedMetresPerSecond: 0,
+            now: now
+        ), 0)
+        XCTAssertNil(DrivingRestPauseSeedPolicy.stationarySpeed(
+            sampleAt: now.addingTimeInterval(-31), reliableSpeedMetresPerSecond: 0,
+            now: now
+        ), "A stale zero-speed fix must not invent the beginning of a break")
+        XCTAssertNil(DrivingRestPauseSeedPolicy.stationarySpeed(
+            sampleAt: now, reliableSpeedMetresPerSecond: 12, now: now
+        ), "Stopping guidance while moving is not a rest")
+        XCTAssertNil(DrivingRestPauseSeedPolicy.stationarySpeed(
+            sampleAt: nil, reliableSpeedMetresPerSecond: nil, now: now
+        ))
+    }
+
     func testDrivingRestPolicyDoesNotInventMovementAcrossLongUnknownGap() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 20_000)

@@ -624,11 +624,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             usageSessionLastLocation = nil
             usageSessionStore.save(usageSessionState)
             if let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id {
-                drivingRestState = DrivingRestPolicy.paused(
-                    drivingRestState, tripID: tripID, at: Date(),
-                    speedMetresPerSecond: lastAcceptedNavigationLocation.flatMap(
+                let now = Date()
+                let stationarySpeed = DrivingRestPauseSeedPolicy.stationarySpeed(
+                    sampleAt: lastAcceptedNavigationLocation?.timestamp,
+                    reliableSpeedMetresPerSecond: lastAcceptedNavigationLocation.flatMap(
                         NavigationMotionPolicy.reliableSpeed(for:)
-                    )
+                    ),
+                    now: now
+                )
+                drivingRestState = DrivingRestPolicy.paused(
+                    drivingRestState, tripID: tripID, at: now,
+                    speedMetresPerSecond: stationarySpeed
                 )
                 drivingRestStore.save(drivingRestState)
             }

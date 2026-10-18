@@ -1040,6 +1040,23 @@ enum DrivingRestConfirmationPolicy {
     }
 }
 
+enum DrivingRestPauseSeedPolicy {
+    /// Stopping guidance is not evidence that the vehicle stopped. Seed a
+    /// potential rest only from the same recent stationary evidence required
+    /// for manual confirmation; a stale zero-speed fix must not turn an
+    /// unknown background gap into an invented break.
+    static func stationarySpeed(sampleAt: Date?,
+                                reliableSpeedMetresPerSecond: Double?,
+                                now: Date) -> Double? {
+        guard DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: sampleAt,
+            reliableSpeedMetresPerSecond: reliableSpeedMetresPerSecond,
+            now: now
+        ) else { return nil }
+        return reliableSpeedMetresPerSecond
+    }
+}
+
 enum NavigationBreakReminderPolicy {
     enum Stage: Int, Hashable, CaseIterable { case plan, soon, due }
 
