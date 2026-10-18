@@ -1273,6 +1273,26 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(action.insertionRouteProgress, 0.82, accuracy: 0.001)
     }
 
+    func testCarPlayMakesImmediateRestAndFuelNeedsExplicit() {
+        let candidate = BreakCandidate(
+            id: "stop", name: "Autohof", coordinate: .init(), progress: 0,
+            detourMetres: 0, isOpen: true, supportsFuel: true
+        )
+        let rest = CarPlayPlannedStopAction(
+            candidate: candidate, purpose: .breakAndFuel,
+            insertionRouteProgress: 0, afterDriving: 0, afterDistanceMetres: 0
+        )
+        let fuel = CarPlayPlannedStopAction(
+            candidate: candidate, purpose: .fuelOnly,
+            insertionRouteProgress: 0, afterDriving: nil, afterDistanceMetres: 0
+        )
+        XCTAssertEqual(CarPlayPlannedStopDetailPolicy.text(for: rest), "Pause jetzt einlegen")
+        XCTAssertEqual(
+            CarPlayPlannedStopDetailPolicy.text(for: fuel),
+            "Bei nächster Gelegenheit tanken"
+        )
+    }
+
     func testPhoneAndCarPlayShareStrictForwardStopVisibility() {
         XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.49, current: 0.5))
         XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.5, current: 0.5))

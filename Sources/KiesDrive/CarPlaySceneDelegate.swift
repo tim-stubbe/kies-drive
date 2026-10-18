@@ -489,16 +489,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func plannedStopDetail(_ action: CarPlayPlannedStopAction) -> String {
-        if let seconds = action.afterDriving, seconds > 0 {
-            let minutes = Int((seconds / 60).rounded())
-            return minutes >= 60
-                ? "In etwa \(minutes / 60) Std. \(minutes % 60) Min."
-                : "In etwa \(minutes) Min."
-        }
-        if let metres = action.afterDistanceMetres, metres > 0 {
-            return String(format: "In etwa %.0f km", metres / 1_000)
-        }
-        return "Mit kleinem Umweg zur Route hinzufügen"
+        CarPlayPlannedStopDetailPolicy.text(for: action)
     }
 
     private func makeDestinationSearchItem() -> CPListItem {

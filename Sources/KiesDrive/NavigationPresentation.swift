@@ -194,6 +194,27 @@ enum CarPlayPlannedStopPolicy {
     }
 }
 
+enum CarPlayPlannedStopDetailPolicy {
+    static func text(for action: CarPlayPlannedStopAction) -> String {
+        if let seconds = action.afterDriving, seconds.isFinite, seconds >= 0 {
+            if seconds <= 60 { return "Pause jetzt einlegen" }
+            let minutes = Int((seconds / 60).rounded())
+            return minutes >= 60
+                ? "In etwa \(minutes / 60) Std. \(minutes % 60) Min."
+                : "In etwa \(minutes) Min."
+        }
+        if let metres = action.afterDistanceMetres, metres.isFinite, metres >= 0 {
+            if metres <= 1_000 {
+                return action.purpose == .fuelOnly
+                    ? "Bei nächster Gelegenheit tanken"
+                    : "Stopp jetzt einplanen"
+            }
+            return String(format: "In etwa %.0f km", metres / 1_000)
+        }
+        return "Mit kleinem Umweg zur Route hinzufügen"
+    }
+}
+
 struct NavigationManeuverPresentation: Equatable {
     enum Direction: Equatable {
         case straight, slightRight, right, sharpRight, slightLeft, left, sharpLeft, uTurn, roundabout
