@@ -372,6 +372,21 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayNewNavigationResetsFreeCameraWithoutFightingLiveReroute() {
+        XCTAssertEqual(CarPlayCameraLifecyclePolicy.mode(
+            previous: .free, navigationWasActive: false, navigationIsActive: true
+        ), .follow)
+        XCTAssertEqual(CarPlayCameraLifecyclePolicy.mode(
+            previous: .overview, navigationWasActive: false, navigationIsActive: true
+        ), .follow)
+        XCTAssertEqual(CarPlayCameraLifecyclePolicy.mode(
+            previous: .free, navigationWasActive: true, navigationIsActive: true
+        ), .free, "A live reroute must preserve the driver's manual camera")
+        XCTAssertEqual(CarPlayCameraLifecyclePolicy.mode(
+            previous: .overview, navigationWasActive: true, navigationIsActive: false
+        ), .overview)
+    }
+
     func testCarPlayExplainsRouteRecoveryWithoutRevivingOldManeuver() {
         XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
             recalculating: false, guidanceReliable: true

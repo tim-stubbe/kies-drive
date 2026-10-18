@@ -1193,6 +1193,16 @@ enum CarPlayCameraLifecyclePolicy {
     static func modeAfterConnection(previous: CarPlayCameraMode) -> CarPlayCameraMode {
         .follow
     }
+
+    /// Starting a new trip is an explicit navigation action and must bring
+    /// the driving camera back to the car. Ordinary route publications while
+    /// a trip is already active retain `.free`/`.overview`, so live reroutes
+    /// never fight a deliberate pan or zoom.
+    static func mode(previous: CarPlayCameraMode,
+                     navigationWasActive: Bool,
+                     navigationIsActive: Bool) -> CarPlayCameraMode {
+        !navigationWasActive && navigationIsActive ? .follow : previous
+    }
 }
 
 enum CarPlayRouteLinePolicy {

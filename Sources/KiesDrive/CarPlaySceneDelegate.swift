@@ -23,6 +23,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var activeTrip: CPTrip?
     private var activeTripDestination: CLLocationCoordinate2D?
     private var cameraMode: CarPlayCameraMode = .follow
+    private var observedNavigationActive = false
     private var lastReliableCourse: CLLocationDirection?
     private var lastCameraUpdateAt: Date?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
@@ -60,6 +61,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         carPlaySearchResults = [:]
         carPlayRouteSearchResults = [:]
         cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
+        observedNavigationActive = false
         lastReliableCourse = nil
         lastCameraUpdateAt = nil
         self.interfaceController = interfaceController
@@ -122,6 +124,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         lastCameraUpdateAt = nil
         lastReliableCourse = nil
         cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
+        observedNavigationActive = false
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
@@ -130,12 +133,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         Publishers.CombineLatest3(planner.$legs, planner.$destination, planner.$isNavigating)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _, _, isNavigating in
+                guard let self else { return }
                 // CarPlay can own the only visible scene. Do not rely on the
                 // phone SwiftUI view to switch Core Location into navigation
                 // accuracy/background mode when a trip starts in the car.
                 LocationService.shared.setNavigationActive(isNavigating)
-                self?.redrawRoute()
-                self?.synchroniseNavigationSession()
+                let requestedMode = CarPlayCameraLifecyclePolicy.mode(
+                    previous: self.cameraMode,
+                    navigationWasActive: self.observedNavigationActive,
+                    navigationIsActive: isNavigating
+                )
+                let startedNewNavigation = requestedMode == .follow && self.cameraMode != .follow
+                self.cameraMode = requestedMode
+                self.observedNavigationActive = isNavigating
+                self.redrawRoute()
+                self.synchroniseNavigationSession()
+                if startedNewNavigation { self.followVehicle() }
             }
             .store(in: &cancellables)
 
