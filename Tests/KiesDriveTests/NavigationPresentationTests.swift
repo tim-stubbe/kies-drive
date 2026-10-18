@@ -801,6 +801,47 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeoutNanoseconds, 20_000_000_000)
     }
 
+    func testSuccessfulRerouteUsesNewestAcceptedLocationForFirstManeuver() {
+        let trigger = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 5, course: 90, speed: 20,
+            timestamp: Date(timeIntervalSince1970: 1_000)
+        )
+        let latest = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8.01), altitude: 0,
+            horizontalAccuracy: 6, verticalAccuracy: 5, course: 90, speed: 20,
+            timestamp: Date(timeIntervalSince1970: 1_012)
+        )
+        let selected = NavigationReroutePresentationPolicy.location(
+            trigger: trigger, latest: latest
+        )
+
+        XCTAssertEqual(selected.timestamp, latest.timestamp)
+        XCTAssertEqual(selected.coordinate.longitude, latest.coordinate.longitude, accuracy: 0.000_001)
+    }
+
+    func testSuccessfulRerouteRejectsClockSkewedOlderLocation() {
+        let trigger = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 5,
+            timestamp: Date(timeIntervalSince1970: 1_000)
+        )
+        let older = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 7.99), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5,
+            timestamp: Date(timeIntervalSince1970: 990)
+        )
+
+        XCTAssertEqual(
+            NavigationReroutePresentationPolicy.location(trigger: trigger, latest: older).timestamp,
+            trigger.timestamp
+        )
+        XCTAssertEqual(
+            NavigationReroutePresentationPolicy.location(trigger: trigger, latest: nil).timestamp,
+            trigger.timestamp
+        )
+    }
+
     func testDelayedGuidanceCalculationCannotCommitAfterStopOrWatchdog() {
         let session = UUID()
         let work = UUID()

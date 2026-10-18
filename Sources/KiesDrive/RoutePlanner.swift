@@ -3681,7 +3681,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 onRouteRecoveryFixCount = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
                 if settings.voiceGuidance {
-                    announceRecalculatedRoute(at: location)
+                    announceRecalculatedRoute(at: NavigationReroutePresentationPolicy.location(
+                        trigger: location, latest: lastAcceptedNavigationLocation
+                    ))
                 }
             } else {
                 consecutiveRerouteFailures += 1

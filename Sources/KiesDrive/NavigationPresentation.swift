@@ -1815,6 +1815,18 @@ enum NavigationRerouteWatchdogPolicy {
     }
 }
 
+enum NavigationReroutePresentationPolicy {
+    /// MapKit can take several seconds to replace a route while the vehicle
+    /// keeps moving. Seed the new maneuver card and speech from the newest
+    /// accepted fix, never from the location that originally triggered the
+    /// request. A clock-skewed older fix must not replace the trigger point.
+    static func location(trigger: CLLocation, latest: CLLocation?) -> CLLocation {
+        guard let latest,
+              latest.timestamp >= trigger.timestamp else { return trigger }
+        return latest
+    }
+}
+
 enum NavigationDirectionsTimeoutPolicy {
     static let routeCalculation: TimeInterval = 18
     static let detourCalculation: TimeInterval = 8
