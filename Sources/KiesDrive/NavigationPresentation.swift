@@ -1260,7 +1260,11 @@ enum NavigationRerouteRetryPolicy {
     static func mayRetry(lastAttempt: Date?, consecutiveFailures: Int,
                          now: Date = Date()) -> Bool {
         guard let lastAttempt else { return true }
-        return now.timeIntervalSince(lastAttempt) >= cooldown(consecutiveFailures: consecutiveFailures)
+        let elapsed = now.timeIntervalSince(lastAttempt)
+        // Clock corrections and restored system snapshots can make an
+        // in-memory attempt appear to lie in the future. Waiting for that
+        // timestamp would suppress rerouting exactly when recovery is needed.
+        return elapsed < 0 || elapsed >= cooldown(consecutiveFailures: consecutiveFailures)
     }
 }
 
@@ -1294,7 +1298,8 @@ enum OfflineRouteRecoveryPolicy {
 
     static func shouldAttempt(lastAttempt: Date?, now: Date = Date()) -> Bool {
         guard let lastAttempt else { return true }
-        return now.timeIntervalSince(lastAttempt) >= retryInterval
+        let elapsed = now.timeIntervalSince(lastAttempt)
+        return elapsed < 0 || elapsed >= retryInterval
     }
 
     static func acceptsOnlineResult(calculationSucceeded: Bool,
@@ -1330,7 +1335,8 @@ enum RouteLockRestorePolicy {
                               lastAttempt: Date?, now: Date = Date()) -> Bool {
         guard !navigationActive, !attemptInProgress else { return false }
         guard let lastAttempt else { return true }
-        return now.timeIntervalSince(lastAttempt) >= retryInterval
+        let elapsed = now.timeIntervalSince(lastAttempt)
+        return elapsed < 0 || elapsed >= retryInterval
     }
 }
 

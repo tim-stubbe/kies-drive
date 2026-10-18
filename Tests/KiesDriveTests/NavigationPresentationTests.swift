@@ -409,6 +409,10 @@ final class NavigationPresentationTests: XCTestCase {
             lastAttempt: attemptedAt, consecutiveFailures: 2,
             now: attemptedAt.addingTimeInterval(180)
         ))
+        XCTAssertTrue(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt.addingTimeInterval(1), consecutiveFailures: 4,
+            now: attemptedAt
+        ), "Clock rollback must not suppress rerouting until a future timestamp")
         XCTAssertFalse(NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: 300, previousDistance: 280,
             horizontalAccuracy: 8, speedMetresPerSecond: 25,
@@ -1835,6 +1839,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(OfflineRouteRecoveryPolicy.shouldAttempt(
             lastAttempt: now.addingTimeInterval(-90), now: now
         ))
+        XCTAssertTrue(OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: now.addingTimeInterval(1), now: now
+        ), "Clock rollback must allow online recovery to restart")
     }
 
     func testOfflineInitialRecoveryWaitsForPositionInsideRouteCorridor() {
@@ -1880,6 +1887,10 @@ final class NavigationPresentationTests: XCTestCase {
             navigationActive: false, attemptInProgress: false,
             lastAttempt: now.addingTimeInterval(-90), now: now
         ))
+        XCTAssertTrue(RouteLockRestorePolicy.shouldAttempt(
+            navigationActive: false, attemptInProgress: false,
+            lastAttempt: now.addingTimeInterval(1), now: now
+        ), "Clock rollback must not strand a persisted trip")
         XCTAssertFalse(RouteLockRestorePolicy.shouldAttempt(
             navigationActive: true, attemptInProgress: false, lastAttempt: nil, now: now
         ))
