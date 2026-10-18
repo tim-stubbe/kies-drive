@@ -62,37 +62,44 @@ def test_no_toll_parser_requires_complete_route_statement():
 
 def test_toll_source_must_match_destination_or_required_via_point():
     assert main.toll_source_matches_route(
-        "Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass", "Hochheim am Main", ["Wurzenpass"]
+        "Split nach Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass",
+        "Split", "Hochheim am Main", ["Wurzenpass"]
     )
     assert not main.toll_source_matches_route(
-        "Wurzenpass Mautkosten: 27,40 EUR", "Hochheim am Main", ["Wurzenpass"]
+        "Wurzenpass Mautkosten: 27,40 EUR", "Split", "Hochheim am Main", ["Wurzenpass"]
     )
     assert not main.toll_source_matches_route(
-        "Paris nach Lyon Mautkosten: 27,40 EUR", "Hochheim am Main", ["Wurzenpass"]
+        "Paris nach Lyon Mautkosten: 27,40 EUR", "Split", "Hochheim am Main", ["Wurzenpass"]
+    )
+    assert not main.toll_source_matches_route(
+        "Graz nach Hochheim Gesamtmaut: 27,40 EUR über den Wurzenpass",
+        "Split", "Hochheim am Main", ["Wurzenpass"]
     )
 
 
 def test_toll_evidence_requires_official_or_independent_corroboration():
-    route_text = "Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
+    route_text = "Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
     unofficial = {"title": route_text, "snippet": "", "url": "https://blog.example/trip"}
-    assert main.verified_toll_evidence([unofficial], "Hochheim am Main", ["Wurzenpass"]) is None
+    assert main.verified_toll_evidence(
+        [unofficial], "Split", "Hochheim am Main", ["Wurzenpass"]
+    ) is None
 
-    second = {"title": "Mautkosten: 27,40 EUR Hochheim via Wurzenpass",
+    second = {"title": "Mautkosten: 27,40 EUR Split Hochheim via Wurzenpass",
               "snippet": "", "url": "https://calculator.example/route"}
     evidence = main.verified_toll_evidence(
-        [unofficial, second], "Hochheim am Main", ["Wurzenpass"]
+        [unofficial, second], "Split", "Hochheim am Main", ["Wurzenpass"]
     )
     assert evidence is not None
     assert evidence[0] == 27.4
 
     official = {"title": route_text, "snippet": "", "url": "https://shop.asfinag.at/route"}
     assert main.verified_toll_evidence(
-        [official], "Hochheim am Main", ["Wurzenpass"]
+        [official], "Split", "Hochheim am Main", ["Wurzenpass"]
     )[0] == 27.4
 
 
 def test_toll_evidence_does_not_count_subdomains_as_independent_sources():
-    route_text = "Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
+    route_text = "Split nach Hochheim über Wurzenpass Gesamtmaut: 27,40 EUR"
     sources = [
         {"title": route_text, "snippet": "", "url": "https://route.example.com/trip"},
         {"title": route_text, "snippet": "", "url": "https://blog.example.com/trip"},
@@ -101,22 +108,24 @@ def test_toll_evidence_does_not_count_subdomains_as_independent_sources():
     assert main.independent_source_domain("route.example.com") == "example.com"
     assert main.independent_source_domain("prices.example.co.uk") == "example.co.uk"
     assert main.verified_toll_evidence(
-        sources, "Hochheim am Main", ["Wurzenpass"]
+        sources, "Split", "Hochheim am Main", ["Wurzenpass"]
     ) is None
 
 
 def test_no_toll_evidence_requires_official_or_two_independent_sources():
-    text = "Hochheim über Wurzenpass: gesamte Route mautfrei"
+    text = "Split nach Hochheim über Wurzenpass: gesamte Route mautfrei"
     one = {"title": text, "snippet": "", "url": "https://blog.example/trip"}
-    assert main.verified_no_toll_evidence([one], "Hochheim am Main", ["Wurzenpass"]) is None
+    assert main.verified_no_toll_evidence(
+        [one], "Split", "Hochheim am Main", ["Wurzenpass"]
+    ) is None
     two = {"title": text, "snippet": "", "url": "https://routes.example/trip"}
     assert main.verified_no_toll_evidence(
-        [one, two], "Hochheim am Main", ["Wurzenpass"]
+        [one, two], "Split", "Hochheim am Main", ["Wurzenpass"]
     ) is not None
 
     same_publisher = {"title": text, "snippet": "", "url": "https://news.blog.example/trip"}
     assert main.verified_no_toll_evidence(
-        [one, same_publisher], "Hochheim am Main", ["Wurzenpass"]
+        [one, same_publisher], "Split", "Hochheim am Main", ["Wurzenpass"]
     ) is None
 
 

@@ -498,8 +498,9 @@ def explicit_no_toll(text: str) -> bool:
     return any(re.search(pattern, lowered) for pattern in patterns)
 
 
-def toll_source_matches_route(text: str, destination: str, via: list[str]) -> bool:
-    """Require the destination and every mandatory via point in the evidence."""
+def toll_source_matches_route(text: str, origin: str, destination: str,
+                              via: list[str]) -> bool:
+    """Require both route endpoints and every mandatory via point in evidence."""
     haystack = text.casefold()
     groups = [
         {
@@ -507,7 +508,7 @@ def toll_source_matches_route(text: str, destination: str, via: list[str]) -> bo
             for token in re.findall(r"[\wÀ-ÿ-]{4,}", label)
             if not token.isdigit()
         }
-        for label in [destination, *via]
+        for label in [origin, destination, *via]
     ]
     return bool(groups) and all(group and any(token in haystack for token in group)
                                 for group in groups)
@@ -529,8 +530,8 @@ def independent_source_domain(host: str) -> str:
     return ".".join(labels[-3:]) if suffix in common_second_level_suffixes else suffix
 
 
-def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
-                           via: list[str]) -> tuple[float, str, str] | None:
+def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
+                           destination: str, via: list[str]) -> tuple[float, str, str] | None:
     """Accept one official source or two independent corroborating domains."""
     evidence: list[tuple[float, str, str, str, bool]] = []
     for source in sources:
@@ -539,7 +540,7 @@ def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
         parsed = urlparse(source["url"])
         host = (parsed.hostname or "").lower()
         if (amount is None or parsed.scheme != "https" or not host
-                or not toll_source_matches_route(source_text, destination, via)):
+                or not toll_source_matches_route(source_text, origin, destination, via)):
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
@@ -554,8 +555,8 @@ def verified_toll_evidence(sources: list[dict[str, str]], destination: str,
     return None
 
 
-def verified_no_toll_evidence(sources: list[dict[str, str]], destination: str,
-                              via: list[str]) -> tuple[str, str] | None:
+def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
+                              destination: str, via: list[str]) -> tuple[str, str] | None:
     """Require official evidence or two domains before claiming zero toll."""
     evidence: list[tuple[str, str, str, bool]] = []
     for source in sources:
@@ -563,7 +564,7 @@ def verified_no_toll_evidence(sources: list[dict[str, str]], destination: str,
         parsed = urlparse(source["url"])
         host = (parsed.hostname or "").lower()
         if (parsed.scheme != "https" or not host or not explicit_no_toll(source_text)
-                or not toll_source_matches_route(source_text, destination, via)):
+                or not toll_source_matches_route(source_text, origin, destination, via)):
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
@@ -606,11 +607,12 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
         "url": str(item.get("url") or "")[:2_000],
         "snippet": str(item.get("content") or item.get("snippet") or "")[:1_000],
     } for item in results[:5] if isinstance(item, dict)]
-    if payload.avoid_tolls and (evidence := verified_no_toll_evidence(sources, destination, via)):
+    if payload.avoid_tolls and (evidence := verified_no_toll_evidence(
+            sources, origin, destination, via)):
         source_name, source_url = evidence
         return {"status": "no_toll", "amount": 0, "currency": "EUR",
                 "source": source_name, "source_url": source_url, "sources": sources}
-    if evidence := verified_toll_evidence(sources, destination, via):
+    if evidence := verified_toll_evidence(sources, origin, destination, via):
         amount, source_name, source_url = evidence
         return {"status": "known", "amount": amount, "currency": "EUR",
                 "source": source_name, "source_url": source_url, "sources": sources}
