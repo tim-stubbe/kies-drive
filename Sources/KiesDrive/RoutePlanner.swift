@@ -1294,23 +1294,35 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     ) else { return }
                     self.comparisonRoute = comparison
                     self.buildLongTripPlan(settings: settings)
-                    if comparison != nil {
-                        await self.loadTollCost(from: start, settings: settings)
-                    }
+                    // Even a failed comparison finishes ownership of this
+                    // enrichment pass. Load once now so the standard route
+                    // still receives evidence, without the earlier duplicate
+                    // SearXNG batch before comparison geometry was known.
+                    await self.loadTollCost(from: start, settings: settings)
+                    guard calculationGeneration == self.routeCalculationGeneration else { return }
+                    self.buildLongTripPlan(settings: settings)
+                    self.cacheForOffline(preservingProgress: true)
                 }
             }
             Task { [weak self] in
                 guard let self else { return }
-                await self.loadStations(fuel: settings.fuel)
-                guard calculationGeneration == self.routeCalculationGeneration else { return }
-                await self.loadBreakAmenities()
+                // These providers are independent. Start them together so a
+                // slow fuel endpoint cannot postpone speed limits and map
+                // amenities needed by the driving screen.
+                async let stationLoad: Void = self.loadStations(fuel: settings.fuel)
+                async let amenityLoad: Void = self.loadBreakAmenities()
+                async let speedLimitLoad: Void = self.loadSpeedLimits()
+                await stationLoad
+                await amenityLoad
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.measureBreakCandidateDetours()
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
-                await self.loadSpeedLimits()
+                await speedLimitLoad
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
-                await self.loadTollCost(from: start, settings: settings)
-                guard calculationGeneration == self.routeCalculationGeneration else { return }
+                if !shouldLoadComparison {
+                    await self.loadTollCost(from: start, settings: settings)
+                    guard calculationGeneration == self.routeCalculationGeneration else { return }
+                }
                 self.buildLongTripPlan(settings: settings)
                 self.cacheForOffline(preservingProgress: true)
             }
