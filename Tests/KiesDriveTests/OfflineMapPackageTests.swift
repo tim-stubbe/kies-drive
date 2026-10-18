@@ -265,6 +265,25 @@ final class OfflineMapPackageTests: XCTestCase {
                        "A short expiry keeps fallback responsive to damaged packages")
     }
 
+    func testRuntimeCoverageCacheRechecksDiskAfterClockRollback() throws {
+        try writeManifest(id: "runtime-clock-rollback")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        var checkTime = Date(timeIntervalSince1970: 1_000)
+        let store = OfflineMapPackageStore(
+            rootURL: root, defaults: defaults, now: { checkTime }
+        )
+        let package = try store.install(from: source)
+        let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+
+        XCTAssertTrue(store.hasBaseTiles(covering: [coordinate], package: package))
+        let installedTile = try XCTUnwrap(store.tileURL(z: 8, x: 136, y: 89, package: package))
+        try FileManager.default.removeItem(at: installedTile)
+        checkTime.addTimeInterval(-30)
+
+        XCTAssertFalse(store.hasBaseTiles(covering: [coordinate], package: package),
+                       "Clock rollback must invalidate positive tile coverage")
+    }
+
     func testTileResolverRejectsSymlinkEscapingInstalledPackage() throws {
         try writeManifest(id: "alpen-safe")
         let tile = source.appendingPathComponent("tiles/8/136/89.png")

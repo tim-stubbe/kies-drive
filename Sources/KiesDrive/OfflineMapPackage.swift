@@ -318,9 +318,15 @@ final class OfflineMapPackageStore: ObservableObject {
         }
         let key = TileCoverageKey(packageID: package.id, tiles: orderedTiles)
         let checkTime = now()
-        if let cached = tileCoverageCache[key],
-           checkTime.timeIntervalSince(cached.checkedAt) < tileCoverageCacheLifetime {
-            return cached.result
+        if let cached = tileCoverageCache[key] {
+            let age = checkTime.timeIntervalSince(cached.checkedAt)
+            // A manual clock correction or time synchronisation rollback
+            // invalidates the cache's age basis. Recheck disk immediately;
+            // otherwise a deleted/corrupt tile could remain "available" for
+            // an arbitrarily long time until wall-clock time catches up.
+            if age >= 0, age < tileCoverageCacheLifetime {
+                return cached.result
+            }
         }
         let result = orderedTiles.allSatisfy {
             tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) != nil
