@@ -4,6 +4,45 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testRestoreCommitRequiresSameActiveTripConstraints() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let original = ActiveRouteLock(
+            id: UUID(), title: "Urlaub", destinationName: "Hochheim",
+            destination: .init(latitude: 50.0147, longitude: 8.3522),
+            waypoints: [.init(
+                id: "pass", name: "Wurzenpass",
+                coordinate: .init(latitude: 46.521944, longitude: 13.7525),
+                required: true,
+                optionsAfter: .init(avoidTolls: false, avoidHighways: true)
+            )],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000, corridorPoints: nil,
+            visitedWaypointIDs: [], status: .active,
+            createdAt: now, updatedAt: now
+        )
+        let expected = RouteCalculationConstraintSnapshot(original)!
+
+        var progressed = original
+        progressed.lastRouteProgress = 0.42
+        progressed.updatedAt = now.addingTimeInterval(60)
+        XCTAssertTrue(RouteRestoreCommitPolicy.mayResume(
+            expected: expected, current: RouteCalculationConstraintSnapshot(progressed)
+        ))
+
+        var changed = original
+        changed.waypoints[0].optionsAfter = .init(avoidTolls: true, avoidHighways: true)
+        XCTAssertFalse(RouteRestoreCommitPolicy.mayResume(
+            expected: expected, current: RouteCalculationConstraintSnapshot(changed)
+        ))
+
+        var finished = original
+        finished.status = .completed
+        XCTAssertFalse(RouteRestoreCommitPolicy.mayResume(
+            expected: expected, current: RouteCalculationConstraintSnapshot(finished)
+        ))
+        XCTAssertFalse(RouteRestoreCommitPolicy.mayResume(expected: expected, current: nil))
+    }
+
     func testRouteOptionRollbackPreservesProgressWrittenDuringCalculation() throws {
         let createdAt = Date(timeIntervalSince1970: 1_000)
         let baseline = ActiveRouteLock(

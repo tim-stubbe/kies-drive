@@ -339,6 +339,18 @@ struct RouteCalculationConstraintSnapshot: Equatable {
     }
 }
 
+enum RouteRestoreCommitPolicy {
+    /// A restore may outlive an intentional trip completion or a remote route
+    /// edit while MapKit is calculating. Only the exact constraint set that
+    /// initiated the request may resume guidance. Live corridor progress is
+    /// deliberately absent from the snapshot and therefore remains free to
+    /// advance while the request is in flight.
+    static func mayResume(expected: RouteCalculationConstraintSnapshot,
+                          current: RouteCalculationConstraintSnapshot?) -> Bool {
+        current == expected && current?.status == .active
+    }
+}
+
 extension ActiveRouteLock {
     /// Prevents the same real-world stop from being added repeatedly through
     /// slightly different MapKit search results. An exact coordinate match is

@@ -887,7 +887,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func restoreActiveTripIfNeeded(from current: CLLocationCoordinate2D,
                                    settings: DriveSettings) async -> Bool {
+        guard NavigationDestinationCoordinatePolicy.isValid(current) else { return false }
         guard let lock = routeLockStore.activeLock, lock.isActive else { return false }
+        guard let restoreConstraintSnapshot = RouteCalculationConstraintSnapshot(lock) else {
+            return false
+        }
         // Another surface (phone scene, CarPlay or remote bridge) may already
         // own the same restore. Treat that as accepted work instead of a
         // failure; its result will publish through the shared planner state.
@@ -906,6 +910,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         item.name = lock.destinationName
         destination = item
         let onlineCalculationSucceeded = await calculate(from: current, settings: settings)
+        // Finishing, replacing or editing the trip while MapKit was awaiting
+        // a response revokes this restore. Never let an old result restart a
+        // route the driver has just ended or materially changed.
+        guard RouteRestoreCommitPolicy.mayResume(
+            expected: restoreConstraintSnapshot,
+            current: RouteCalculationConstraintSnapshot(routeLockStore.activeLock)
+        ) else { return false }
         let hasMatchingLiveRoute = !legs.isEmpty && NavigationDestinationIdentityPolicy.matches(
             liveRouteDestinationCoordinate, lock.destination.clLocationCoordinate
         )
