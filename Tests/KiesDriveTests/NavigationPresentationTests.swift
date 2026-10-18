@@ -955,6 +955,21 @@ final class NavigationPresentationTests: XCTestCase {
         )))
     }
 
+    func testRemoteCoordinatesRejectInvalidDestinationAndRequiredStops() {
+        XCTAssertTrue(DriveRemoteCoordinatePolicy.isValid(
+            latitude: 50.01, longitude: 8.35
+        ))
+        XCTAssertFalse(DriveRemoteCoordinatePolicy.isValid(
+            latitude: 91, longitude: 8.35
+        ))
+        XCTAssertFalse(DriveRemoteCoordinatePolicy.isValid(
+            latitude: 50.01, longitude: -181
+        ))
+        XCTAssertFalse(DriveRemoteCoordinatePolicy.isValid(
+            latitude: .infinity, longitude: 8.35
+        ))
+    }
+
     func testRemoteActiveRouteRemainsVisibleDuringOfflineGuidance() {
         XCTAssertTrue(DriveRemoteRouteVisibilityPolicy.hasRoute(
             liveLegCount: 0, offlineGuidanceActive: true

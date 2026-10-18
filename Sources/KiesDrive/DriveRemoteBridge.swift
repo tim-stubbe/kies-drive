@@ -178,6 +178,13 @@ enum DriveRemoteCommandExpiryPolicy {
     }
 }
 
+enum DriveRemoteCoordinatePolicy {
+    static func isValid(latitude: Double, longitude: Double) -> Bool {
+        latitude.isFinite && longitude.isFinite &&
+            (-90...90).contains(latitude) && (-180...180).contains(longitude)
+    }
+}
+
 @MainActor
 final class DriveRemoteBridge {
     static let shared = DriveRemoteBridge()
@@ -315,8 +322,12 @@ final class DriveRemoteBridge {
             }
         case "set_destination":
             let item: MKMapItem
-            if let lat = command.arguments["latitude"]?.number,
-               let lon = command.arguments["longitude"]?.number {
+            if command.arguments["latitude"] != nil || command.arguments["longitude"] != nil {
+                guard let lat = command.arguments["latitude"]?.number,
+                      let lon = command.arguments["longitude"]?.number,
+                      DriveRemoteCoordinatePolicy.isValid(
+                        latitude: lat, longitude: lon
+                      ) else { throw DriveRemoteError.invalidCommandArguments }
                 item = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: lat, longitude: lon)))
                 item.name = command.arguments["query"]?.string ?? "Remote-Ziel"
             } else if let query = command.arguments["query"]?.string {
@@ -325,21 +336,30 @@ final class DriveRemoteBridge {
                 guard let found = planner.suggestions.first else { throw DriveRemoteError.destinationNotFound }
                 item = found
             } else { throw DriveRemoteError.destinationNotFound }
-            let waypoints = command.arguments["required_waypoints"]?.array?.compactMap { value -> LockedWaypoint? in
-                guard let item = value.object,
-                      let latitude = item["latitude"]?.number,
-                      let longitude = item["longitude"]?.number else { return nil }
-                let segment = item["options_after"]?.object
+            var waypoints: [LockedWaypoint] = []
+            for value in command.arguments["required_waypoints"]?.array ?? [] {
+                guard let waypoint = value.object,
+                      let latitude = waypoint["latitude"]?.number,
+                      let longitude = waypoint["longitude"]?.number,
+                      DriveRemoteCoordinatePolicy.isValid(
+                        latitude: latitude, longitude: longitude
+                      ) else {
+                    // Required means required: never silently drop a malformed
+                    // remote stop and calculate a materially different trip.
+                    throw DriveRemoteError.invalidCommandArguments
+                }
+                let segment = waypoint["options_after"]?.object
                 let options = segment.map {
                     LockedRouteOptions(avoidTolls: $0["avoid_tolls"]?.bool ?? settings.avoidTolls,
                                        avoidHighways: $0["avoid_highways"]?.bool ?? settings.avoidHighways)
                 }
-                return LockedWaypoint(
-                    id: item["id"]?.string ?? UUID().uuidString,
-                    name: item["name"]?.string ?? "Pflicht-Zwischenpunkt",
+                waypoints.append(LockedWaypoint(
+                    id: waypoint["id"]?.string ?? UUID().uuidString,
+                    name: waypoint["name"]?.string ?? "Pflicht-Zwischenpunkt",
                     coordinate: .init(latitude: latitude, longitude: longitude),
-                    required: true, optionsAfter: options)
-            } ?? []
+                    required: true, optionsAfter: options
+                ))
+            }
             guard await planner.activateDestination(item, from: current, settings: settings,
                                                     requiredWaypoints: waypoints) else {
                 throw DriveRemoteError.routeUnavailable
@@ -362,10 +382,11 @@ final class DriveRemoteBridge {
 }
 
 enum DriveRemoteError: LocalizedError {
-    case destinationNotFound, routeUnavailable, unknownCommand
+    case destinationNotFound, invalidCommandArguments, routeUnavailable, unknownCommand
     var errorDescription: String? {
         switch self {
         case .destinationNotFound: "Ziel konnte nicht gefunden werden."
+        case .invalidCommandArguments: "Der Remote-Befehl enthält ungültige Pflichtpunkte."
         case .routeUnavailable: "Für dieses Ziel konnte keine gültige Route berechnet werden."
         case .unknownCommand: "Unbekannter Remote-Befehl."
         }
