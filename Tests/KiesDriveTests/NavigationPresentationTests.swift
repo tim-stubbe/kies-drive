@@ -1301,6 +1301,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.6, current: .infinity))
     }
 
+    func testRouteSearchResultBecomesInvalidWhenRouteGeometryChanges() {
+        let searchedRoute = UUID()
+        XCTAssertTrue(RouteSearchSelectionPolicy.accepts(
+            resultRouteGeneration: searchedRoute,
+            currentRouteGeneration: searchedRoute
+        ))
+        XCTAssertFalse(RouteSearchSelectionPolicy.accepts(
+            resultRouteGeneration: searchedRoute,
+            currentRouteGeneration: UUID()
+        ))
+        XCTAssertTrue(RouteSearchSelectionPolicy.accepts(
+            resultRouteGeneration: nil,
+            currentRouteGeneration: UUID()
+        ), "Direct non-search stop additions remain supported")
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)

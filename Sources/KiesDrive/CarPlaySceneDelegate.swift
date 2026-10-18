@@ -735,7 +735,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     }
                     let succeeded = await planner.addRouteStop(
                         mapItem, from: start, settings: .shared,
-                        knownRouteProgress: result.routeProgress
+                        knownRouteProgress: result.routeProgress,
+                        expectedRouteGeneration: result.routeGeneration
                     )
                     completion()
                     if succeeded { self.interfaceController?.popToRootTemplate(animated: true, completion: nil) }

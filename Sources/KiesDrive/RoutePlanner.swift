@@ -229,6 +229,7 @@ struct RouteSearchResult: Identifiable {
     let detourMetres: CLLocationDistance
     let detourIsEstimated: Bool
     let routeProgress: Double
+    let routeGeneration: UUID
 }
 
 @MainActor
@@ -1228,7 +1229,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                         mapItem: candidate.item,
                         detourMetres: detour,
                         detourIsEstimated: driven == nil,
-                        routeProgress: candidate.progress
+                        routeProgress: candidate.progress,
+                        routeGeneration: routeGeneration
                     ))
                 }
             }
@@ -1386,7 +1388,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                       settings: DriveSettings,
-                      knownRouteProgress: Double? = nil) async -> Bool {
+                      knownRouteProgress: Double? = nil,
+                      expectedRouteGeneration: UUID? = nil) async -> Bool {
+        guard RouteSearchSelectionPolicy.accepts(
+            resultRouteGeneration: expectedRouteGeneration,
+            currentRouteGeneration: routeCalculationGeneration
+        ) else {
+            errorMessage = "Die Route wurde inzwischen neu berechnet. Bitte suche den Zwischenstopp erneut."
+            return false
+        }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousLock = routeLockStore.activeLock
         let previousSearchResults = routeSearchResults

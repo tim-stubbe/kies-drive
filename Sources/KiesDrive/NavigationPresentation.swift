@@ -136,6 +136,15 @@ enum PlannedRouteStopVisibilityPolicy {
     }
 }
 
+enum RouteSearchSelectionPolicy {
+    /// Search results are projections onto one exact route geometry. Once a
+    /// reroute or alternative selection starts, their progress values are no
+    /// longer safe insertion positions even if the POI itself still exists.
+    static func accepts(resultRouteGeneration: UUID?, currentRouteGeneration: UUID) -> Bool {
+        resultRouteGeneration.map { $0 == currentRouteGeneration } ?? true
+    }
+}
+
 enum CarPlayPlannedStopPolicy {
     /// CarPlay must remain short and glanceable. Prefer the earliest remaining
     /// stop from the currently selected scenario, combine fuel and rest at the

@@ -339,7 +339,8 @@ struct DriveContentView: View {
                         Task {
                             await planner.addRouteStop(
                                 item, from: start, settings: settings,
-                                knownRouteProgress: result.routeProgress
+                                knownRouteProgress: result.routeProgress,
+                                expectedRouteGeneration: result.routeGeneration
                             )
                         }
                     }.buttonStyle(.bordered).tint(Color.kiesForest)
@@ -1253,7 +1254,8 @@ struct DriveContentView: View {
                                 Task {
                                     await planner.addRouteStop(
                                         item, from: start, settings: settings,
-                                        knownRouteProgress: result.routeProgress
+                                        knownRouteProgress: result.routeProgress,
+                                        expectedRouteGeneration: result.routeGeneration
                                     )
                                 }
                             }
