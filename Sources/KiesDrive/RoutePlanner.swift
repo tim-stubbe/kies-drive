@@ -3325,7 +3325,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             1,
             NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches / queryCount
         )
-        let searchPoints = evenlySpaced(routeCoordinates, maximum: pointLimit)
+        let timeline = legs.map { (distance: $0.distance, travelTime: $0.expectedTravelTime) }
+        let searchProgresses = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: totalTravelTime,
+            alreadyDrivenSinceBreak: drivingRestState.continuousDriving,
+            segments: timeline,
+            maximum: pointLimit
+        )
+        let searchPoints = searchProgresses.compactMap {
+            RouteGeometryProgress.coordinate(at: $0, on: routeCoordinates)
+        }
+        guard !searchPoints.isEmpty else {
+            activeAmenitySearches = []
+            amenityBreakCandidates = []
+            return
+        }
         var matches: [String: MKMapItem] = [:]
         let searches = searchPoints.flatMap { point in
             ["Raststätte Autohof", "Rastplatz"].map { query -> MKLocalSearch in

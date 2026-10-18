@@ -426,6 +426,54 @@ enum RouteTravelTimeProgress {
         }
         return 1
     }
+
+    /// Inverse mapping used to place amenity searches at actual driving-time
+    /// windows rather than at evenly spaced kilometres. Slow mountain legs
+    /// and fast motorway legs therefore do not shift a planned break by hours.
+    static func distanceProgress(timeProgress: Double,
+                                 segments: [(distance: Double, travelTime: TimeInterval)]) -> Double {
+        let valid = segments.map {
+            (distance: max(0, $0.distance), travelTime: max(0, $0.travelTime))
+        }.filter { $0.distance > 0 && $0.travelTime > 0 }
+        let totalDistance = valid.reduce(0) { $0 + $1.distance }
+        let totalTime = valid.reduce(0) { $0 + $1.travelTime }
+        guard totalDistance > 0, totalTime > 0 else {
+            return min(1, max(0, timeProgress))
+        }
+        var remainingTime = min(1, max(0, timeProgress)) * totalTime
+        var elapsedDistance = 0.0
+        for segment in valid {
+            if remainingTime <= segment.travelTime {
+                elapsedDistance += segment.distance * (remainingTime / segment.travelTime)
+                return min(1, max(0, elapsedDistance / totalDistance))
+            }
+            remainingTime -= segment.travelTime
+            elapsedDistance += segment.distance
+        }
+        return 1
+    }
+}
+
+enum BreakAmenitySearchPolicy {
+    static func distanceProgresses(
+        drivingTime: TimeInterval,
+        alreadyDrivenSinceBreak: TimeInterval,
+        segments: [(distance: Double, travelTime: TimeInterval)],
+        maximum: Int,
+        interval: TimeInterval = 2 * 60 * 60
+    ) -> [Double] {
+        guard drivingTime > 0, maximum > 0, interval > 0 else { return [] }
+        let elapsed = min(interval, max(0, alreadyDrivenSinceBreak))
+        var next = max(0, interval - elapsed)
+        var values: [Double] = []
+        while next < drivingTime, values.count < maximum {
+            values.append(RouteTravelTimeProgress.distanceProgress(
+                timeProgress: next / drivingTime, segments: segments
+            ))
+            next += interval
+        }
+        return values
+    }
 }
 
 enum RouteGeometryProgress {
@@ -497,6 +545,27 @@ enum RouteGeometryProgress {
                     (coordinates[upper].longitude - coordinates[lower].longitude) * interpolation
             )
         }
+    }
+
+    static func coordinate(at rawProgress: Double,
+                           on coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D? {
+        guard !coordinates.isEmpty else { return nil }
+        guard coordinates.count > 1 else { return coordinates[0] }
+        let target = min(1, max(0, rawProgress))
+        let fractions = cumulativeFractions(coordinates)
+        guard let upper = fractions.indices.first(where: { fractions[$0] >= target }) else {
+            return coordinates.last
+        }
+        guard upper > 0 else { return coordinates[0] }
+        let lower = upper - 1
+        let span = fractions[upper] - fractions[lower]
+        let interpolation = span > 0 ? (target - fractions[lower]) / span : 0
+        return .init(
+            latitude: coordinates[lower].latitude +
+                (coordinates[upper].latitude - coordinates[lower].latitude) * interpolation,
+            longitude: coordinates[lower].longitude +
+                (coordinates[upper].longitude - coordinates[lower].longitude) * interpolation
+        )
     }
 }
 

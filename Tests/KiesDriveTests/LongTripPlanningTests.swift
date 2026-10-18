@@ -469,6 +469,59 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(RouteTravelTimeProgress.value(
             distanceProgress: 0.75, segments: segments
         ), 0.875, accuracy: 0.001)
+        XCTAssertEqual(RouteTravelTimeProgress.distanceProgress(
+            timeProgress: 0.75, segments: segments
+        ), 0.5, accuracy: 0.001)
+        XCTAssertEqual(RouteTravelTimeProgress.distanceProgress(
+            timeProgress: 0.875, segments: segments
+        ), 0.75, accuracy: 0.001)
+    }
+
+    func testBreakAmenitySearchTargetsDrivingTimeWindows() {
+        let segments: [(distance: Double, travelTime: TimeInterval)] = [
+            (100_000, 3 * 3600),
+            (300_000, 3 * 3600),
+        ]
+
+        let progresses = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 6 * 3600,
+            alreadyDrivenSinceBreak: 0,
+            segments: segments,
+            maximum: 4
+        )
+
+        XCTAssertEqual(progresses.count, 2)
+        XCTAssertEqual(progresses[0], 1.0 / 6.0, accuracy: 0.001)
+        XCTAssertEqual(progresses[1], 0.5, accuracy: 0.001)
+    }
+
+    func testBreakAmenitySearchAccountsForTimeAlreadyDrivenAndStaysBounded() {
+        let segments: [(distance: Double, travelTime: TimeInterval)] = [(1_200_000, 12 * 3600)]
+        let progresses = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 12 * 3600,
+            alreadyDrivenSinceBreak: 90 * 60,
+            segments: segments,
+            maximum: 4
+        )
+
+        XCTAssertEqual(progresses.count, 4)
+        XCTAssertEqual(progresses[0], 0.5 / 12, accuracy: 0.001)
+        XCTAssertEqual(progresses[1], 2.5 / 12, accuracy: 0.001)
+        XCTAssertTrue(progresses.allSatisfy { $0 >= 0 && $0 < 1 })
+        XCTAssertTrue(BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 90 * 60, alreadyDrivenSinceBreak: 0,
+            segments: [(150_000, 90 * 60)], maximum: 4
+        ).isEmpty)
+    }
+
+    func testRouteGeometryInterpolatesCoordinateAtProgress() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 9),
+        ]
+        let midpoint = try XCTUnwrap(RouteGeometryProgress.coordinate(at: 0.5, on: route))
+        XCTAssertEqual(midpoint.latitude, 50, accuracy: 0.0001)
+        XCTAssertEqual(midpoint.longitude, 8.5, accuracy: 0.0001)
     }
 
     func testBreakPlannerChoosesByExpectedDrivingTimeNotDistanceShare() {
