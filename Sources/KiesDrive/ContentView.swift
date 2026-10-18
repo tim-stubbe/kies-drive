@@ -722,7 +722,7 @@ struct DriveContentView: View {
                         .frame(width: 44, height: 44).background(Color.kiesForest.opacity(0.08), in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
                         Text(planner.destination?.name ?? planner.destinationText).font(.headline).lineLimit(1)
-                        Text(planner.destination?.placemark.title ?? "Ausgewähltes Ziel")
+                        Text(destinationSubtitle)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
@@ -827,7 +827,7 @@ struct DriveContentView: View {
         let coordinate = item.placemark.coordinate
         recentDestinations = RecentDestinationStore.record(.init(
             name: item.name ?? planner.destinationText,
-            subtitle: item.placemark.title ?? "",
+            subtitle: destinationSubtitle(for: item),
             latitude: coordinate.latitude, longitude: coordinate.longitude
         ))
     }
@@ -872,10 +872,35 @@ struct DriveContentView: View {
             favorites.remove(at: index)
         } else {
             favorites.append(.init(name: item.name ?? planner.destinationText,
-                                   subtitle: item.placemark.title ?? "",
+                                   subtitle: destinationSubtitle(for: item),
                                    latitude: coordinate.latitude, longitude: coordinate.longitude))
         }
         DriveFavoriteStore.save(favorites)
+    }
+
+    private var destinationSubtitle: String {
+        guard let item = planner.destination else { return "Ausgewähltes Ziel" }
+        return destinationSubtitle(for: item)
+    }
+
+    private func destinationSubtitle(for item: MKMapItem) -> String {
+        let lockTitle: String?
+        if let lock = planner.activeRouteLock,
+           NavigationDestinationIdentityPolicy.matches(
+            lock.destination.clLocationCoordinate, item.placemark.coordinate
+           ) {
+            lockTitle = lock.title
+        } else {
+            lockTitle = nil
+        }
+        return DestinationSubtitlePolicy.subtitle(
+            name: item.name,
+            lockedRouteTitle: lockTitle,
+            locality: item.placemark.locality,
+            administrativeArea: item.placemark.administrativeArea,
+            country: item.placemark.country,
+            fallbackTitle: item.placemark.title
+        )
     }
 
     private var favoritesSheet: some View {

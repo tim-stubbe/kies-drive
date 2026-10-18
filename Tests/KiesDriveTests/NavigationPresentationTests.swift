@@ -1191,6 +1191,28 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://drive.example.com/service/auth/login")
     }
 
+    func testLockedDestinationUsesTripTitleInsteadOfContradictoryPlacemark() {
+        XCTAssertEqual(DestinationSubtitlePolicy.subtitle(
+            name: "Hochheim am Main",
+            lockedRouteTitle: "Heimfahrt über Wurzenpass",
+            locality: nil,
+            administrativeArea: nil,
+            country: "Schweiz",
+            fallbackTitle: "Schweiz"
+        ), "Heimfahrt über Wurzenpass")
+    }
+
+    func testDestinationSubtitleBuildsUsefulUniquePlaceHierarchy() {
+        XCTAssertEqual(DestinationSubtitlePolicy.subtitle(
+            name: "Café",
+            lockedRouteTitle: nil,
+            locality: "Mainz",
+            administrativeArea: "Rheinland-Pfalz",
+            country: "Deutschland",
+            fallbackTitle: "Café, Mainz"
+        ), "Mainz · Rheinland-Pfalz · Deutschland")
+    }
+
     func testStepSelectionDoesNotJumpToNearbyFutureRamp() {
         let metrics = [
             NavigationStepMetric(distanceFromRoute: 4, remainingOnStep: 600),

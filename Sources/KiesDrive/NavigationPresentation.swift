@@ -1179,6 +1179,38 @@ enum NavigationDestinationIdentityPolicy {
     }
 }
 
+enum DestinationSubtitlePolicy {
+    static func subtitle(name: String?, lockedRouteTitle: String?, locality: String?,
+                         administrativeArea: String?, country: String?,
+                         fallbackTitle: String?) -> String {
+        let cleanedName = cleaned(name)
+        if let locked = cleaned(lockedRouteTitle),
+           locked.caseInsensitiveCompare(cleanedName ?? "") != .orderedSame {
+            return locked
+        }
+        var seen = Set<String>()
+        let components = [locality, administrativeArea, country].compactMap { value -> String? in
+            guard let value = cleaned(value),
+                  value.caseInsensitiveCompare(cleanedName ?? "") != .orderedSame else { return nil }
+            let key = value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            guard seen.insert(key).inserted else { return nil }
+            return value
+        }
+        if !components.isEmpty { return components.joined(separator: " · ") }
+        if let fallback = cleaned(fallbackTitle),
+           fallback.caseInsensitiveCompare(cleanedName ?? "") != .orderedSame {
+            return fallback
+        }
+        return "Ausgewähltes Ziel"
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
+}
+
 /// Destination activation is transactional: a failed request may restore its
 /// own snapshot only while it is still the latest user selection.
 enum DestinationActivationRollbackPolicy {
