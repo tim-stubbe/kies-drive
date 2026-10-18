@@ -11,6 +11,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     @Published var authorization: CLAuthorizationStatus = .notDetermined
     private let manager = CLLocationManager()
     private var started = false
+    private var navigationActive = false
 
     override init() {
         super.init()
@@ -52,6 +53,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     /// a lower update rate is sufficient and avoids running the receiver at
     /// maximum power for the whole time the app is open.
     func setNavigationActive(_ active: Bool) {
+        navigationActive = active
         manager.desiredAccuracy = active ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyNearestTenMeters
         manager.distanceFilter = active ? 8 : 25
         #if os(iOS)
@@ -69,7 +71,20 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorization = manager.authorizationStatus
         #if os(iOS)
-        if authorization == .authorizedAlways || authorization == .authorizedWhenInUse { manager.startUpdatingLocation() }
+        if authorization == .authorizedAlways || authorization == .authorizedWhenInUse {
+            manager.startUpdatingLocation()
+        }
+        // Navigation can already have been activated while permission was
+        // still undecided. Remember that intent and request the background
+        // upgrade as soon as the first When-In-Use grant arrives; otherwise
+        // locked-screen speech and CarPlay may stop despite correct plist and
+        // background-mode configuration.
+        if NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: navigationActive,
+            hasWhenInUseAuthorization: authorization == .authorizedWhenInUse
+        ) {
+            manager.requestAlwaysAuthorization()
+        }
         #else
         if authorization == .authorizedAlways { manager.startUpdatingLocation() }
         #endif
