@@ -24,6 +24,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var carPlaySearchGeneration = UUID()
     private var activeCarPlaySearch: MKLocalSearch?
     private var hasShownLocationAccessAlert = false
+    private var routeRestoreInProgress = false
+    private var hasShownRouteRestoreAlert = false
     private var cancellables: Set<AnyCancellable> = []
 
     func templateApplicationScene(_ scene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController, to window: CPWindow) {
@@ -92,6 +94,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeCarPlaySearch = nil
         carPlaySearchResults = [:]
         hasShownLocationAccessAlert = false
+        routeRestoreInProgress = false
+        hasShownRouteRestoreAlert = false
         LocationService.shared.setNavigationActive(RoutePlanner.shared.isNavigating)
     }
 
@@ -177,12 +181,25 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func restoreLockedTripIfNeeded(at suppliedLocation: CLLocation? = nil) {
-        guard let location = suppliedLocation ?? LocationService.shared.location,
+        let planner = RoutePlanner.shared
+        guard planner.activeRouteLock != nil, !planner.isNavigating,
+              !routeRestoreInProgress,
+              let location = suppliedLocation ?? LocationService.shared.location,
               NavigationLocationPolicy.accepts(location, after: nil) else { return }
+        routeRestoreInProgress = true
         Task {
-            await RoutePlanner.shared.restoreActiveTripIfNeeded(
+            let restored = await planner.restoreActiveTripIfNeeded(
                 from: location.coordinate, settings: .shared
             )
+            self.routeRestoreInProgress = false
+            if restored {
+                self.hasShownRouteRestoreAlert = false
+            } else if !self.hasShownRouteRestoreAlert {
+                self.hasShownRouteRestoreAlert = true
+                self.showFailure(
+                    "Die gespeicherte Route ist gerade weder online noch offline verfügbar. Bitte prüfe die Verbindung auf dem iPhone."
+                )
+            }
         }
     }
 

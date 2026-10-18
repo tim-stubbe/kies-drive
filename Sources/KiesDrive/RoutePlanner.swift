@@ -527,11 +527,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func restoreActiveTripIfNeeded(from current: CLLocationCoordinate2D,
                                    settings: DriveSettings) async -> Bool {
         guard let lock = routeLockStore.activeLock, lock.isActive else { return false }
+        // Another surface (phone scene, CarPlay or remote bridge) may already
+        // own the same restore. Treat that as accepted work instead of a
+        // failure; its result will publish through the shared planner state.
+        if isNavigating || automaticRestoreInProgress { return true }
         guard RouteLockRestorePolicy.shouldAttempt(
             navigationActive: isNavigating,
             attemptInProgress: automaticRestoreInProgress,
             lastAttempt: lastAutomaticRestoreAttempt
-        ) else { return isNavigating }
+        ) else { return false }
         automaticRestoreInProgress = true
         lastAutomaticRestoreAttempt = Date()
         defer { automaticRestoreInProgress = false }
