@@ -2948,7 +2948,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             distance: max(0, distance),
             totalRemainingDistance: routeRemaining,
             totalRemainingTravelTime: routeRemainingTime,
-            upcomingInstructions: Array(upcoming.prefix(5)),
+            upcomingInstructions: Array(NavigationInstructionSequencePolicy
+                .removingConsecutiveDuplicates(upcoming).prefix(5)),
             followingManeuverDistance: followingDistance
         )
     }

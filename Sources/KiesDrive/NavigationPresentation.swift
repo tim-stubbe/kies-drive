@@ -792,6 +792,20 @@ enum CarPlayManeuverIdentityPolicy {
     }
 }
 
+enum NavigationInstructionSequencePolicy {
+    /// MapKit can repeat a leg-boundary instruction as the first instruction
+    /// of the following leg. Hide only adjacent duplicates so a genuinely
+    /// repeated maneuver later in the route remains visible.
+    static func removingConsecutiveDuplicates(_ instructions: [String]) -> [String] {
+        instructions.reduce(into: []) { result, instruction in
+            let cleaned = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { return }
+            guard result.last?.caseInsensitiveCompare(cleaned) != .orderedSame else { return }
+            result.append(cleaned)
+        }
+    }
+}
+
 enum CarPlayGuidancePresentationPolicy {
     /// CarPlay maneuver objects are expensive presentation state. Rebuild
     /// them only from real route instructions; transient spoken status text
@@ -799,10 +813,8 @@ enum CarPlayGuidancePresentationPolicy {
     static func instructions(upcoming: [String], next: String?,
                              guidanceReliable: Bool = true) -> [String] {
         guard guidanceReliable else { return [] }
-        let cleanedUpcoming = upcoming.compactMap { value -> String? in
-            let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return cleaned.isEmpty ? nil : cleaned
-        }
+        let cleanedUpcoming = NavigationInstructionSequencePolicy
+            .removingConsecutiveDuplicates(upcoming)
         if !cleanedUpcoming.isEmpty { return Array(cleanedUpcoming.prefix(3)) }
         let cleanedNext = next?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return [cleanedNext.isEmpty ? "Route folgen" : cleanedNext]
@@ -900,7 +912,8 @@ enum NavigationInitialManeuverPolicy {
             stepIndex: maneuverIndex,
             instruction: steps[maneuverIndex].instruction,
             distance: distance,
-            upcomingInstructions: Array(upcoming.prefix(5)),
+            upcomingInstructions: Array(NavigationInstructionSequencePolicy
+                .removingConsecutiveDuplicates(upcoming).prefix(5)),
             followingManeuverDistance: followingDistance
         )
     }
@@ -2617,7 +2630,8 @@ enum OfflineGuidanceEngine {
                      instruction: steps[maneuver].instruction,
                      distanceToManeuver: max(0, distanceToManeuver),
                      remainingDistance: routeRemaining,
-                     upcomingInstructions: Array(upcoming.prefix(5)),
+                     upcomingInstructions: Array(NavigationInstructionSequencePolicy
+                        .removingConsecutiveDuplicates(upcoming).prefix(5)),
                      followingManeuverDistance: followingDistance,
                      distanceFromRoute: metrics[selected].distanceFromRoute,
                      courseDifferenceDegrees: metrics[selected].courseDifferenceDegrees)

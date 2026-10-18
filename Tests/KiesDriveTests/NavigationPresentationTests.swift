@@ -1679,6 +1679,23 @@ final class NavigationPresentationTests: XCTestCase {
         ), [], "CarPlay must remove stale maneuver cards after a confirmed deviation")
     }
 
+    func testGuidanceRemovesOnlyConsecutiveDuplicateInstructions() {
+        let instructions = NavigationInstructionSequencePolicy.removingConsecutiveDuplicates([
+            " Rechts abbiegen ",
+            "rechts ABBIEGEN",
+            "Links halten",
+            "Rechts abbiegen",
+        ])
+
+        XCTAssertEqual(instructions, [
+            "Rechts abbiegen", "Links halten", "Rechts abbiegen",
+        ])
+        XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
+            upcoming: ["Ausfahrt 4 nehmen", " AUSFAHRT 4 NEHMEN ", "Links halten"],
+            next: nil
+        ), ["Ausfahrt 4 nehmen", "Links halten"])
+    }
+
     func testCarPlayAdvancesIdenticallyWordedManeuversByRouteIdentity() {
         XCTAssertNotEqual(
             CarPlayManeuverIdentityPolicy.live(legIndex: 0, stepIndex: 4),
