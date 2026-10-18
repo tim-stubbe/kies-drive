@@ -449,6 +449,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private enum DestinationSearchOutcome {
         case results([MKMapItem])
+        case noResults
         case failed(String)
         case timedOut
     }
@@ -1255,6 +1256,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 case .results(let items):
                     results.append(contentsOf: items)
                     completedSearches += 1
+                case .noResults:
+                    completedSearches += 1
                 case .failed(let detail):
                     failures.append(detail)
                     completedSearches += 1
@@ -1267,10 +1270,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 }
                 if completedSearches == searches.count {
                     group.cancelAll()
-                    if !results.isEmpty || failures.count < searches.count {
+                    switch DestinationSearchBatchCompletionPolicy.resolution(
+                        resultCount: results.count,
+                        failureCount: failures.count,
+                        searchCount: searches.count
+                    ) {
+                    case .results:
                         return .results(results)
+                    case .noResults:
+                        return .noResults
+                    case .failed:
+                        return .failed(failures.first ?? "Unbekannter Suchfehler")
                     }
-                    return .failed(failures.first ?? "Unbekannter Suchfehler")
                 }
             }
             return results.isEmpty
@@ -1313,6 +1324,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                       }) else { return }
                 result.append(item)
             }
+        case .noResults:
+            errorMessage = "Kein Ziel gefunden. Bitte Ort, Straße oder Hausnummer genauer eingeben."
         case .failed(let detail):
             errorMessage = "Zielsuche fehlgeschlagen: \(detail)"
         case .timedOut:

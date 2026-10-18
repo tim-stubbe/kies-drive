@@ -98,6 +98,33 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testDestinationSearchDistinguishesEmptyResultsFromFailures() {
+        XCTAssertEqual(
+            DestinationSearchBatchCompletionPolicy.resolution(
+                resultCount: 2, failureCount: 0, searchCount: 2
+            ),
+            .results
+        )
+        XCTAssertEqual(
+            DestinationSearchBatchCompletionPolicy.resolution(
+                resultCount: 0, failureCount: 0, searchCount: 2
+            ),
+            .noResults
+        )
+        XCTAssertEqual(
+            DestinationSearchBatchCompletionPolicy.resolution(
+                resultCount: 0, failureCount: 1, searchCount: 2
+            ),
+            .noResults
+        )
+        XCTAssertEqual(
+            DestinationSearchBatchCompletionPolicy.resolution(
+                resultCount: 0, failureCount: 2, searchCount: 2
+            ),
+            .failed
+        )
+    }
+
     func testRapidDestinationChangesKeepOriginalRollbackBaseline() {
         let original = DestinationActivationBaselinePolicy.choose(
             existing: Optional<String>.none, current: "Original route"

@@ -41,6 +41,24 @@ enum DestinationSearchCompletionPolicy {
     }
 }
 
+enum DestinationSearchBatchCompletionPolicy {
+    enum Resolution: Equatable {
+        case results
+        case noResults
+        case failed
+    }
+
+    /// An empty, successful MapKit response is not a transport failure. Keep
+    /// that distinction so the UI can tell the driver to refine the query
+    /// instead of appearing unresponsive or blaming the connection.
+    static func resolution(resultCount: Int, failureCount: Int,
+                           searchCount: Int) -> Resolution {
+        if resultCount > 0 { return .results }
+        if searchCount > 0, failureCount >= searchCount { return .failed }
+        return .noResults
+    }
+}
+
 enum DestinationActivationBaselinePolicy {
     /// Rapid destination taps form one replacement transaction. Every newer
     /// request must keep the original stable baseline instead of treating the
