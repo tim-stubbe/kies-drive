@@ -1265,6 +1265,19 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechSeparatesEuropeanHolidayRouteRoadLabels() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Der D8 Richtung Split folgen, danach auf H3 / G1"
+            ),
+            "Der D 8 Richtung Split folgen, danach auf H 3, G 1."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Auf SS13 Richtung Tarvisio fahren"),
+            "Auf SS 13 Richtung Tarvisio fahren."
+        )
+    }
+
     func testSpeechExpandsSpeedUnitBeforeRemovingSlash() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("Tempolimit 80 km/h"),

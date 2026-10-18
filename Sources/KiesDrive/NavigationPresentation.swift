@@ -497,7 +497,11 @@ enum NavigationSpeechFormatter {
         // Force a small spoken pause between road class and number. Compact
         // forms such as A66 or B40 otherwise sound like arbitrary words on
         // some installed German voices.
-        text = replacing(#"(?i)\b([ABELK])\s*([0-9]{1,4})([a-z]?)\b"#,
+        // Include the common road classes encountered on European holiday
+        // routes (for example Croatia D8, Slovenia H3/G1 and Italy SS13), not
+        // only German A/B/E roads. Compact labels otherwise become a single
+        // unintelligible word with some German voices.
+        text = replacing(#"(?i)\b(SS|[ABDEGHKLMNRS])\s*([0-9]{1,4})([a-z]?)\b"#,
                          in: text, with: "$1 $2 $3")
         text = text.unicodeScalars.map { scalar -> String in
             if CharacterSet.controlCharacters.contains(scalar) ||
