@@ -2304,6 +2304,7 @@ struct DriveSettingsView: View {
                         LabeledContent("Gesprochene Manöver", value: "\(latestSummary.maneuverAnnouncements)")
                         LabeledContent("Pausenhinweise gezeigt", value: "\(latestSummary.breakRemindersShown)")
                         LabeledContent("Pausenhinweise gesprochen", value: "\(latestSummary.breakRemindersAnnounced)")
+                        LabeledContent("Erholungspausen erkannt", value: "\(latestSummary.restBreaksCompleted)")
                         LabeledContent("Tankhinweise gezeigt", value: "\(latestSummary.fuelRemindersShown)")
                         LabeledContent("Tankhinweise gesprochen", value: "\(latestSummary.fuelRemindersAnnounced)")
                         LabeledContent("Nicht beendete Fahransagen", value: "\(latestSummary.speechDeliveryFailures)")

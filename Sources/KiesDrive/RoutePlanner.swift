@@ -832,6 +832,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         drivingRestStore.save(drivingRestState)
         breakReminderText = nil
+        DriveDiagnosticStore.append(
+            .restBreakCompleted,
+            detail: "Pause manuell bei sicherem Stillstand bestätigt"
+        )
         lastLongTripPlanRefreshAt = date
         buildLongTripPlan(settings: settings)
         return true
@@ -870,6 +874,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0 {
             deliveredBreakReminderStages = []
             breakReminderText = nil
+            DriveDiagnosticStore.append(
+                .restBreakCompleted,
+                detail: "Mindestens 20 Minuten Stillstand während pausierter Navigation erkannt"
+            )
             buildLongTripPlan(settings: .shared)
         }
     }
@@ -2433,6 +2441,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                             speedMps: NavigationMotionPolicy.reliableSpeed(for: location))
         }
         let pauseJustCompleted = previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0
+        if pauseJustCompleted {
+            DriveDiagnosticStore.append(
+                .restBreakCompleted,
+                detail: "Mindestens 20 Minuten Stillstand während aktiver Navigation erkannt"
+            )
+        }
         let passedPlannedStop = LongTripPlanRefreshPolicy.hasPassedConcreteStop(
             longTripPlan?.results.first,
             currentInstalledProgress: currentInstalledRouteProgress

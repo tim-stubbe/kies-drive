@@ -275,6 +275,7 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
     case maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
     case breakReminderShown, breakReminderAnnounced, fuelReminderShown, fuelReminderAnnounced
+    case restBreakCompleted
     case routeSearchCompleted, routeSearchDiscarded, routeStopAdded, routeStopFailed
 }
 
@@ -413,6 +414,7 @@ struct DriveDiagnosticSummary: Equatable {
     let maneuverAnnouncements: Int
     let breakRemindersShown: Int
     let breakRemindersAnnounced: Int
+    let restBreaksCompleted: Int
     let fuelRemindersShown: Int
     let fuelRemindersAnnounced: Int
     let missedFinalCues: Int
@@ -590,6 +592,7 @@ struct DriveDiagnosticSummary: Equatable {
         let maneuvers = session.filter { $0.kind == .maneuverAnnounced }.count
         let shownBreaks = session.filter { $0.kind == .breakReminderShown }.count
         let spokenBreaks = session.filter { $0.kind == .breakReminderAnnounced }.count
+        let completedBreaks = session.filter { $0.kind == .restBreakCompleted }.count
         let shownFuel = session.filter { $0.kind == .fuelReminderShown }.count
         let spokenFuel = session.filter { $0.kind == .fuelReminderAnnounced }.count
         return .init(quality: quality, eventCount: session.count,
@@ -599,6 +602,7 @@ struct DriveDiagnosticSummary: Equatable {
                      arrivals: arrivals, maneuverAnnouncements: maneuvers,
                      breakRemindersShown: shownBreaks,
                      breakRemindersAnnounced: spokenBreaks,
+                     restBreaksCompleted: completedBreaks,
                      fuelRemindersShown: shownFuel,
                      fuelRemindersAnnounced: spokenFuel,
                      missedFinalCues: missed, speechDeliveryFailures: speechFailures,

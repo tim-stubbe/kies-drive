@@ -2994,6 +2994,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(summary.recommendation.contains("automatisch behoben"))
     }
 
+    func testDiagnosticSummaryCountsCompletedRestBreaks() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .breakReminderShown, detail: "Pause bald"),
+            DriveDiagnosticEvent(
+                kind: .restBreakCompleted,
+                detail: "Mindestens 20 Minuten Stillstand erkannt"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.restBreaksCompleted, 1)
+        XCTAssertEqual(summary.breakRemindersShown, 1)
+        XCTAssertEqual(summary.quality, .good)
+    }
+
     func testDiagnosticSummaryReportsUnresolvedRouteStopFailure() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
