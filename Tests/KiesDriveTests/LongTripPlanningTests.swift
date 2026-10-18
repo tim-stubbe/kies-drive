@@ -113,6 +113,19 @@ final class LongTripPlanningTests: XCTestCase {
             snapshot, routeIdentity: "hochheim|wurzenpass",
             origin: .init(latitude: 50.02, longitude: 8), now: loadedAt.addingTimeInterval(1_000)
         ))
+
+        let unknown = TollLookupSnapshot(
+            routeIdentity: "hochheim|wurzenpass", origin: .init(latitude: 50, longitude: 8),
+            cost: .unknown(reason: "Provider nicht erreichbar"), loadedAt: loadedAt
+        )
+        XCTAssertNotNil(TollLookupCachePolicy.reusable(
+            unknown, routeIdentity: "hochheim|wurzenpass",
+            origin: .init(latitude: 50, longitude: 8), now: loadedAt.addingTimeInterval(119)
+        ))
+        XCTAssertNil(TollLookupCachePolicy.reusable(
+            unknown, routeIdentity: "hochheim|wurzenpass",
+            origin: .init(latitude: 50, longitude: 8), now: loadedAt.addingTimeInterval(121)
+        ))
     }
 
     func testTollComparisonPublishesOnlyCompleteVariantPair() {
@@ -739,6 +752,18 @@ final class LongTripPlanningTests: XCTestCase {
             status: "known", amount: 27.4, currency: "EUR", source: "Provider",
             sourceURL: "http://example.test/tolls"
         ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 0, currency: "EUR", source: "Search result",
+            sourceURL: "https://example.test/tolls"
+        ), "Zero toll needs explicit verified no_toll evidence")
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "Euro", source: "Provider",
+            sourceURL: "https://example.test/tolls"
+        ))
+        XCTAssertEqual(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: " eur ", source: "Provider",
+            sourceURL: "https://example.test/tolls"
+        )?.currency, "EUR")
         XCTAssertTrue(TollEvidenceValidator.validatesNoToll(
             status: "no_toll", source: "Official provider",
             sourceURL: "https://example.test/toll-free"

@@ -397,12 +397,15 @@ enum TollEvidenceValidator {
 
     static func validate(status: String, amount: Double?, currency: String,
                          source: String, sourceURL: String?) -> Evidence? {
-        guard status == "known", let amount, amount.isFinite, (0...5_000).contains(amount),
-              !currency.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        let normalizedCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard status == "known", let amount, amount.isFinite, amount > 0, amount <= 5_000,
+              normalizedCurrency.count == 3,
+              normalizedCurrency.unicodeScalars.allSatisfy(CharacterSet.letters.contains),
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
               url.host != nil else { return nil }
-        return Evidence(amount: amount, currency: currency, source: source)
+        return Evidence(amount: amount, currency: normalizedCurrency, source: source)
     }
 
 

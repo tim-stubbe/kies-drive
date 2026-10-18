@@ -67,17 +67,23 @@ struct TollLookupSnapshot: Equatable {
 
 enum TollLookupCachePolicy {
     static let lifetime: TimeInterval = 15 * 60
+    static let unknownLifetime: TimeInterval = 2 * 60
     static let maximumOriginMovement: CLLocationDistance = 10_000
 
     static func reusable(_ snapshot: TollLookupSnapshot?, routeIdentity: String,
                          origin: CLLocationCoordinate2D, now: Date = Date()) -> TollCost? {
         guard let snapshot, snapshot.routeIdentity == routeIdentity,
               now.timeIntervalSince(snapshot.loadedAt) >= 0,
-              now.timeIntervalSince(snapshot.loadedAt) <= lifetime else { return nil }
+              now.timeIntervalSince(snapshot.loadedAt) <= cacheLifetime(for: snapshot.cost) else { return nil }
         let movement = CLLocation(latitude: snapshot.origin.latitude, longitude: snapshot.origin.longitude)
             .distance(from: CLLocation(latitude: origin.latitude, longitude: origin.longitude))
         guard movement <= maximumOriginMovement else { return nil }
         return snapshot.cost
+    }
+
+    private static func cacheLifetime(for cost: TollCost) -> TimeInterval {
+        if case .unknown = cost { return unknownLifetime }
+        return lifetime
     }
 }
 
