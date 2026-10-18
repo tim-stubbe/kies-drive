@@ -1199,7 +1199,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 await self.loadTollCost(from: start)
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 self.buildLongTripPlan(settings: settings)
-                self.cacheForOffline()
+                self.cacheForOffline(preservingProgress: true)
             }
             return true
         } catch {
@@ -1219,8 +1219,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Speichert die aktuell berechnete Route + Tankstellenliste lokal, damit
     /// sie bei fehlender Verbindung (z.B. Funkloch unterwegs) weiter als Text
     /// angezeigt werden kann - kein Kartenmaterial, nur Fahrhinweise und Preise.
-    private func cacheForOffline() {
+    private func cacheForOffline(preservingProgress: Bool = false) {
         guard !legs.isEmpty else { return }
+        let retainedProgress = preservingProgress ? offlineRoute?.navigationProgress : nil
         let cached = CachedRoute(
             destinationName: destination?.name ?? destinationText,
             tripID: routeLockStore.activeLock?.id,
@@ -1241,7 +1242,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                  })
             },
             stations: stations,
-            savedAt: Date()
+            savedAt: Date(),
+            navigationProgress: retainedProgress
         )
         offlineRoute = cached
         if Self.offlineCacheStore.save(cached) {
@@ -2753,7 +2755,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard routeGeneration == routeCalculationGeneration,
               planningGeneration == stopPlanningGeneration else { return }
         buildLongTripPlan(settings: settings)
-        cacheForOffline()
+        cacheForOffline(preservingProgress: true)
     }
 
     private func breakCandidates(along routes: [MKRoute], useMeasuredDetours: Bool = true) -> [BreakCandidate] {
