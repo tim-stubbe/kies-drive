@@ -3388,7 +3388,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             cancelCurrentSpeechWork()
         case .ended:
             audioSessionInterrupted = false
-            retryCurrentManeuverAfterAudioInterruption()
+            retryCurrentManeuverAfterSpeechBecomesAvailable()
         @unknown default:
             audioSessionInterrupted = true
             cancelCurrentSpeechWork()
@@ -3396,7 +3396,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
     #endif
 
-    private func retryCurrentManeuverAfterAudioInterruption() {
+    /// Re-evaluates guidance whenever the speech channel becomes free. This is
+    /// needed not only after calls or Siri: at a tight interchange a second
+    /// critical cue deliberately cannot cut the first cue in half. Waiting
+    /// for another GPS callback after that first sentence can be too late, so
+    /// use the latest accepted fix immediately.
+    private func retryCurrentManeuverAfterSpeechBecomesAvailable() {
         let settings = DriveSettings.shared
         guard NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
             navigationActive: isNavigating,
@@ -3491,7 +3496,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingFuelState.clearPendingSpeech()
             drivingFuelStore.save(drivingFuelState)
         }
+        let releasedSpeechChannel = activeUtterance === utterance
         finishAudioSession(for: utterance)
+        // Do not submit a new utterance from inside AVSpeechSynthesizer's
+        // completion stack. On the next actor turn the just-freed channel can
+        // safely deliver a deferred close-following maneuver even if no new
+        // location sample arrives in time.
+        if releasedSpeechChannel {
+            Task { [weak self] in
+                await Task.yield()
+                self?.retryCurrentManeuverAfterSpeechBecomesAvailable()
+            }
+        }
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
@@ -3527,7 +3543,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // fresh utterance is submitted to the possibly just-changed route.
         Task { [weak self] in
             await Task.yield()
-            self?.retryCurrentManeuverAfterAudioInterruption()
+            self?.retryCurrentManeuverAfterSpeechBecomesAvailable()
         }
     }
 
