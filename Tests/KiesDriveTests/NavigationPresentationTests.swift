@@ -1208,6 +1208,11 @@ final class NavigationPresentationTests: XCTestCase {
             previousKey: "old", nextKey: "new", stages: [],
             previousDistance: .infinity, speedMetresPerSecond: 25
         ))
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "old", nextKey: "new", stages: [],
+            previousDistance: 20, speedMetresPerSecond: 25,
+            recoveredAfterLocationGap: true
+        ), "A post-tunnel fix must not speak a turn that is already behind the car")
     }
 
     func testOnlineAndOfflineManeuverSpeechShareDenseTurnWording() {

@@ -2116,9 +2116,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         updateUsageSession(at: location)
         lastAcceptedNavigationLocation = location
-        if let gap = NavigationLocationGapPolicy.recoveredGap(
+        let recoveredLocationGap = NavigationLocationGapPolicy.recoveredGap(
             previous: previousNavigationLocation, current: location
-        ) {
+        )
+        if let gap = recoveredLocationGap {
             DriveDiagnosticStore.append(
                 .locationGapRecovered,
                 detail: DriveDiagnosticDetail.navigationSample(
@@ -2174,7 +2175,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
         }
         if isUsingOfflineGuidance {
-            updateOfflineProgress(at: location, guidanceSpeedMps: guidanceSpeed, settings: settings)
+            updateOfflineProgress(
+                at: location, guidanceSpeedMps: guidanceSpeed, settings: settings,
+                recoveredAfterLocationGap: recoveredLocationGap != nil
+            )
         } else if let progress = liveNavigationProgress(
             at: location, allowsFullRecovery: allowsFullLiveRecovery
         ) {
@@ -2185,7 +2189,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     rerouting: isRecalculating,
                     confirmedOffRoute: !isManeuverGuidanceReliable
                ) {
-                announce(progress, guidanceSpeedMps: guidanceSpeed)
+                announce(
+                    progress, guidanceSpeedMps: guidanceSpeed,
+                    recoveredAfterLocationGap: recoveredLocationGap != nil
+                )
             }
         }
         persistRouteLockProgress(at: location)
@@ -2420,7 +2427,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func updateOfflineProgress(at location: CLLocation, guidanceSpeedMps: Double,
-                                       settings: DriveSettings) {
+                                       settings: DriveSettings,
+                                       recoveredAfterLocationGap: Bool) {
         guard let cache = offlineRoute else { return }
         let guidanceEntries = cache.legs.enumerated().flatMap { legIndex, leg in
             leg.steps.compactMap { step -> (legIndex: Int, step: OfflineGuidanceStep)? in
@@ -2576,19 +2584,24 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
 
         guard settings.voiceGuidance else { return }
-        announceOfflineManeuver(progress, guidanceSpeedMps: guidanceSpeedMps)
+        announceOfflineManeuver(
+            progress, guidanceSpeedMps: guidanceSpeedMps,
+            recoveredAfterLocationGap: recoveredAfterLocationGap
+        )
     }
 
     private func announceOfflineManeuver(
         _ progress: OfflineGuidanceProgress,
-        guidanceSpeedMps: Double
+        guidanceSpeedMps: Double,
+        recoveredAfterLocationGap: Bool = false
     ) {
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
         if recordManeuverTransition(
             key: key,
             instruction: progress.instruction,
             distance: progress.distanceToManeuver,
-            guidanceSpeedMps: guidanceSpeedMps
+            guidanceSpeedMps: guidanceSpeedMps,
+            recoveredAfterLocationGap: recoveredAfterLocationGap
         ) { return }
         guard
               let stage = NavigationAnnouncementStage.stage(
@@ -2978,14 +2991,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         speedWarning = speedKmh > Double(maxspeed) + 5
     }
 
-    private func announce(_ progress: LiveNavigationProgress, guidanceSpeedMps: Double) {
+    private func announce(_ progress: LiveNavigationProgress, guidanceSpeedMps: Double,
+                          recoveredAfterLocationGap: Bool = false) {
         let speedKmh = guidanceSpeedMps * 3.6
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
         if recordManeuverTransition(
             key: key,
             instruction: progress.maneuver.step.instructions,
             distance: progress.distance,
-            guidanceSpeedMps: guidanceSpeedMps
+            guidanceSpeedMps: guidanceSpeedMps,
+            recoveredAfterLocationGap: recoveredAfterLocationGap
         ) { return }
         guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
         let completed = announcedManeuverStages[key] ?? []
@@ -3018,7 +3033,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     private func recordManeuverTransition(key: String, instruction: String,
                                           distance: CLLocationDistance,
-                                          guidanceSpeedMps: Double) -> Bool {
+                                          guidanceSpeedMps: Double,
+                                          recoveredAfterLocationGap: Bool = false) -> Bool {
         guard diagnosticManeuverKey != key else {
             diagnosticManeuverDistance = distance
             return false
@@ -3032,7 +3048,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             stages: previousKey.map { announcedManeuverStages[$0] ?? [] } ?? [],
             inFlightStages: previousInFlightStages,
             previousDistance: previousDistance ?? .greatestFiniteMagnitude,
-            speedMetresPerSecond: guidanceSpeedMps
+            speedMetresPerSecond: guidanceSpeedMps,
+            recoveredAfterLocationGap: recoveredAfterLocationGap
         )
         var recovered = false
         if shouldRecover, let previousKey, let previousInstruction {

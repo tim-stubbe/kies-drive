@@ -892,8 +892,13 @@ enum ManeuverDiagnosticPolicy {
                                       stages: Set<NavigationAnnouncementStage>,
                                       inFlightStages: Set<NavigationAnnouncementStage> = [],
                                       previousDistance: CLLocationDistance = 0,
-                                      speedMetresPerSecond: Double = 0) -> Bool {
+                                      speedMetresPerSecond: Double = 0,
+                                      recoveredAfterLocationGap: Bool = false) -> Bool {
         guard let previousKey, previousKey != nextKey else { return false }
+        // After a tunnel/background gap the previous junction may be far
+        // behind even if the last pre-gap fix was inside its immediate zone.
+        // A late "Jetzt" would direct the driver back onto an old road.
+        guard !recoveredAfterLocationGap else { return false }
         // A late "Jetzt" is safe only when the last trustworthy fix already
         // placed the vehicle immediately at that junction. If the last known
         // distance was larger, the cursor transition is evidence that the
