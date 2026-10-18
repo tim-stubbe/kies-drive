@@ -136,6 +136,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var breakReminderText: String?
     @Published private(set) var usageStatistics = DriveUsageStatisticsStore.load()
     @Published private(set) var isUsingOfflineGuidance = false
+    @Published private(set) var isManeuverGuidanceReliable = true
     private var comparisonRoute: MKRoute?
     private var researchedStandardToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
     private var researchedAvoidingToll: TollCost = .unknown(reason: "Mautfreie Route wird geprüft.")
@@ -166,7 +167,6 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var offRouteSince: Date?
     private var offRouteFixCount = 0
     private var previousOffRouteDistance: CLLocationDistance?
-    private var liveGuidanceSuppressedForDeviation = false
     private var lastRerouteAt: Date?
     private var consecutiveRerouteFailures = 0
     private var navigationSessionGeneration = UUID()
@@ -1238,7 +1238,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
                     navigationActive: isNavigating,
                     rerouting: isRecalculating,
-                    confirmedOffRoute: liveGuidanceSuppressedForDeviation
+                    confirmedOffRoute: !isManeuverGuidanceReliable
                ) {
                 announce(progress, guidanceSpeedMps: guidanceSpeed)
             }
@@ -1425,6 +1425,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     speedMetresPerSecond: reliableSpeed
                    ), !offlineDeviationWarningActive {
                     offlineDeviationWarningActive = true
+                    isManeuverGuidanceReliable = false
                     DriveDiagnosticStore.append(
                         .offlineRouteDeparture,
                         detail: DriveDiagnosticDetail.navigationSample(
@@ -1449,6 +1450,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         if offlineDeviationWarningActive {
             offlineDeviationWarningActive = false
+            isManeuverGuidanceReliable = true
             if settings.voiceGuidance {
                 _ = speak("Du bist wieder auf der gespeicherten Route.", priority: .status)
             }
@@ -1542,6 +1544,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         consecutiveRerouteFailures = 0
         offlineNeedsInitialPositionMatch = false
         offlineDeviationWarningActive = false
+        isManeuverGuidanceReliable = true
         lastLongTripPlanRefreshAt = nil
     }
 
@@ -2043,7 +2046,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             horizontalAccuracy: location.horizontalAccuracy,
             speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
         )
-        if !isOutsideCorridor { liveGuidanceSuppressedForDeviation = false }
+        if !isOutsideCorridor { isManeuverGuidanceReliable = true }
         let shouldAccumulate = NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
@@ -2069,7 +2072,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 consecutiveFixes: offRouteFixCount,
                 speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
               ) else { return }
-        liveGuidanceSuppressedForDeviation = true
+        isManeuverGuidanceReliable = false
         resetDeviationTracking()
         lastRerouteAt = Date()
         let sessionGeneration = navigationSessionGeneration
@@ -2138,7 +2141,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ) else { return }
             if succeeded {
                 consecutiveRerouteFailures = 0
-                liveGuidanceSuppressedForDeviation = false
+                isManeuverGuidanceReliable = true
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
                 if settings.voiceGuidance {
                     announceRecalculatedRoute(at: location)
@@ -2193,7 +2196,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         rerouteGeneration = UUID()
         isRecalculating = false
         lastRerouteAt = nil
-        liveGuidanceSuppressedForDeviation = false
+        isManeuverGuidanceReliable = true
         let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id
         if usageSessionState.tripID != tripID {
             usageSessionState = DriveUsageSessionState(tripID: tripID)

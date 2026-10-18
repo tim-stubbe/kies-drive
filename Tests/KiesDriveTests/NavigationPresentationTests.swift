@@ -690,6 +690,10 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
             upcoming: ["  "], next: nil
         ), ["Route folgen"])
+        XCTAssertEqual(CarPlayGuidancePresentationPolicy.instructions(
+            upcoming: ["Alte Abfahrt nehmen"], next: "Alte Abfahrt nehmen",
+            guidanceReliable: false
+        ), [], "CarPlay must remove stale maneuver cards after a confirmed deviation")
     }
 
     func testCarPlayGuidanceKeepsExitAndRoadVisibleOnSmallDisplays() {

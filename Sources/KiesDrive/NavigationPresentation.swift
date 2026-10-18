@@ -429,7 +429,9 @@ enum CarPlayGuidancePresentationPolicy {
     /// CarPlay maneuver objects are expensive presentation state. Rebuild
     /// them only from real route instructions; transient spoken status text
     /// such as "Route wird neu berechnet" must never become a turn card.
-    static func instructions(upcoming: [String], next: String?) -> [String] {
+    static func instructions(upcoming: [String], next: String?,
+                             guidanceReliable: Bool = true) -> [String] {
+        guard guidanceReliable else { return [] }
         let cleanedUpcoming = upcoming.compactMap { value -> String? in
             let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return cleaned.isEmpty ? nil : cleaned

@@ -107,12 +107,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest(
+        Publishers.CombineLatest3(
             planner.$nextManeuverInstruction.removeDuplicates(),
-            planner.$upcomingManeuverInstructions.removeDuplicates()
+            planner.$upcomingManeuverInstructions.removeDuplicates(),
+            planner.$isManeuverGuidanceReliable.removeDuplicates()
         )
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _, _ in
+            .sink { [weak self] _, _, _ in
                 self?.publishManeuver()
                 self?.updateGuidanceEstimates()
             }
@@ -676,7 +677,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let planner = RoutePlanner.shared
         let instructions = CarPlayGuidancePresentationPolicy.instructions(
             upcoming: planner.upcomingManeuverInstructions,
-            next: planner.nextInstruction
+            next: planner.nextInstruction,
+            guidanceReliable: planner.isManeuverGuidanceReliable
         )
         session.upcomingManeuvers = instructions.enumerated().map { index, instruction in
             let maneuver = CPManeuver()
