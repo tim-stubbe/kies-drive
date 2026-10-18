@@ -851,13 +851,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             liveRouteDestinationCoordinate, lock.destination.clLocationCoordinate
         )
         let hasMatchingOfflineRoute = offlineRoute.map {
-            OfflineRouteAvailabilityPolicy.isUsable(
+            let exactTrip = belongsToActiveTrip($0)
+            let available = OfflineRouteAvailabilityPolicy.isUsable(
                 savedAt: $0.savedAt,
                 cacheName: $0.destinationName,
                 cacheCoordinate: $0.destinationCoordinate?.clLocationCoordinate,
                 destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
                 destinationCoordinate: destination?.placemark.coordinate,
-                belongsToActiveTrip: belongsToActiveTrip($0)
+                belongsToActiveTrip: exactTrip
+            )
+            return OfflineRouteGuidanceEligibilityPolicy.mayStart(
+                available: available, belongsToExactActiveTrip: exactTrip
             ) && $0.legs.flatMap(\.steps).contains { ($0.coordinates?.count ?? 0) > 1 }
         } ?? false
         switch RouteRestoreModePolicy.mode(
@@ -2343,16 +2347,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     @discardableResult
     private func startOfflineGuidanceIfAvailable(replacingLiveRoute: Bool = false) -> Bool {
-        guard (legs.isEmpty || replacingLiveRoute), let cache = offlineRoute,
-              OfflineRouteAvailabilityPolicy.isUsable(
+        guard (legs.isEmpty || replacingLiveRoute), let cache = offlineRoute else { return false }
+        let exactTrip = belongsToActiveTrip(cache)
+        let available = OfflineRouteAvailabilityPolicy.isUsable(
                 savedAt: cache.savedAt,
                 cacheName: cache.destinationName,
                 cacheCoordinate: cache.destinationCoordinate?.clLocationCoordinate,
                 destinationName: destination?.name ?? (destinationText.isEmpty ? nil : destinationText),
                 destinationCoordinate: destination?.placemark.coordinate,
-                belongsToActiveTrip: belongsToActiveTrip(cache)
-              ),
-              cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {
+                belongsToActiveTrip: exactTrip
+              )
+        guard OfflineRouteGuidanceEligibilityPolicy.mayStart(
+            available: available, belongsToExactActiveTrip: exactTrip
+        ), cache.legs.flatMap(\.steps).contains(where: { ($0.coordinates?.count ?? 0) > 1 }) else {
             return false
         }
         if replacingLiveRoute {

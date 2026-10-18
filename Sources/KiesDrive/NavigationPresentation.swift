@@ -2102,6 +2102,15 @@ enum OfflineRouteAvailabilityPolicy {
     }
 }
 
+enum OfflineRouteGuidanceEligibilityPolicy {
+    /// Destination matching is sufficient for a harmless cached preview, but
+    /// turn-by-turn guidance must additionally prove that geometry, mandatory
+    /// waypoints and per-segment options belong to the active trip lock.
+    static func mayStart(available: Bool, belongsToExactActiveTrip: Bool) -> Bool {
+        available && belongsToExactActiveTrip
+    }
+}
+
 enum RouteSearchPolicy {
     struct DetourAnchors {
         let entry: CLLocationCoordinate2D

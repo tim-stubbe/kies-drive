@@ -3105,6 +3105,18 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testOfflineGuidanceRequiresExactActiveTripEvenWhenDestinationMatches() {
+        XCTAssertTrue(OfflineRouteGuidanceEligibilityPolicy.mayStart(
+            available: true, belongsToExactActiveTrip: true
+        ))
+        XCTAssertFalse(OfflineRouteGuidanceEligibilityPolicy.mayStart(
+            available: true, belongsToExactActiveTrip: false
+        ), "A same-destination cache from another trip must remain preview-only")
+        XCTAssertFalse(OfflineRouteGuidanceEligibilityPolicy.mayStart(
+            available: false, belongsToExactActiveTrip: true
+        ))
+    }
+
     func testOfflineGuidanceRejectsExpiredAndInvalidFutureCaches() {
         let now = Date(timeIntervalSince1970: 2_000_000)
         XCTAssertTrue(OfflineRouteFreshnessPolicy.isUsable(
