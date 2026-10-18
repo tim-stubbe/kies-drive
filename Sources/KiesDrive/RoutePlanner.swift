@@ -404,6 +404,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
     private var routeStopMutationGeneration = UUID()
     private var routeStopMutationSnapshot: RouteStopMutationSnapshot?
+    private var routeStopMutationGate = RouteStopMutationGate()
     /// Volatile identity for MapKit route objects. Unlike the offline cache,
     /// live `MKRoute` values cannot be persisted, but they still must never be
     /// resumed for a different destination after a failed recalculation.
@@ -1912,6 +1913,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func removeRouteStop(id: String, from start: CLLocationCoordinate2D,
                          settings: DriveSettings) async -> Bool {
+        // A repeated CarPlay/phone tap while MapKit is still calculating must
+        // not start a second mutation against the half-updated route.
+        guard routeStopMutationGate.begin(id) else { return true }
+        defer { routeStopMutationGate.finish(id) }
         guard routeLockStore.activeLock?.waypoints.contains(where: {
             $0.id == id && $0.isRemovableComfortStop
         }) == true else {
@@ -5200,6 +5205,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D,
                         settings: DriveSettings) async -> Bool {
+        // `toggle` is especially vulnerable to double taps: the first call
+        // inserts synchronously before awaiting MapKit, so an overlapping
+        // second call would otherwise interpret the same tap as "remove".
+        guard routeStopMutationGate.begin(station.id) else { return true }
+        defer { routeStopMutationGate.finish(station.id) }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let wasSelected = RouteStopSelectionPolicy.contains(
             stopID: station.id,
@@ -5321,6 +5331,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 transientStationIDs: viaStations.map(\.id),
                 lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
             ) else { return true }
+            guard routeStopMutationGate.begin(station.id) else { return true }
+            defer { routeStopMutationGate.finish(station.id) }
             let navigationSession = isNavigating ? navigationSessionGeneration : nil
             let mutationGeneration = UUID()
             routeStopMutationGeneration = mutationGeneration

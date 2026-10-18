@@ -2380,6 +2380,18 @@ final class NavigationPresentationTests: XCTestCase {
         ), "An already locked stop stays removable even after it is passed")
     }
 
+    func testRouteStopMutationGateCoalescesRepeatedTapUntilCalculationFinishes() {
+        var gate = RouteStopMutationGate()
+        XCTAssertTrue(gate.begin("fuel-1"))
+        XCTAssertTrue(gate.isActive("fuel-1"))
+        XCTAssertFalse(gate.begin("fuel-1"), "A repeated tap must not invert an in-flight toggle")
+        XCTAssertTrue(gate.begin("fuel-2"), "Unrelated stop actions remain independent")
+
+        gate.finish("fuel-1")
+        XCTAssertFalse(gate.isActive("fuel-1"))
+        XCTAssertTrue(gate.begin("fuel-1"), "The stop becomes actionable again after completion")
+    }
+
     func testNamedRouteSearchPrefersRelevantBrandOverTinyUnrelatedDetour() {
         let exact = RouteSearchPolicy.rankingScore(
             detourMetres: 1_000, candidateProgress: 0.4, currentProgress: 0.2,

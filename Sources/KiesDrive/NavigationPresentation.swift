@@ -320,6 +320,22 @@ enum PlannedStopSelectionPolicy {
     }
 }
 
+struct RouteStopMutationGate {
+    private var activeIDs = Set<String>()
+
+    mutating func begin(_ id: String) -> Bool {
+        activeIDs.insert(id).inserted
+    }
+
+    mutating func finish(_ id: String) {
+        activeIDs.remove(id)
+    }
+
+    func isActive(_ id: String) -> Bool {
+        activeIDs.contains(id)
+    }
+}
+
 enum CarPlayPlannedStopPolicy {
     /// CarPlay must remain short and glanceable. Prefer the earliest remaining
     /// stop from the currently selected scenario, combine fuel and rest at the
