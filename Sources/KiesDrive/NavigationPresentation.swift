@@ -986,7 +986,14 @@ enum NavigationDeviationPolicy {
     static let requiredConsecutiveFixes = 3
 
     static func threshold(horizontalAccuracy: Double, speedMetresPerSecond: Double) -> Double {
-        max(100, horizontalAccuracy * 3, min(220, max(speedMetresPerSecond, 0) * 4))
+        let speed = max(speedMetresPerSecond, 0)
+        let roadBase: Double
+        switch speed {
+        case ..<12: roadBase = 55   // Stadt: eine echte falsche Abbiegung schnell erkennen
+        case ..<22: roadBase = 75   // Landstraße und zäher Autobahnverkehr
+        default: roadBase = 100     // Autobahn: Parallelfahrbahnen/GPS-Streuung tolerieren
+        }
+        return max(roadBase, horizontalAccuracy * 3, min(220, speed * 4))
     }
 
     static func isOutsideCorridor(distanceFromRoute: Double,
@@ -1013,7 +1020,7 @@ enum NavigationDeviationPolicy {
     }
 
     static func confirmationDuration(speedMetresPerSecond: Double) -> TimeInterval {
-        speedMetresPerSecond > 22 ? 8 : 12
+        speedMetresPerSecond < 12 ? 6 : 8
     }
 
     static func isConfirmed(elapsed: TimeInterval, consecutiveFixes: Int,

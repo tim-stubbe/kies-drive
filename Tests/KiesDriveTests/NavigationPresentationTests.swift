@@ -287,7 +287,8 @@ final class NavigationPresentationTests: XCTestCase {
     func testDeviationPolicyRequiresSustainedMovingDeparture() {
         XCTAssertTrue(NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: 210, previousDistance: 190, horizontalAccuracy: 15, speedMetresPerSecond: 20))
-        XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 20), 12)
+        XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 8), 6)
+        XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 20), 8)
         XCTAssertEqual(NavigationDeviationPolicy.confirmationDuration(speedMetresPerSecond: 30), 8)
         XCTAssertFalse(NavigationDeviationPolicy.isConfirmed(
             elapsed: 30, consecutiveFixes: 2, speedMetresPerSecond: 30
@@ -298,6 +299,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationDeviationPolicy.isConfirmed(
             elapsed: 8, consecutiveFixes: 3, speedMetresPerSecond: 30
         ))
+    }
+
+    func testDeviationThresholdReroutesSoonerInTownWithoutWeakeningMotorwayNoiseMargin() {
+        XCTAssertEqual(NavigationDeviationPolicy.threshold(
+            horizontalAccuracy: 8, speedMetresPerSecond: 8
+        ), 55)
+        XCTAssertEqual(NavigationDeviationPolicy.threshold(
+            horizontalAccuracy: 8, speedMetresPerSecond: 20
+        ), 80)
+        XCTAssertEqual(NavigationDeviationPolicy.threshold(
+            horizontalAccuracy: 8, speedMetresPerSecond: 35
+        ), 140)
+        XCTAssertEqual(NavigationDeviationPolicy.threshold(
+            horizontalAccuracy: 50, speedMetresPerSecond: 8
+        ), 150, "Poor GPS accuracy must still widen the corridor")
     }
 
     func testDeviationCorridorIgnoresDistantFutureCrossing() {
