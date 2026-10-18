@@ -1526,6 +1526,7 @@ final class NavigationPresentationTests: XCTestCase {
         ))
 
         XCTAssertEqual(seed.instruction, "Rechts auf die A66")
+        XCTAssertEqual(seed.stepIndex, 1)
         XCTAssertEqual(seed.distance, 420, accuracy: 0.001)
         XCTAssertEqual(seed.upcomingInstructions, [
             "Rechts auf die A66", "Links halten Richtung Wiesbaden"
@@ -1548,6 +1549,17 @@ final class NavigationPresentationTests: XCTestCase {
             upcoming: ["Alte Abfahrt nehmen"], next: "Alte Abfahrt nehmen",
             guidanceReliable: false
         ), [], "CarPlay must remove stale maneuver cards after a confirmed deviation")
+    }
+
+    func testCarPlayAdvancesIdenticallyWordedManeuversByRouteIdentity() {
+        XCTAssertNotEqual(
+            CarPlayManeuverIdentityPolicy.live(legIndex: 0, stepIndex: 4),
+            CarPlayManeuverIdentityPolicy.live(legIndex: 0, stepIndex: 5)
+        )
+        XCTAssertNotEqual(
+            CarPlayManeuverIdentityPolicy.offline(stepIndex: 4),
+            CarPlayManeuverIdentityPolicy.offline(stepIndex: 5)
+        )
     }
 
     func testCarPlayListAllocationNeverExceedsLimitAndKeepsPriorityOrder() {

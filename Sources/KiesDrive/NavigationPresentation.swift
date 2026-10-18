@@ -775,10 +775,21 @@ enum NavigationSpeechCancellationPolicy {
 }
 
 struct NavigationInitialManeuver: Equatable {
+    let stepIndex: Int
     let instruction: String
     let distance: CLLocationDistance
     let upcomingInstructions: [String]
     let followingManeuverDistance: CLLocationDistance?
+}
+
+enum CarPlayManeuverIdentityPolicy {
+    static func live(legIndex: Int, stepIndex: Int) -> String {
+        "live:\(legIndex):\(stepIndex)"
+    }
+
+    static func offline(stepIndex: Int) -> String {
+        "offline:\(stepIndex)"
+    }
 }
 
 enum CarPlayGuidancePresentationPolicy {
@@ -881,6 +892,7 @@ enum NavigationInitialManeuverPolicy {
             steps[maneuverIndex..<index].reduce(0) { $0 + max(0, $1.distance) }
         }
         return .init(
+            stepIndex: maneuverIndex,
             instruction: steps[maneuverIndex].instruction,
             distance: distance,
             upcomingInstructions: Array(upcoming.prefix(5)),

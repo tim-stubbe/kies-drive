@@ -139,7 +139,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
-        Publishers.CombineLatest3(
+        Publishers.CombineLatest4(
+            planner.$nextManeuverIdentity.removeDuplicates(),
             planner.$nextManeuverInstruction.removeDuplicates(),
             planner.$upcomingManeuverInstructions.removeDuplicates(),
             planner.$isManeuverGuidanceReliable.removeDuplicates()
@@ -149,7 +150,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             // Coalesce that tiny burst so CarPlay never renders the new title
             // once with the previous maneuver list in between junctions.
             .debounce(for: .milliseconds(20), scheduler: DispatchQueue.main)
-            .sink { [weak self] _, _, _ in
+            .sink { [weak self] _, _, _, _ in
                 self?.publishManeuver()
                 self?.updateGuidanceEstimates()
             }

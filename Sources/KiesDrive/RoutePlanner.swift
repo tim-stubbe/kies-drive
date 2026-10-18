@@ -266,6 +266,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var routeSearchQuery = ""
     @Published var routeSearchResults: [RouteSearchResult] = []
     @Published var isSearchingAlongRoute = false
+    @Published private(set) var nextManeuverIdentity: String?
     @Published var nextManeuverInstruction: String?
     @Published var nextManeuverDistance: CLLocationDistance?
     @Published var upcomingManeuverInstructions: [String] = []
@@ -701,6 +702,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         remainingDistanceMetres = 0
         remainingTravelTime = 0
         if !preservingArrival {
+            nextManeuverIdentity = nil
             nextManeuverInstruction = nil
             nextManeuverDistance = nil
             upcomingManeuverInstructions = []
@@ -2393,10 +2395,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             (instruction: $0.instruction, distance: $0.distance)
         }
         if let seed = NavigationInitialManeuverPolicy.seed(steps: remainingGuidance) {
+            nextManeuverIdentity = CarPlayManeuverIdentityPolicy.offline(
+                stepIndex: navigationStepCursor + seed.stepIndex
+            )
             nextManeuverInstruction = seed.instruction
             nextManeuverDistance = seed.distance
             upcomingManeuverInstructions = seed.upcomingInstructions
         } else {
+            nextManeuverIdentity = "offline:final"
             nextManeuverInstruction = "Dem Straßenverlauf bis zum Ziel folgen"
             nextManeuverDistance = remainingDistanceMetres
             upcomingManeuverInstructions = ["Dem Straßenverlauf bis zum Ziel folgen"]
@@ -2566,6 +2572,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         resetDeviationTracking(keepingDistance: progress.distanceFromRoute)
         navigationStepCursor = progress.currentStepIndex
+        nextManeuverIdentity = CarPlayManeuverIdentityPolicy.offline(
+            stepIndex: progress.maneuverStepIndex
+        )
         nextManeuverInstruction = progress.instruction
         nextManeuverDistance = progress.distanceToManeuver
         upcomingManeuverInstructions = progress.upcomingInstructions
@@ -2701,11 +2710,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             (instruction: $0.instructions, distance: $0.distance)
         }
         guard let seed = NavigationInitialManeuverPolicy.seed(steps: values) else {
+            nextManeuverIdentity = legs.isEmpty ? nil : "live:\(routeCalculationGeneration):final"
             nextManeuverInstruction = legs.isEmpty ? nil : "Dem Straßenverlauf bis zum Ziel folgen"
             nextManeuverDistance = legs.isEmpty ? nil : totalDistance
             upcomingManeuverInstructions = nextManeuverInstruction.map { [$0] } ?? []
             return
         }
+        nextManeuverIdentity = "live:\(routeCalculationGeneration):\(seed.stepIndex)"
         nextManeuverInstruction = seed.instruction
         nextManeuverDistance = seed.distance
         upcomingManeuverInstructions = seed.upcomingInstructions
@@ -2749,6 +2760,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         speedWarning = false
         remainingDistanceMetres = 0
         remainingTravelTime = 0
+        nextManeuverIdentity = "arrival"
         nextManeuverInstruction = "Ziel erreicht"
         nextManeuverDistance = 0
         upcomingManeuverInstructions = []
@@ -2824,6 +2836,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // Being on the final road is not the same as arriving. The
             // separate multi-fix arrival detector is the only authority that
             // may show and speak "Ziel erreicht".
+            nextManeuverIdentity = "live:\(routeCalculationGeneration):final"
             nextManeuverInstruction = "Dem Straßenverlauf bis zum Ziel folgen"
             nextManeuverDistance = routeRemaining
             upcomingManeuverInstructions = ["Dem Straßenverlauf bis zum Ziel folgen"]
@@ -2862,11 +2875,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func updateNextManeuver(using progress: LiveNavigationProgress) {
         guard !progress.upcomingInstructions.isEmpty else {
+            nextManeuverIdentity = "live:\(routeCalculationGeneration):follow"
             nextManeuverInstruction = "Route folgen"
             nextManeuverDistance = nil
             upcomingManeuverInstructions = []
             return
         }
+        nextManeuverIdentity = CarPlayManeuverIdentityPolicy.live(
+            legIndex: progress.maneuver.legIndex,
+            stepIndex: progress.maneuver.stepIndex
+        )
         nextManeuverInstruction = progress.maneuver.step.instructions
         nextManeuverDistance = progress.distance
         upcomingManeuverInstructions = progress.upcomingInstructions
