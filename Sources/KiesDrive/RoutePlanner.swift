@@ -87,13 +87,24 @@ enum OfflineRouteCacheValidationPolicy {
     }
 
     private static func isValid(_ leg: CachedRoute.Leg) -> Bool {
-        leg.distance.isFinite && leg.distance >= 0
-            && leg.travelTime.isFinite && leg.travelTime >= 0
-            && (leg.coordinates?.allSatisfy(isValid) ?? true)
-            && leg.steps.allSatisfy { step in
+        guard leg.distance.isFinite, leg.distance >= 0,
+              leg.travelTime.isFinite, leg.travelTime >= 0,
+              leg.coordinates?.allSatisfy(isValid) ?? true,
+              leg.steps.allSatisfy({ step in
                 step.distance.isFinite && step.distance >= 0
                     && (step.coordinates?.allSatisfy(isValid) ?? true)
-            }
+              }) else { return false }
+        // Legacy text-only caches remain decodable but cannot start offline
+        // guidance. Once a leg contains guidance geometry, however, every
+        // material step must have a usable line; accepting a partial mixture
+        // could silently jump over the missing maneuver after a restart.
+        let containsGuidanceGeometry = leg.steps.contains {
+            ($0.coordinates?.count ?? 0) > 1
+        }
+        guard !containsGuidanceGeometry || leg.steps.allSatisfy({ step in
+            step.distance <= 1 || (step.coordinates?.count ?? 0) > 1
+        }) else { return false }
+        return true
     }
 
     private static func isValid(_ station: FuelStation) -> Bool {

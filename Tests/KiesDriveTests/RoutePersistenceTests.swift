@@ -155,6 +155,43 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertNil(store.load())
     }
 
+    func testOfflineRouteRejectsPartialGuidanceGeometry() {
+        let partial = CachedRoute(
+            destinationName: "Ziel",
+            destinationCoordinate: .init(latitude: 50, longitude: 8),
+            legs: [.init(
+                distance: 2_000,
+                travelTime: 120,
+                steps: [
+                    .init(
+                        instructions: "Rechts abbiegen", distance: 1_000,
+                        coordinates: [.init(latitude: 50, longitude: 8),
+                                      .init(latitude: 50.01, longitude: 8)]
+                    ),
+                    .init(instructions: "Links abbiegen", distance: 1_000, coordinates: nil),
+                ],
+                coordinates: [.init(latitude: 50, longitude: 8),
+                              .init(latitude: 50.02, longitude: 8)]
+            )],
+            stations: [],
+            savedAt: Date()
+        )
+
+        XCTAssertFalse(OfflineRouteCacheValidationPolicy.isValid(partial))
+
+        let legacyTextOnly = CachedRoute(
+            destinationName: "Ziel",
+            destinationCoordinate: .init(latitude: 50, longitude: 8),
+            legs: [.init(
+                distance: 2_000, travelTime: 120,
+                steps: [.init(instructions: "Rechts abbiegen", distance: 2_000)],
+                coordinates: nil
+            )],
+            stations: [], savedAt: Date()
+        )
+        XCTAssertTrue(OfflineRouteCacheValidationPolicy.isValid(legacyTextOnly))
+    }
+
     func testOfflineRouteStoreRejectsInvalidProgressFromReadableJSON() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KiesDriveInvalidOfflineProgress-\(UUID().uuidString)",
