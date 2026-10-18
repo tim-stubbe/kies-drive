@@ -224,6 +224,26 @@ def next_maneuver_remote_view(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def remote_tool_value(name: str, state: dict[str, Any], live: bool) -> Any:
+    """Return only data that is safe to describe as current.
+
+    The trip lock and planned route intentionally survive an app restart, but
+    position, heading, speed and maneuver guidance are live vehicle telemetry.
+    Returning those old values next to ``live: false`` still makes it too easy
+    for an MCP client to present a stale turn as the next instruction.
+    """
+    if name == "get_active_route":
+        return active_route_remote_view(state)
+    if not live:
+        return None
+    if name == "get_heading":
+        return heading_remote_view(state)
+    if name == "get_next_maneuver":
+        return next_maneuver_remote_view(state)
+    keys = {"get_location": "location", "get_speed": "speed_kmh"}
+    return state.get(keys.get(name, ""))
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "kies-drive"}
@@ -973,21 +993,15 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
             elif isinstance(name, str) and name.startswith("get_"):
                 row = conn.execute("SELECT payload,updated_at FROM user_state WHERE user_id=?", (user["id"],)).fetchone()
                 state = decode_remote_state(row["payload"] if row else None)
-                keys = {"get_location": "location", "get_speed": "speed_kmh"}
-                if name == "get_active_route":
-                    value = active_route_remote_view(state)
-                elif name == "get_heading":
-                    value = heading_remote_view(state)
-                elif name == "get_next_maneuver":
-                    value = next_maneuver_remote_view(state)
-                else:
-                    value = state.get(keys.get(name, ""))
                 observed_at, age, live = remote_state_freshness(
                     state, row["updated_at"] if row else None
                 )
+                value = remote_tool_value(name, state, live)
                 data = {"value": value, "recorded_at": observed_at,
                         "updated_at": row["updated_at"] if row else None,
-                        "age_seconds": age, "live": live}
+                        "age_seconds": age, "live": live,
+                        "message": None if live or name == "get_active_route" else
+                            "Das iPhone liefert gerade keine aktuellen Fahrdaten."}
             elif name in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
                 cur = conn.execute("INSERT INTO user_commands(user_id,command,arguments,created_at) VALUES(?,?,?,?)",
                                    (user["id"], name, json.dumps(args), datetime.now(timezone.utc).isoformat()))

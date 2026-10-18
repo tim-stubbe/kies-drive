@@ -506,6 +506,31 @@ def test_heading_and_maneuver_views_are_human_readable_and_safety_aware():
     }
 
 
+def test_stale_live_telemetry_is_withheld_but_persistent_route_remains_visible():
+    state = {
+        "location": {"latitude": 50.0, "longitude": 8.0},
+        "heading_degrees": 91,
+        "speed_kmh": 130,
+        "next_maneuver": {"instruction": "Rechts abbiegen"},
+        "active_route": {"destination": "Hochheim"},
+        "route_lock": {"title": "Urlaubsfahrt"},
+        "navigation_active": True,
+    }
+
+    for name in ("get_location", "get_heading", "get_speed", "get_next_maneuver"):
+        assert main.remote_tool_value(name, state, live=False) is None
+
+    route = main.remote_tool_value("get_active_route", state, live=False)
+    assert route["active_route"]["destination"] == "Hochheim"
+    assert route["route_lock"]["title"] == "Urlaubsfahrt"
+
+    assert main.remote_tool_value("get_speed", state, live=True) == 130
+    assert main.remote_tool_value("get_heading", state, live=True) == {
+        "degrees": 91.0,
+        "direction": "Ost",
+    }
+
+
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
     verification = {}
