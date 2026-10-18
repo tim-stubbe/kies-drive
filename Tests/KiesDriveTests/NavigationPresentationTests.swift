@@ -1147,6 +1147,27 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayRouteOptionsClearlyShowTheirToggleState() {
+        XCTAssertEqual(
+            CarPlayRouteOptionPresentationPolicy.detail(enabled: true),
+            "Aktiv · antippen zum Ausschalten"
+        )
+        XCTAssertEqual(
+            CarPlayRouteOptionPresentationPolicy.detail(enabled: false),
+            "Aus · antippen zum Einschalten"
+        )
+        XCTAssertEqual(CarPlayRouteOptionPresentationPolicy.symbol(enabled: true),
+                       "checkmark.circle.fill")
+        XCTAssertEqual(CarPlayRouteOptionPresentationPolicy.symbol(enabled: false), "circle")
+    }
+
+    func testCarPlayPriorityKeepsRouteOptionsAheadOfComfortSearch() {
+        let allocation = CarPlayListPriorityPolicy.allocation(
+            groupCounts: [2, 4, 2, 3, 3, 7, 3], maximum: 12
+        )
+        XCTAssertEqual(allocation, [2, 4, 2, 3, 1, 0, 0])
+    }
+
     func testCarPlayGuidanceKeepsExitAndRoadVisibleOnSmallDisplays() {
         let variants = CarPlayGuidancePresentationPolicy.variants(
             for: "Ausfahrt 69 rechts auf die A 9 Richtung München nehmen"

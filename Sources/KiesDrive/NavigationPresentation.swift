@@ -103,6 +103,16 @@ enum CarPlayListPriorityPolicy {
     }
 }
 
+enum CarPlayRouteOptionPresentationPolicy {
+    static func detail(enabled: Bool) -> String {
+        enabled ? "Aktiv · antippen zum Ausschalten" : "Aus · antippen zum Einschalten"
+    }
+
+    static func symbol(enabled: Bool) -> String {
+        enabled ? "checkmark.circle.fill" : "circle"
+    }
+}
+
 enum CarPlayBreakReminderPresentationPolicy {
     static func titleVariants(for message: String) -> [String] {
         let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)

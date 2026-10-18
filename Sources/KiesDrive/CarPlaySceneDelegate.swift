@@ -273,6 +273,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         var routeManagementItems: [CPListItem] = []
         var nearbyFuelItems: [CPListItem] = []
         var tripActionItems: [CPListItem] = []
+        var routeOptionItems: [CPListItem] = []
         var routeSearchItems: [CPListItem] = []
         let home = DriveSettings.shared.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !home.isEmpty {
@@ -451,6 +452,48 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 return item
             })
         }
+        if !planner.legs.isEmpty || planner.activeRouteLock != nil {
+            let lockedOptions = planner.activeRouteLock?.defaultOptions
+            let avoidsTolls = lockedOptions?.avoidTolls ?? DriveSettings.shared.avoidTolls
+            let avoidsHighways = lockedOptions?.avoidHighways ?? DriveSettings.shared.avoidHighways
+            for option in [
+                (title: "Maut vermeiden", enabled: avoidsTolls, tolls: true),
+                (title: "Autobahnen vermeiden", enabled: avoidsHighways, tolls: false),
+            ] {
+                let item = CPListItem(
+                    text: option.title,
+                    detailText: CarPlayRouteOptionPresentationPolicy.detail(enabled: option.enabled),
+                    image: UIImage(systemName: CarPlayRouteOptionPresentationPolicy.symbol(
+                        enabled: option.enabled
+                    ))
+                )
+                item.handler = { [weak self] _, completion in
+                    Task {
+                        guard let start = LocationService.shared.location?.coordinate else {
+                            completion()
+                            self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                            return
+                        }
+                        let succeeded = await planner.updateRouteOptionsAndRecalculate(
+                            waypointID: nil,
+                            avoidTolls: option.tolls ? !option.enabled : nil,
+                            avoidHighways: option.tolls ? nil : !option.enabled,
+                            from: start, settings: .shared
+                        )
+                        completion()
+                        if succeeded {
+                            self?.showDestinationsAndStopsReplacingCurrentList()
+                        } else {
+                            self?.showFailure(
+                                planner.errorMessage ??
+                                    "Die Route mit dieser Vorgabe konnte nicht berechnet werden."
+                            )
+                        }
+                    }
+                }
+                routeOptionItems.append(item)
+            }
+        }
         if !visibleRoutePolylines.isEmpty {
             for (title, query, symbol) in [
                 ("McDonald’s entlang der Route", "McDonald's", "m.circle.fill"),
@@ -475,8 +518,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         // twelve slots by driving importance rather than allowing favorites
         // or nearby stations to hide live trip controls.
         let groups = [
-            coreItems, tripActionItems, routeSearchItems,
-            routeManagementItems, savedDestinationItems, nearbyFuelItems,
+            coreItems, tripActionItems, routeOptionItems, routeManagementItems,
+            routeSearchItems, savedDestinationItems, nearbyFuelItems,
         ]
         let allocation = CarPlayListPriorityPolicy.allocation(
             groupCounts: groups.map(\.count)
