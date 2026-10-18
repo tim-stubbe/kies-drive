@@ -55,6 +55,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func connect(interfaceController: CPInterfaceController, window: CPWindow?) {
+        // A reconnect can arrive without a matching disconnect callback (for
+        // example after the head unit briefly resets its template process).
+        // The old CPNavigationSession belongs to the old CPMapTemplate and
+        // must not prevent a fresh session from being attached below. This
+        // finishes only the CarPlay presentation; RoutePlanner keeps the
+        // local trip and guidance running on the phone.
+        navigationSession?.finishTrip()
+        navigationSession = nil
+        activeTrip = nil
+        activeTripDestination = nil
         cancellables.removeAll()
         activeCarPlaySearches.forEach { $0.cancel() }
         activeCarPlaySearches = []
@@ -103,6 +113,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         // CarPlay can be the only active scene. Persist its latest aggregate
         // navigation state before iOS tears the scene down.
         RoutePlanner.shared.checkpointNavigationState()
+        // Explicitly close the system presentation so dashboard/cluster state
+        // cannot retain stale maneuvers after unplugging. The shared planner
+        // remains active and continues guidance on the iPhone.
+        navigationSession?.finishTrip()
         interfaceController = nil
         carWindow = nil
         mapView = nil
