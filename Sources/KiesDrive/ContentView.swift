@@ -956,12 +956,22 @@ struct DriveContentView: View {
     }
 
     private func navigateHome() {
-        guard !settings.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let address = settings.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else {
             showSettings = true
             return
         }
-        planner.destinationText = settings.homeAddress
-        Task { await planner.searchDestination(near: location.location?.coordinate) }
+        let start = location.location?.coordinate
+        planner.clearDestinationSelection()
+        planner.destinationText = address
+        Task {
+            await planner.searchDestination(near: start)
+            guard planner.destinationText.trimmingCharacters(in: .whitespacesAndNewlines) == address,
+                  let bestMatch = planner.suggestions.first else { return }
+            selectDestination(bestMatch)
+            guard let start else { return }
+            await calculateRouteAndShowOverview(from: start)
+        }
     }
 
     private var isCurrentDestinationFavorite: Bool {

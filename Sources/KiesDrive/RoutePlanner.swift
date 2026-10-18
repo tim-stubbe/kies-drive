@@ -1317,6 +1317,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func searchDestination(near coordinate: CLLocationCoordinate2D?) async {
         let query = destinationText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Programmatic entry points (Home, shortcuts and future intents) do
+        // not trigger SwiftUI's text-field callback. Apply the same stale
+        // coordinate protection here before any asynchronous search begins.
+        invalidateSelectedDestinationIfNeeded(for: query)
         let generation = UUID()
         destinationSearchGeneration = generation
         activeDestinationSearches.forEach { $0.cancel() }
