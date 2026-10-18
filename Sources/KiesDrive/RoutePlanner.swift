@@ -2035,7 +2035,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// neu berechnen.
     func updateProgress(at location: CLLocation, settings: DriveSettings,
                         evaluationDate: Date = Date(),
-                        maximumLocationAge: TimeInterval = NavigationLocationPolicy.maximumLiveAge) {
+                        maximumLocationAge: TimeInterval = NavigationLocationPolicy.maximumLiveAge,
+                        allowsAutomaticReroute: Bool = true) {
         guard isNavigating, !legs.isEmpty || isUsingOfflineGuidance else { return }
         let previousNavigationLocation = lastAcceptedNavigationLocation
         if let rejection = NavigationLocationPolicy.rejectionReason(
@@ -2097,7 +2098,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // the old geometry. The GPS fix that confirms a deviation must not
         // first announce the very turn the driver has already missed.
         if !isUsingOfflineGuidance {
-            checkForDeviation(from: location, settings: settings)
+            checkForDeviation(
+                from: location, settings: settings,
+                allowsAutomaticReroute: allowsAutomaticReroute
+            )
         }
         if isUsingOfflineGuidance {
             updateOfflineProgress(at: location, guidanceSpeedMps: guidanceSpeed, settings: settings)
@@ -3325,7 +3329,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Zählt aufeinanderfolgende Positionsmeldungen weit abseits der Route und
     /// löst nach ein paar Treffern (nicht schon beim ersten GPS-Ausreißer) eine
     /// automatische Neuberechnung ab der aktuellen Position aus.
-    private func checkForDeviation(from location: CLLocation, settings: DriveSettings) {
+    private func checkForDeviation(from location: CLLocation, settings: DriveSettings,
+                                   allowsAutomaticReroute: Bool) {
         guard !isLoading, !isRecalculating else { return }
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
         let rerouteAllowed = NavigationRerouteRetryPolicy.mayRetry(
@@ -3400,7 +3405,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 elapsed: now.timeIntervalSince(offRouteSince),
                 consecutiveFixes: offRouteFixCount,
                 speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
-              ) else { return }
+              ), allowsAutomaticReroute else { return }
         isManeuverGuidanceReliable = false
         // A confirmed departure invalidates the current maneuver immediately.
         // Do not let a queued or audible instruction from the abandoned road

@@ -114,12 +114,15 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // `isNavigating` also covers guidance restored from the persisted
         // offline cache, where no fresh MapKit `legs` exist yet.
         if planner.isNavigating {
-            for sample in guidanceSamples where planner.isNavigating {
+            for (index, sample) in guidanceSamples.enumerated() where planner.isNavigating {
                 planner.updateProgress(
                     at: sample,
                     settings: .shared,
                     evaluationDate: deliveredAt,
-                    maximumLocationAge: NavigationLocationBatchPolicy.maximumBufferedSampleAge
+                    maximumLocationAge: NavigationLocationBatchPolicy.maximumBufferedSampleAge,
+                    allowsAutomaticReroute: NavigationBatchReroutePolicy.mayStartAutomaticReroute(
+                        sampleIndex: index, sampleCount: guidanceSamples.count
+                    )
                 )
             }
         }

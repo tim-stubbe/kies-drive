@@ -427,6 +427,21 @@ final class NavigationPresentationTests: XCTestCase {
         ).isEmpty)
     }
 
+    func testOnlyNewestBufferedLocationMayStartAutomaticReroute() {
+        XCTAssertFalse(NavigationBatchReroutePolicy.mayStartAutomaticReroute(
+            sampleIndex: 0, sampleCount: 4
+        ))
+        XCTAssertFalse(NavigationBatchReroutePolicy.mayStartAutomaticReroute(
+            sampleIndex: 2, sampleCount: 4
+        ))
+        XCTAssertTrue(NavigationBatchReroutePolicy.mayStartAutomaticReroute(
+            sampleIndex: 3, sampleCount: 4
+        ))
+        XCTAssertFalse(NavigationBatchReroutePolicy.mayStartAutomaticReroute(
+            sampleIndex: 0, sampleCount: 0
+        ))
+    }
+
     func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
         XCTAssertEqual(NavigationMotionPolicy.reliableSpeed(
             speedMetresPerSecond: 27, speedAccuracy: 1.5, horizontalAccuracy: 12), 27)

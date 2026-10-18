@@ -966,6 +966,17 @@ enum NavigationLocationBatchPolicy {
     }
 }
 
+enum NavigationBatchReroutePolicy {
+    /// Buffered fixes are still consumed in order so maneuver progress is not
+    /// lost after a tunnel or background suspension. Only the newest accepted
+    /// fix may start network rerouting: an older noisy point must not launch a
+    /// replacement route before the batch's current endpoint proves that the
+    /// vehicle has already rejoined the planned road.
+    static func mayStartAutomaticReroute(sampleIndex: Int, sampleCount: Int) -> Bool {
+        sampleCount > 0 && sampleIndex == sampleCount - 1
+    }
+}
+
 enum CarPlayCameraUpdatePolicy {
     /// CarPlay can receive navigation fixes substantially faster than its map
     /// surface can animate cameras. Starting a new animation for every 8 m
