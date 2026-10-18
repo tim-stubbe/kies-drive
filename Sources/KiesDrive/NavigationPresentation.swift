@@ -560,11 +560,12 @@ enum NavigationSpeechFormatter {
     /// committed to the wrong lane.
     static func spokenText(_ instruction: String, distance: CLLocationDistance,
                            then followingInstruction: String?,
-                           followingDistance: CLLocationDistance?) -> String {
+                           followingDistance: CLLocationDistance?,
+                           maximumFollowingDistance: CLLocationDistance = 450) -> String {
         let primary = spokenText(instruction, distance: distance)
         guard let followingInstruction, let followingDistance,
               followingDistance.isFinite, followingDistance >= 0,
-              followingDistance <= 450 else { return primary }
+              followingDistance <= max(0, maximumFollowingDistance) else { return primary }
         let following = spokenText(followingInstruction)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
         guard !following.isEmpty else { return primary }
@@ -677,14 +678,27 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
 enum NavigationChainedManeuverPolicy {
     static let maximumFollowingDistance: CLLocationDistance = 450
 
+    static func maximumFollowingDistance(speedMetresPerSecond: Double?)
+        -> CLLocationDistance {
+        guard let speedMetresPerSecond, speedMetresPerSecond.isFinite,
+              speedMetresPerSecond >= 0 else { return maximumFollowingDistance }
+        // Roughly fourteen seconds of lane-planning time, bounded so an urban
+        // "Danach" is not spoken a minute early and motorway combinations are
+        // still available early enough at high speed.
+        return min(900, max(150, speedMetresPerSecond * 14))
+    }
+
     static func shouldIncludeFollowingManeuver(
         at stage: NavigationAnnouncementStage,
-        followingDistance: CLLocationDistance?
+        followingDistance: CLLocationDistance?,
+        speedMetresPerSecond: Double? = nil
     ) -> Bool {
         guard stage == .final || stage == .now,
               let followingDistance, followingDistance.isFinite,
               followingDistance >= 0 else { return false }
-        return followingDistance <= maximumFollowingDistance
+        return followingDistance <= maximumFollowingDistance(
+            speedMetresPerSecond: speedMetresPerSecond
+        )
     }
 }
 
@@ -692,16 +706,22 @@ enum NavigationManeuverSpeechPolicy {
     static func text(instruction: String, distance: CLLocationDistance,
                      stage: NavigationAnnouncementStage,
                      followingInstruction: String?,
-                     followingDistance: CLLocationDistance?) -> String {
+                     followingDistance: CLLocationDistance?,
+                     speedMetresPerSecond: Double? = nil) -> String {
         let spokenDistance = stage == .now ? min(distance, 35) : distance
+        let followingLimit = NavigationChainedManeuverPolicy.maximumFollowingDistance(
+            speedMetresPerSecond: speedMetresPerSecond
+        )
         guard NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
-            at: stage, followingDistance: followingDistance
+            at: stage, followingDistance: followingDistance,
+            speedMetresPerSecond: speedMetresPerSecond
         ) else {
             return NavigationSpeechFormatter.spokenText(instruction, distance: spokenDistance)
         }
         return NavigationSpeechFormatter.spokenText(
             instruction, distance: spokenDistance,
-            then: followingInstruction, followingDistance: followingDistance
+            then: followingInstruction, followingDistance: followingDistance,
+            maximumFollowingDistance: followingLimit
         )
     }
 }

@@ -1510,6 +1510,37 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testDenseManeuverWindowAdaptsToDrivingSpeed() {
+        XCTAssertEqual(
+            NavigationChainedManeuverPolicy.maximumFollowingDistance(
+                speedMetresPerSecond: 30 / 3.6
+            ),
+            150,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            NavigationChainedManeuverPolicy.maximumFollowingDistance(
+                speedMetresPerSecond: 200 / 3.6
+            ),
+            200 / 3.6 * 14,
+            accuracy: 0.001
+        )
+        XCTAssertFalse(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .final, followingDistance: 300, speedMetresPerSecond: 30 / 3.6
+        ))
+        XCTAssertTrue(NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: .final, followingDistance: 700, speedMetresPerSecond: 200 / 3.6
+        ))
+        XCTAssertEqual(
+            NavigationManeuverSpeechPolicy.text(
+                instruction: "Ausfahrt nehmen", distance: 300, stage: .final,
+                followingInstruction: "rechts halten", followingDistance: 700,
+                speedMetresPerSecond: 200 / 3.6
+            ),
+            "In 300 Metern, Ausfahrt nehmen. Danach, Rechts halten."
+        )
+    }
+
     func testMissedCueIsNeverRecoveredAfterTheOldJunctionIsClearlyBehind() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: "old", nextKey: "new", stages: [],

@@ -2840,7 +2840,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             distance: progress.distanceToManeuver,
             stage: stage,
             followingInstruction: following,
-            followingDistance: progress.followingManeuverDistance
+            followingDistance: progress.followingManeuverDistance,
+            speedMetresPerSecond: guidanceSpeedMps
         )
         _ = speak(
             speech, priority: .forAnnouncementStage(stage),
@@ -3249,7 +3250,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             distance: progress.distance,
             stage: stage,
             followingInstruction: following,
-            followingDistance: progress.followingManeuverDistance
+            followingDistance: progress.followingManeuverDistance,
+            speedMetresPerSecond: guidanceSpeedMps
         )
         _ = speak(
             speech, priority: .forAnnouncementStage(stage),
