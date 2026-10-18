@@ -2252,6 +2252,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
     }
 
+    /// Foreground route requests use the same strict cached-trip recovery as
+    /// automatic launch restoration. This keeps an explicitly locked holiday
+    /// route drivable during an outage without ever reviving a cache for a
+    /// merely similar destination or a different waypoint/option set.
+    @discardableResult
+    func calculateWithOfflineFallback(from start: CLLocationCoordinate2D,
+                                      settings: DriveSettings) async -> Bool {
+        let onlineCalculationSucceeded = await calculate(from: start, settings: settings)
+        guard ForegroundRouteFallbackPolicy.shouldStartOffline(
+            onlineCalculationSucceeded: onlineCalculationSucceeded,
+            hasLiveRoute: !legs.isEmpty
+        ) else { return onlineCalculationSucceeded }
+        let restored = startOfflineGuidanceIfAvailable(replacingLiveRoute: false)
+        if restored {
+            errorMessage = nil
+            lastAnnouncement = "Gespeicherte Route wird offline fortgesetzt"
+        }
+        return restored
+    }
+
     /// Speichert die aktuell berechnete Route + Tankstellenliste lokal, damit
     /// sie bei fehlender Verbindung (z.B. Funkloch unterwegs) weiter als Text
     /// angezeigt werden kann - kein Kartenmaterial, nur Fahrhinweise und Preise.

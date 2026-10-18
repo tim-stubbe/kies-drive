@@ -2341,6 +2341,16 @@ enum RouteRestoreModePolicy {
     }
 }
 
+enum ForegroundRouteFallbackPolicy {
+    /// A failed foreground request may resume the persisted offline trip only
+    /// when no live geometry is still usable. Exact trip and constraint
+    /// identity are verified separately before cached guidance is installed.
+    static func shouldStartOffline(onlineCalculationSucceeded: Bool,
+                                   hasLiveRoute: Bool) -> Bool {
+        !onlineCalculationSucceeded && !hasLiveRoute
+    }
+}
+
 enum LiveRouteRestoreEligibilityPolicy {
     /// Reusing in-memory geometry after an online failure is safe only when it
     /// was calculated for both the same destination and the exact currently

@@ -3871,6 +3871,18 @@ final class NavigationPresentationTests: XCTestCase {
         ), .offline)
     }
 
+    func testForegroundCalculationFallsBackOnlyWhenNoLiveRouteSurvives() {
+        XCTAssertFalse(ForegroundRouteFallbackPolicy.shouldStartOffline(
+            onlineCalculationSucceeded: true, hasLiveRoute: false
+        ))
+        XCTAssertFalse(ForegroundRouteFallbackPolicy.shouldStartOffline(
+            onlineCalculationSucceeded: false, hasLiveRoute: true
+        ), "A transient failure must not replace still-usable live geometry")
+        XCTAssertTrue(ForegroundRouteFallbackPolicy.shouldStartOffline(
+            onlineCalculationSucceeded: false, hasLiveRoute: false
+        ))
+    }
+
     func testStaleLiveRouteRequiresExactActiveConstraints() {
         XCTAssertTrue(LiveRouteRestoreEligibilityPolicy.mayReuse(
             destinationMatches: true,
