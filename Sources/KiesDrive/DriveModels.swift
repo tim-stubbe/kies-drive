@@ -246,6 +246,7 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
+    case breakReminderShown, breakReminderAnnounced, fuelReminderShown
 }
 
 /// Produces useful driving diagnostics without ever recording coordinates or
@@ -343,6 +344,9 @@ struct DriveDiagnosticSummary: Equatable {
     let rejectedLocations: Int
     let arrivals: Int
     let maneuverAnnouncements: Int
+    let breakRemindersShown: Int
+    let breakRemindersAnnounced: Int
+    let fuelRemindersShown: Int
     let missedFinalCues: Int
     let speechDeliveryFailures: Int
     let offlineRouteDepartures: Int
@@ -372,7 +376,7 @@ struct DriveDiagnosticSummary: Equatable {
         switch event.kind {
         case .speechDeliveryFailed:
             value = parts.indices.contains(1) ? parts[1] : parts.first
-        case .maneuverAnnounced:
+        case .maneuverAnnounced, .breakReminderAnnounced:
             value = parts.indices.contains(2) ? parts[2] : parts.last
         default:
             value = nil
@@ -393,7 +397,8 @@ struct DriveDiagnosticSummary: Equatable {
             guard let instruction = speechInstruction(in: failure) else { return true }
             return !indexed.indices.dropFirst(index + 1).contains { laterIndex in
                 let later = indexed[laterIndex]
-                return later.kind == .maneuverAnnounced &&
+                return (later.kind == .maneuverAnnounced ||
+                        later.kind == .breakReminderAnnounced) &&
                     speechInstruction(in: later) == instruction
             }
         }.count
@@ -458,11 +463,18 @@ struct DriveDiagnosticSummary: Equatable {
                 ? "Ein vorübergehendes Routenproblem wurde automatisch behoben."
                 : "Keine auffälligen Navigationsprobleme erkannt."
         }
+        let arrivals = session.filter { $0.kind == .arrivalReached }.count
+        let maneuvers = session.filter { $0.kind == .maneuverAnnounced }.count
+        let shownBreaks = session.filter { $0.kind == .breakReminderShown }.count
+        let spokenBreaks = session.filter { $0.kind == .breakReminderAnnounced }.count
+        let shownFuel = session.filter { $0.kind == .fuelReminderShown }.count
         return .init(quality: quality, eventCount: session.count,
                      rerouteRequests: reroutes,
                      rerouteFailures: failures, rejectedLocations: rejected,
-                     arrivals: session.filter { $0.kind == .arrivalReached }.count,
-                     maneuverAnnouncements: session.filter { $0.kind == .maneuverAnnounced }.count,
+                     arrivals: arrivals, maneuverAnnouncements: maneuvers,
+                     breakRemindersShown: shownBreaks,
+                     breakRemindersAnnounced: spokenBreaks,
+                     fuelRemindersShown: shownFuel,
                      missedFinalCues: missed, speechDeliveryFailures: speechFailures,
                      offlineRouteDepartures: offlineDepartures,
                      resolvedRouteIssues: resolved, recommendation: recommendation)

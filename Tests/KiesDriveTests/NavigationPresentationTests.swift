@@ -1607,6 +1607,36 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
+    func testDiagnosticSummaryClearsRecoveredBreakReminderSpeechFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "Pausenerinnerung · plan · GPS ±8 m · 100 km/h"
+            ),
+            DriveDiagnosticEvent(
+                kind: .breakReminderShown,
+                detail: "Pausenerinnerung · plan · Pause einplanen"
+            ),
+            DriveDiagnosticEvent(
+                kind: .breakReminderAnnounced,
+                detail: "Pausenerinnerung · plan"
+            ),
+            DriveDiagnosticEvent(
+                kind: .fuelReminderShown,
+                detail: "Tankhinweis · soon · In 10 Kilometern tanken"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.speechDeliveryFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+        XCTAssertEqual(summary.breakRemindersShown, 1)
+        XCTAssertEqual(summary.breakRemindersAnnounced, 1)
+        XCTAssertEqual(summary.fuelRemindersShown, 1)
+    }
+
     func testDifferentLaterManeuverDoesNotHideSpeechFailure() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),

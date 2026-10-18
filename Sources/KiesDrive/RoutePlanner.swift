@@ -2031,6 +2031,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             stage: stage, plannedName: plannedName
         )
         breakReminderText = text
+        DriveDiagnosticStore.append(
+            .breakReminderShown,
+            detail: "Pausenerinnerung · \(stage) · \(text)"
+        )
         if settings.voiceGuidance {
             // A break reminder must never interrupt an immediate turn cue.
             drivingRestState.pendingSpokenReminderRawValue = stage.rawValue
@@ -2068,6 +2072,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         drivingFuelStore.save(drivingFuelState)
         fuelReminderText = NavigationFuelReminderPolicy.text(
             stage: stage, stationName: stop.candidate?.name
+        )
+        DriveDiagnosticStore.append(
+            .fuelReminderShown,
+            detail: "Tankhinweis · \(stage) · \(fuelReminderText ?? "")"
         )
     }
 
@@ -2987,6 +2995,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             pendingRawValue: drivingRestState.pendingSpokenReminderRawValue,
             completed: breakClaim?.stage
         ) {
+            if let breakClaim {
+                DriveDiagnosticStore.append(
+                    .breakReminderAnnounced,
+                    detail: "Pausenerinnerung · \(breakClaim.stage)"
+                )
+            }
             drivingRestState.pendingSpokenReminderRawValue = nil
             drivingRestStore.save(drivingRestState)
         }

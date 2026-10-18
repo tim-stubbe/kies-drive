@@ -2013,7 +2013,10 @@ struct DriveSettingsView: View {
                         LabeledContent("Fehlgeschlagen", value: "\(latestSummary.rerouteFailures)")
                         LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
                         LabeledContent("Ziel sicher erkannt", value: "\(latestSummary.arrivals)")
-                        LabeledContent("Gesprochene Fahrhinweise", value: "\(latestSummary.maneuverAnnouncements)")
+                        LabeledContent("Gesprochene Manöver", value: "\(latestSummary.maneuverAnnouncements)")
+                        LabeledContent("Pausenhinweise gezeigt", value: "\(latestSummary.breakRemindersShown)")
+                        LabeledContent("Pausenhinweise gesprochen", value: "\(latestSummary.breakRemindersAnnounced)")
+                        LabeledContent("Tankhinweise gezeigt", value: "\(latestSummary.fuelRemindersShown)")
                         LabeledContent("Nicht beendete Fahransagen", value: "\(latestSummary.speechDeliveryFailures)")
                         LabeledContent("Letzte Ansage verpasst", value: "\(latestSummary.missedFinalCues)")
                     } else {
