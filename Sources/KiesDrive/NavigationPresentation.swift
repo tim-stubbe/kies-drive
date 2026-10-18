@@ -1106,7 +1106,26 @@ enum NavigationLocationBatchPolicy {
         guard let endpoint = ordered.lastIndex(where: {
             NavigationLocationPolicy.accepts($0, after: previous, now: now)
         }) else { return [] }
-        return Array(ordered[...endpoint])
+        // Validate the selected prefix as one physical journey. A point can
+        // look plausible relative to the pre-tunnel fix but become an
+        // impossible backwards jump after a newer accepted intermediate fix.
+        // Conversely, one corrupt intermediate sample must not poison a good
+        // current endpoint, so invalid values are skipped rather than ending
+        // the batch. Buffered history may be older than a normal live fix,
+        // but the final published value must still be live now.
+        var accepted: [CLLocation] = []
+        var lastAccepted = previous
+        for candidate in ordered[...endpoint] where NavigationLocationPolicy.accepts(
+            candidate, after: lastAccepted, now: now,
+            maximumAge: maximumBufferedSampleAge
+        ) {
+            accepted.append(candidate)
+            lastAccepted = candidate
+        }
+        guard let latest = accepted.last,
+              NavigationLocationPolicy.accepts(latest, after: nil, now: now)
+        else { return [] }
+        return accepted
     }
 }
 

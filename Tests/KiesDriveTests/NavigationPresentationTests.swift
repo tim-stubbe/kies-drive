@@ -444,6 +444,47 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(batch.last?.coordinate.latitude, junction.coordinate.latitude)
     }
 
+    func testLocationBatchUsesBufferedJunctionWhenFollowedByLiveEndpoint() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        func location(_ secondsAgo: TimeInterval, longitude: Double) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: 50, longitude: longitude), altitude: 0,
+                horizontalAccuracy: 5, verticalAccuracy: 5, course: 90, speed: 20,
+                timestamp: now.addingTimeInterval(-secondsAgo)
+            )
+        }
+        let previous = location(100, longitude: 8)
+        let bufferedJunction = location(45, longitude: 8.02)
+        let liveEndpoint = location(2, longitude: 8.04)
+
+        let batch = NavigationLocationBatchPolicy.freshGuidanceBatch(
+            [liveEndpoint, bufferedJunction], after: previous, now: now
+        )
+
+        XCTAssertEqual(batch.map(\.timestamp), [bufferedJunction.timestamp, liveEndpoint.timestamp])
+    }
+
+    func testLocationBatchSkipsImpossibleIntermediateWithoutPoisoningLiveFix() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        func location(_ secondsAgo: TimeInterval, latitude: Double) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: latitude, longitude: 8), altitude: 0,
+                horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 20,
+                timestamp: now.addingTimeInterval(-secondsAgo)
+            )
+        }
+        let previous = location(12, latitude: 50)
+        let impossible = location(8, latitude: 51)
+        let liveEndpoint = location(2, latitude: 50.001)
+
+        let batch = NavigationLocationBatchPolicy.freshGuidanceBatch(
+            [impossible, liveEndpoint], after: previous, now: now
+        )
+
+        XCTAssertEqual(batch.count, 1)
+        XCTAssertEqual(batch.first?.coordinate.latitude, liveEndpoint.coordinate.latitude)
+    }
+
     func testLocationBatchRejectsAllSamplesWithoutFreshPlausibleEndpoint() {
         let now = Date(timeIntervalSince1970: 2_000)
         let stale = CLLocation(
