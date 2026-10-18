@@ -189,7 +189,9 @@ final class NavigationPresentationTests: XCTestCase {
         }
         let oldest = location(1, latitude: 50.0)
         let coarseJunction = location(2, latitude: 50.001, horizontalAccuracy: 75)
-        let preciseJunction = location(2, latitude: 50.001, horizontalAccuracy: 4)
+        // Core Location may revise both accuracy and coordinate while keeping
+        // the same timestamp. Only the refined sample may drive guidance.
+        let preciseJunction = location(2, latitude: 50.0012, horizontalAccuracy: 4)
         let latest = location(3, latitude: 50.002)
 
         let ordered = NavigationLocationBatchPolicy.orderedDistinct([
@@ -197,7 +199,7 @@ final class NavigationPresentationTests: XCTestCase {
         ])
 
         XCTAssertEqual(ordered.map(\.timestamp), [oldest.timestamp, preciseJunction.timestamp, latest.timestamp])
-        XCTAssertEqual(ordered.map(\.coordinate.latitude), [50.0, 50.001, 50.002])
+        XCTAssertEqual(ordered.map(\.coordinate.latitude), [50.0, 50.0012, 50.002])
         XCTAssertEqual(ordered[1].horizontalAccuracy, 4)
     }
 

@@ -744,15 +744,15 @@ enum NavigationLocationBatchPolicy {
                     return
                 }
                 let sameTimestamp = candidate.timestamp == previous.timestamp
-                let sameCoordinate = candidate.coordinate.latitude == previous.coordinate.latitude &&
-                    candidate.coordinate.longitude == previous.coordinate.longitude
-                guard sameTimestamp && sameCoordinate else {
+                guard sameTimestamp else {
                     result.append(candidate)
                     return
                 }
-                // Some providers refine the final fix in place. Keep the
-                // version with useful, tighter horizontal accuracy instead
-                // of whichever duplicate happened to be delivered first.
+                // Some providers refine a fix in place and may adjust both
+                // its accuracy and coordinate without changing its timestamp.
+                // Guidance can consume only one sample at a given instant, so
+                // keep the useful, tighter fix instead of allowing delivery
+                // order to decide which side of a junction wins.
                 if candidate.horizontalAccuracy >= 0 &&
                     (previous.horizontalAccuracy < 0 ||
                      candidate.horizontalAccuracy < previous.horizontalAccuracy) {
