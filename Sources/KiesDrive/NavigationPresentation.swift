@@ -1178,6 +1178,9 @@ enum NavigationManeuverSafetyPolicy {
 }
 
 enum NavigationRouteRejoinPolicy {
+    // Shared by live and cached guidance. Requiring the same stable sequence
+    // prevents offline navigation from reviving stale turns after one noisy
+    // snap to a parallel road or route crossing.
     static let requiredConsecutiveInsideFixes = 3
 
     static func isConfirmed(consecutiveInsideFixes: Int) -> Bool {

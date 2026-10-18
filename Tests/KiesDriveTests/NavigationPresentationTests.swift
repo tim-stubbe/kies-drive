@@ -335,6 +335,7 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testRouteRejoinRequiresSeveralInsideFixesBeforeOldGuidanceReturns() {
+        XCTAssertEqual(NavigationRouteRejoinPolicy.requiredConsecutiveInsideFixes, 3)
         XCTAssertFalse(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 1))
         XCTAssertFalse(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 2))
         XCTAssertTrue(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 3))

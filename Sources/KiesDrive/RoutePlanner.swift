@@ -1880,6 +1880,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         previousOffRouteDistance = progress.distanceFromRoute
         if isOutsideCorridor {
+            onRouteRecoveryFixCount = 0
             if isDeparting {
                 if offRouteSince == nil {
                     offRouteSince = location.timestamp
@@ -1918,8 +1919,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return
         }
         if offlineDeviationWarningActive {
+            onRouteRecoveryFixCount += 1
+            guard NavigationRouteRejoinPolicy.isConfirmed(
+                consecutiveInsideFixes: onRouteRecoveryFixCount
+            ) else {
+                // One optimistic snap onto a nearby or crossing road is not
+                // enough evidence to revive a cached maneuver. Keep the last
+                // trustworthy instruction frozen until the match is stable.
+                return
+            }
             offlineDeviationWarningActive = false
             isManeuverGuidanceReliable = true
+            onRouteRecoveryFixCount = 0
             DriveDiagnosticStore.append(
                 .offlineRouteRejoined,
                 detail: DriveDiagnosticDetail.navigationSample(
