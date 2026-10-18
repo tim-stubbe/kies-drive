@@ -422,7 +422,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                         let plannedBreak = PlannedBreak(
                             id: action.candidate.id, candidate: action.candidate,
                             afterDriving: action.afterDriving ?? 0, duration: 0,
-                            routeProgress: action.candidate.progress,
+                            routeProgress: action.insertionRouteProgress,
                             explanation: "Über CarPlay zur Route hinzugefügt"
                         )
                         let succeeded = await planner.addPlannedBreak(

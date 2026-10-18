@@ -1248,6 +1248,31 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(actions.first?.purpose, .fuelOnly)
     }
 
+    func testCarPlayKeepsRebasedRemainingStopUsingInstalledRouteProgress() throws {
+        let candidate = BreakCandidate(
+            id: "remaining", name: "Raststätte voraus",
+            coordinate: .init(latitude: 49, longitude: 8),
+            progress: 0.4, installedRouteProgress: 0.82,
+            detourMetres: 500, isOpen: true
+        )
+        let result = RouteScenarioResult(
+            id: "route", routeTitle: "Reststrecke", scenario: .target(130),
+            distanceMetres: 120_000, drivingTime: 5_000, totalTime: 5_900,
+            fuel: .init(litres: 8, cost: 14, averageConsumptionLPer100km: 6.7),
+            toll: .unknown(reason: "Test"),
+            breaks: [.init(id: "break", candidate: candidate, afterDriving: 2_000,
+                           duration: 900, routeProgress: 0.4, explanation: "Pause")],
+            fuelStops: [], unlimitedFraction: 0
+        )
+
+        let action = try XCTUnwrap(CarPlayPlannedStopPolicy.actions(
+            plan: .init(createdAt: Date(), results: [result], note: ""),
+            existingWaypointIDs: [], existingWaypointNames: [],
+            currentRouteProgress: 0.7
+        ).first)
+        XCTAssertEqual(action.insertionRouteProgress, 0.82, accuracy: 0.001)
+    }
+
     func testPhoneAndCarPlayShareStrictForwardStopVisibility() {
         XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.49, current: 0.5))
         XCTAssertFalse(PlannedRouteStopVisibilityPolicy.isAhead(0.5, current: 0.5))

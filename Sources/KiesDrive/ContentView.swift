@@ -417,7 +417,7 @@ struct DriveContentView: View {
                     }
                     ForEach(result.breaks.filter {
                         PlannedRouteStopVisibilityPolicy.isAhead(
-                            $0.routeProgress,
+                            $0.insertionRouteProgress,
                             current: planner.currentInstalledRouteProgress
                         )
                     }) { stop in
@@ -455,7 +455,7 @@ struct DriveContentView: View {
                     }
                     ForEach(result.fuelStops.filter {
                         PlannedRouteStopVisibilityPolicy.isAhead(
-                            $0.routeProgress,
+                            $0.insertionRouteProgress,
                             current: planner.currentInstalledRouteProgress
                         )
                     }) { stop in

@@ -1055,8 +1055,10 @@ final class LongTripPlanningTests: XCTestCase {
 
         XCTAssertEqual(remaining.map(\.id), ["ahead", "distance-only"])
         XCTAssertEqual(remaining[0].progress, 0.5, accuracy: 0.001)
+        XCTAssertEqual(remaining[0].installedRouteProgress ?? -1, 0.7, accuracy: 0.001)
         XCTAssertEqual(remaining[0].timeProgress ?? 0, 5.0 / 7.0, accuracy: 0.001)
         XCTAssertEqual(remaining[1].progress, 1.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(remaining[1].installedRouteProgress ?? -1, 0.6, accuracy: 0.001)
         XCTAssertEqual(remaining[1].timeProgress ?? 0, 1.0 / 3.0, accuracy: 0.001)
     }
 

@@ -332,6 +332,11 @@ struct BreakCandidate: Identifiable, Equatable {
     let name: String
     let coordinate: CLLocationCoordinate2D
     let progress: Double
+    /// Progress on the currently installed full route. During active guidance
+    /// `progress` is rebased to the remaining journey for pause/fuel maths;
+    /// this original coordinate space is retained for visibility and safe
+    /// waypoint insertion.
+    let installedRouteProgress: Double?
     /// Fraction of expected driving time elapsed at this point. This differs
     /// from geometric progress on slow mountain legs and congested sections.
     /// Older/imported candidates may omit it and safely fall back to distance.
@@ -346,13 +351,14 @@ struct BreakCandidate: Identifiable, Equatable {
     let supportsFuel: Bool
 
     init(id: String, name: String, coordinate: CLLocationCoordinate2D, progress: Double,
-         timeProgress: Double? = nil,
+         installedRouteProgress: Double? = nil, timeProgress: Double? = nil,
          detourMetres: Double, detourIsEstimated: Bool = true,
          isOpen: Bool?, supportsFuel: Bool = false) {
         self.id = id
         self.name = name
         self.coordinate = coordinate
         self.progress = progress
+        self.installedRouteProgress = installedRouteProgress
         self.timeProgress = timeProgress
         self.detourMetres = detourMetres
         self.detourIsEstimated = detourIsEstimated
@@ -624,6 +630,10 @@ struct PlannedBreak: Identifiable, Equatable {
     let duration: TimeInterval
     let routeProgress: Double
     let explanation: String
+
+    var insertionRouteProgress: Double {
+        candidate?.installedRouteProgress ?? routeProgress
+    }
 }
 
 struct PlannedFuelStop: Identifiable, Equatable {
@@ -632,6 +642,10 @@ struct PlannedFuelStop: Identifiable, Equatable {
     let afterDistanceMetres: Double
     let routeProgress: Double
     let explanation: String
+
+    var insertionRouteProgress: Double {
+        candidate?.installedRouteProgress ?? routeProgress
+    }
 }
 
 struct FuelStopPlanner {
@@ -1038,6 +1052,7 @@ enum RemainingRoutePlanningPolicy {
             return BreakCandidate(
                 id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
                 progress: rebasedDistance,
+                installedRouteProgress: candidate.installedRouteProgress ?? candidate.progress,
                 timeProgress: rebasedTime,
                 detourMetres: candidate.detourMetres,
                 detourIsEstimated: candidate.detourIsEstimated,

@@ -120,6 +120,7 @@ struct CarPlayPlannedStopAction: Equatable {
 
     let candidate: BreakCandidate
     let purpose: Purpose
+    let insertionRouteProgress: Double
     let afterDriving: TimeInterval?
     let afterDistanceMetres: Double?
 }
@@ -148,7 +149,7 @@ enum CarPlayPlannedStopPolicy {
         let progress = min(1, max(0, currentRouteProgress))
         let normalizedNames = Set(existingWaypointNames.map(normalize))
         let remainingFuelStops = result.fuelStops.filter {
-            PlannedRouteStopVisibilityPolicy.isAhead($0.routeProgress, current: progress)
+            PlannedRouteStopVisibilityPolicy.isAhead($0.insertionRouteProgress, current: progress)
         }
         let fuelByID = Dictionary(uniqueKeysWithValues: remainingFuelStops.compactMap { stop in
             stop.candidate.map { ($0.id, stop) }
@@ -156,7 +157,7 @@ enum CarPlayPlannedStopPolicy {
         var seen = Set<String>()
         var actions = result.breaks.compactMap { plannedBreak -> CarPlayPlannedStopAction? in
             guard PlannedRouteStopVisibilityPolicy.isAhead(
-                    plannedBreak.routeProgress, current: progress
+                    plannedBreak.insertionRouteProgress, current: progress
                   ),
                   let candidate = plannedBreak.candidate,
                   !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
@@ -164,6 +165,7 @@ enum CarPlayPlannedStopPolicy {
             let fuelStop = fuelByID[candidate.id]
             return .init(candidate: candidate,
                          purpose: fuelStop == nil ? .breakOnly : .breakAndFuel,
+                         insertionRouteProgress: plannedBreak.insertionRouteProgress,
                          afterDriving: plannedBreak.afterDriving,
                          afterDistanceMetres: fuelStop?.afterDistanceMetres)
         }
@@ -171,7 +173,9 @@ enum CarPlayPlannedStopPolicy {
             guard let candidate = fuelStop.candidate,
                   !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
                   seen.insert(candidate.id).inserted else { return nil }
-            return .init(candidate: candidate, purpose: .fuelOnly, afterDriving: nil,
+            return .init(candidate: candidate, purpose: .fuelOnly,
+                         insertionRouteProgress: fuelStop.insertionRouteProgress,
+                         afterDriving: nil,
                          afterDistanceMetres: fuelStop.afterDistanceMetres)
         }
         return Array(actions.sorted {

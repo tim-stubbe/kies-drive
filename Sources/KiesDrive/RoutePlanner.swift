@@ -3829,7 +3829,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         if isNavigating, !RouteSearchPolicy.isAhead(
-            candidateProgress: plannedBreak.routeProgress,
+            candidateProgress: plannedBreak.insertionRouteProgress,
             currentProgress: currentInstalledRouteProgress(from: start),
             totalRouteDistance: totalDistance
         ) {
@@ -3855,7 +3855,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate,
-                knownProgress: plannedBreak.routeProgress,
+                knownProgress: plannedBreak.insertionRouteProgress,
                 kind: .fuelStop
             )
             let mutatedStations = viaStations
