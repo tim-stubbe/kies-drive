@@ -2554,7 +2554,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             courseDegrees: NavigationMotionPolicy.reliableCourse(for: location)
         ) else { return }
 
-        if OfflineRouteRecoveryPolicy.shouldAttempt(lastAttempt: lastOfflineRecoveryAttempt) {
+        if OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: lastOfflineRecoveryAttempt,
+            urgent: offlineDeviationWarningActive
+        ) {
             lastOfflineRecoveryAttempt = Date()
             let recoverySession = navigationSessionGeneration
             Task { [weak self] in

@@ -3209,6 +3209,15 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(OfflineRouteRecoveryPolicy.shouldAttempt(
             lastAttempt: now.addingTimeInterval(1), now: now
         ), "Clock rollback must allow online recovery to restart")
+        XCTAssertFalse(OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: now.addingTimeInterval(-19), urgent: true, now: now
+        ))
+        XCTAssertTrue(OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: now.addingTimeInterval(-20), urgent: true, now: now
+        ), "A confirmed offline departure needs a prompt online reroute retry")
+        XCTAssertFalse(OfflineRouteRecoveryPolicy.shouldAttempt(
+            lastAttempt: now.addingTimeInterval(-20), urgent: false, now: now
+        ), "On-route offline guidance keeps the calm normal retry cadence")
     }
 
     func testOfflineInitialRecoveryWaitsForPositionInsideRouteCorridor() {

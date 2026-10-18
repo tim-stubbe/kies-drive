@@ -1945,11 +1945,14 @@ struct NavigationDirectionsTimeoutError: LocalizedError {
 
 enum OfflineRouteRecoveryPolicy {
     static let retryInterval: TimeInterval = 90
+    static let urgentRetryInterval: TimeInterval = 20
 
-    static func shouldAttempt(lastAttempt: Date?, now: Date = Date()) -> Bool {
+    static func shouldAttempt(lastAttempt: Date?, urgent: Bool = false,
+                              now: Date = Date()) -> Bool {
         guard let lastAttempt else { return true }
         let elapsed = now.timeIntervalSince(lastAttempt)
-        return elapsed < 0 || elapsed >= retryInterval
+        let interval = urgent ? urgentRetryInterval : retryInterval
+        return elapsed < 0 || elapsed >= interval
     }
 
     static func acceptsOnlineResult(calculationSucceeded: Bool,
