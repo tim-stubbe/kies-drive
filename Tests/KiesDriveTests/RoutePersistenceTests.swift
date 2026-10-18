@@ -173,6 +173,54 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertNil(store.load())
     }
 
+    func testOfflineRouteStoreRecoversPreviousGeometryFromCheckpoint() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiesDriveOfflineRecovery-\(UUID().uuidString)",
+                                    isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("route.json")
+        let store = OfflineRouteCacheStore(fileURL: url)
+        let tripID = UUID()
+        func route(name: String, progress: Double) -> CachedRoute {
+            CachedRoute(
+                destinationName: name, tripID: tripID,
+                destinationCoordinate: .init(latitude: 50, longitude: 8),
+                legs: [.init(distance: 1_000, travelTime: 60, steps: [], coordinates: nil)],
+                stations: [], savedAt: Date(), navigationProgress: progress
+            )
+        }
+        XCTAssertTrue(store.save(route(name: "Erster Stand", progress: 0.2)))
+        XCTAssertTrue(store.save(route(name: "Neuer Stand", progress: 0.4)))
+        try Data("broken".utf8).write(to: url)
+
+        XCTAssertEqual(store.load()?.destinationName, "Erster Stand")
+        XCTAssertEqual(store.load()?.navigationProgress, 0.2)
+        store.clear()
+        XCTAssertNil(store.load())
+    }
+
+    func testOfflineCheckpointNeverCrossesTripBoundary() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KiesDriveOfflineTripBoundary-\(UUID().uuidString)",
+                                    isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("route.json")
+        let store = OfflineRouteCacheStore(fileURL: url)
+        func route(tripID: UUID, name: String) -> CachedRoute {
+            CachedRoute(
+                destinationName: name, tripID: tripID,
+                destinationCoordinate: .init(latitude: 50, longitude: 8),
+                legs: [.init(distance: 1_000, travelTime: 60, steps: [], coordinates: nil)],
+                stations: [], savedAt: Date()
+            )
+        }
+        XCTAssertTrue(store.save(route(tripID: UUID(), name: "Alter Trip")))
+        XCTAssertTrue(store.save(route(tripID: UUID(), name: "Neuer Trip")))
+        try Data("broken".utf8).write(to: url)
+
+        XCTAssertNil(store.load(), "An old journey must never recover beneath a new corrupt cache")
+    }
+
     func testOfflineCacheProgressIsRetainedOnlyForSameTrip() {
         let tripID = UUID()
         let route = CachedRoute(

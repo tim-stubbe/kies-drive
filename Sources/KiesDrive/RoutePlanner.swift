@@ -120,6 +120,7 @@ enum OfflineRouteCacheWritePolicy {
 
 struct OfflineRouteCacheStore {
     let fileURL: URL
+    private var backupURL: URL { fileURL.appendingPathExtension("backup") }
 
     static func live(fileManager: FileManager = .default) -> Self {
         let base = fileManager.urls(for: .applicationSupportDirectory,
@@ -130,10 +131,7 @@ struct OfflineRouteCacheStore {
     }
 
     func load() -> CachedRoute? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        guard let route = try? JSONDecoder().decode(CachedRoute.self, from: data),
-              OfflineRouteCacheValidationPolicy.isValid(route) else { return nil }
-        return route
+        decode(at: fileURL) ?? decode(at: backupURL)
     }
 
     @discardableResult
@@ -143,6 +141,15 @@ struct OfflineRouteCacheStore {
             try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(),
                                             withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(route)
+            if let previousData = try? Data(contentsOf: fileURL),
+               let previous = decode(previousData), sameJourney(previous, route) {
+                // Keep the exact previous valid geometry until the new atomic
+                // replacement has completed. A checkpoint from another trip
+                // must never be eligible for this destination.
+                try previousData.write(to: backupURL, options: .atomic)
+            } else if decode(at: backupURL).map({ sameJourney($0, route) }) != true {
+                try? fileManager.removeItem(at: backupURL)
+            }
             // The app sandbox protects the file. Atomic replacement prevents a
             // crash or full disk from leaving a half-written route that cannot
             // be restored on the next launch.
@@ -154,8 +161,34 @@ struct OfflineRouteCacheStore {
     }
 
     func clear(fileManager: FileManager = .default) {
-        guard fileManager.fileExists(atPath: fileURL.path) else { return }
-        try? fileManager.removeItem(at: fileURL)
+        if fileManager.fileExists(atPath: fileURL.path) {
+            try? fileManager.removeItem(at: fileURL)
+        }
+        if fileManager.fileExists(atPath: backupURL.path) {
+            try? fileManager.removeItem(at: backupURL)
+        }
+    }
+
+    private func decode(at url: URL) -> CachedRoute? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return decode(data)
+    }
+
+    private func decode(_ data: Data) -> CachedRoute? {
+        guard let route = try? JSONDecoder().decode(CachedRoute.self, from: data),
+              OfflineRouteCacheValidationPolicy.isValid(route) else { return nil }
+        return route
+    }
+
+    private func sameJourney(_ lhs: CachedRoute, _ rhs: CachedRoute) -> Bool {
+        if let lhsID = lhs.tripID, let rhsID = rhs.tripID { return lhsID == rhsID }
+        guard lhs.tripID == nil, rhs.tripID == nil else { return false }
+        return OfflineRouteCachePolicy.matches(
+            cacheName: lhs.destinationName,
+            cacheCoordinate: lhs.destinationCoordinate?.clLocationCoordinate,
+            destinationName: rhs.destinationName,
+            destinationCoordinate: rhs.destinationCoordinate?.clLocationCoordinate
+        )
     }
 }
 
