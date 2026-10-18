@@ -524,6 +524,15 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testManeuverDeliveryCommitsOnlyAfterCompletePlayback() {
+        XCTAssertFalse(NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(
+            didFinish: false
+        ), "Starting or later cancelling audio must not consume a maneuver cue")
+        XCTAssertTrue(NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(
+            didFinish: true
+        ))
+    }
+
     func testNewRouteSeedsItsOwnFirstManeuverImmediately() throws {
         let seed = try XCTUnwrap(NavigationInitialManeuverPolicy.seed(steps: [
             (instruction: "", distance: 420),

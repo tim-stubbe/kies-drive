@@ -300,6 +300,11 @@ enum NavigationAnnouncementDeliveryPolicy {
                               pending: Set<NavigationAnnouncementStage>) -> Bool {
         !delivered.contains(stage) && !pending.contains(stage)
     }
+
+    /// `didStart` only proves that the audio system accepted an utterance.
+    /// Bluetooth route changes, Siri and phone calls can still cancel it before
+    /// the driver hears the decisive words. Commit delivery only on finish.
+    static func shouldCommitDelivery(didFinish: Bool) -> Bool { didFinish }
 }
 
 enum NavigationSpeechInterruptionPolicy {
