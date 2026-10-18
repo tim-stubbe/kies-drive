@@ -246,7 +246,7 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
-    case breakReminderShown, breakReminderAnnounced, fuelReminderShown
+    case breakReminderShown, breakReminderAnnounced, fuelReminderShown, fuelReminderAnnounced
 }
 
 /// Produces useful driving diagnostics without ever recording coordinates or
@@ -376,7 +376,7 @@ struct DriveDiagnosticSummary: Equatable {
         switch event.kind {
         case .speechDeliveryFailed:
             value = parts.indices.contains(1) ? parts[1] : parts.first
-        case .maneuverAnnounced, .breakReminderAnnounced:
+        case .maneuverAnnounced, .breakReminderAnnounced, .fuelReminderAnnounced:
             value = parts.indices.contains(2) ? parts[2] : parts.last
         default:
             value = nil
@@ -398,7 +398,8 @@ struct DriveDiagnosticSummary: Equatable {
             return !indexed.indices.dropFirst(index + 1).contains { laterIndex in
                 let later = indexed[laterIndex]
                 return (later.kind == .maneuverAnnounced ||
-                        later.kind == .breakReminderAnnounced) &&
+                        later.kind == .breakReminderAnnounced ||
+                        later.kind == .fuelReminderAnnounced) &&
                     speechInstruction(in: later) == instruction
             }
         }.count

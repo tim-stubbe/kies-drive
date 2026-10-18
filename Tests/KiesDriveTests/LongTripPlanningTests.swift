@@ -96,6 +96,28 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(restored, state)
     }
 
+    func testPendingSpokenFuelReminderSurvivesStateRoundTrip() throws {
+        let state = DrivingFuelState(
+            deliveredReminderKeys: ["station:0"],
+            pendingSpokenReminderKey: "station:0",
+            pendingSpokenReminderText: "In etwa 30 Kilometern tanken."
+        )
+        let decoded = try JSONDecoder().decode(
+            DrivingFuelState.self, from: JSONEncoder().encode(state)
+        )
+        XCTAssertEqual(decoded, state)
+        XCTAssertTrue(NavigationFuelReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingKey: decoded.pendingSpokenReminderKey,
+            completedKey: "station:0"
+        ))
+        XCTAssertFalse(NavigationFuelReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingKey: "station:2", completedKey: "station:1"
+        ))
+        XCTAssertFalse(NavigationFuelReminderSpeechDeliveryPolicy.shouldClearPending(
+            pendingKey: "station:2", completedKey: nil
+        ))
+    }
+
     func testPendingBreakSpeechClearsOnlyAfterMatchingCompletion() {
         let plan = NavigationBreakReminderPolicy.Stage.plan.rawValue
         XCTAssertFalse(NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(

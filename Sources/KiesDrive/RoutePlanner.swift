@@ -299,6 +299,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
     private var pendingBreakReminderSpeech: [ObjectIdentifier: BreakReminderSpeechClaim] = [:]
     private var activeBreakReminderSpeech: [ObjectIdentifier: BreakReminderSpeechClaim] = [:]
+    private struct FuelReminderSpeechClaim {
+        let key: String
+        let text: String
+        let issuedAt: Date
+    }
+    private var pendingFuelReminderSpeech: [ObjectIdentifier: FuelReminderSpeechClaim] = [:]
+    private var activeFuelReminderSpeech: [ObjectIdentifier: FuelReminderSpeechClaim] = [:]
     private var diagnosticManeuverKey: String?
     private var diagnosticManeuverInstruction: String?
     private var diagnosticManeuverDistance: CLLocationDistance?
@@ -2048,6 +2055,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             fuelReminderText = nil
             return
         }
+        if DriveSettings.shared.voiceGuidance,
+           let key = drivingFuelState.pendingSpokenReminderKey,
+           let text = drivingFuelState.pendingSpokenReminderText {
+            let inFlight = pendingFuelReminderSpeech.values.contains { $0.key == key } ||
+                activeFuelReminderSpeech.values.contains { $0.key == key }
+            if inFlight { return }
+            if speak(text, priority: .status, fuelReminderClaim: (key, text)) { return }
+        } else if drivingFuelState.pendingSpokenReminderKey != nil ||
+                    drivingFuelState.pendingSpokenReminderText != nil {
+            drivingFuelState.pendingSpokenReminderKey = nil
+            drivingFuelState.pendingSpokenReminderText = nil
+            drivingFuelStore.save(drivingFuelState)
+        }
         let currentProgress = currentInstalledRouteProgress
         guard let stop = result.fuelStops
             .filter({ PlannedRouteStopVisibilityPolicy.isAhead(
@@ -2073,6 +2093,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         fuelReminderText = NavigationFuelReminderPolicy.text(
             stage: stage, stationName: stop.candidate?.name
         )
+        if DriveSettings.shared.voiceGuidance, let fuelReminderText {
+            drivingFuelState.pendingSpokenReminderKey = NavigationFuelReminderPolicy.key(
+                stopID: stop.id, stage: stage
+            )
+            drivingFuelState.pendingSpokenReminderText = fuelReminderText
+            drivingFuelStore.save(drivingFuelState)
+            _ = speak(
+                fuelReminderText, priority: .status,
+                fuelReminderClaim: (drivingFuelState.pendingSpokenReminderKey!, fuelReminderText)
+            )
+        }
         DriveDiagnosticStore.append(
             .fuelReminderShown,
             detail: "Tankhinweis · \(stage) · \(fuelReminderText ?? "")"
@@ -2818,8 +2849,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 issuedAt: $0.value.issuedAt, now: now, active: true
             )
         }
+        let expiredPendingFuel = pendingFuelReminderSpeech.filter {
+            NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.value.issuedAt, now: now, active: false
+            )
+        }
+        let expiredActiveFuel = activeFuelReminderSpeech.filter {
+            NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.value.issuedAt, now: now, active: true
+            )
+        }
         guard !expiredPending.isEmpty || !expiredActive.isEmpty ||
-                !expiredPendingBreaks.isEmpty || !expiredActiveBreaks.isEmpty else { return }
+                !expiredPendingBreaks.isEmpty || !expiredActiveBreaks.isEmpty ||
+                !expiredPendingFuel.isEmpty || !expiredActiveFuel.isEmpty else { return }
         let claim = expiredActive.values.first?.first ?? expiredPending.values.first?.first
         // Remove the stale queued utterance from AVSpeechSynthesizer as well;
         // otherwise it could start after the retry and produce a duplicate.
@@ -2828,11 +2870,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         cancelCurrentSpeechWork()
         let breakStage = expiredActiveBreaks.values.first?.stage ??
             expiredPendingBreaks.values.first?.stage
+        let fuelText = expiredActiveFuel.values.first?.text ??
+            expiredPendingFuel.values.first?.text
         DriveDiagnosticStore.append(
             .speechDeliveryFailed,
             detail: DriveDiagnosticDetail.navigationSample(
                 claim.map { "\($0.stage) · \($0.instruction)" } ??
-                    breakStage.map { "Pausenerinnerung · \($0)" } ?? "Unbekannte Fahransage",
+                    breakStage.map { "Pausenerinnerung · \($0)" } ??
+                    fuelText.map { "Tankhinweis · \($0)" } ?? "Unbekannte Fahransage",
                 location: lastAcceptedNavigationLocation
             )
         )
@@ -2863,7 +2908,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var hasSpeechWork: Bool {
         synthesizer.isSpeaking || activeUtterance != nil ||
             !pendingManeuverSpeech.isEmpty || !activeManeuverSpeech.isEmpty ||
-            !pendingBreakReminderSpeech.isEmpty || !activeBreakReminderSpeech.isEmpty
+            !pendingBreakReminderSpeech.isEmpty || !activeBreakReminderSpeech.isEmpty ||
+            !pendingFuelReminderSpeech.isEmpty || !activeFuelReminderSpeech.isEmpty
     }
 
     private func cancelCurrentSpeechWork() {
@@ -2873,6 +2919,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeManeuverSpeech = [:]
         pendingBreakReminderSpeech = [:]
         activeBreakReminderSpeech = [:]
+        pendingFuelReminderSpeech = [:]
+        activeFuelReminderSpeech = [:]
         if let replacedUtterance {
             finishAudioSession(for: replacedUtterance)
         } else {
@@ -2884,7 +2932,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func speak(_ text: String, priority: NavigationSpeechPriority,
                        maneuverClaim: ManeuverSpeechClaim? = nil,
                        maneuverClaims: [ManeuverSpeechClaim] = [],
-                       breakReminderClaim: NavigationBreakReminderPolicy.Stage? = nil) -> Bool {
+                       breakReminderClaim: NavigationBreakReminderPolicy.Stage? = nil,
+                       fuelReminderClaim: (key: String, text: String)? = nil) -> Bool {
         // Do not queue a maneuver under an active call, Siri session or other
         // system interruption. Returning false leaves its claim retryable on
         // the next GPS fix after audio becomes available again.
@@ -2928,6 +2977,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 stage: breakReminderClaim, issuedAt: Date()
             )
         }
+        if let fuelReminderClaim {
+            pendingFuelReminderSpeech[ObjectIdentifier(utterance)] = .init(
+                key: fuelReminderClaim.key, text: fuelReminderClaim.text, issuedAt: Date()
+            )
+        }
         synthesizer.speak(utterance)
         return true
     }
@@ -2961,6 +3015,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if let claim = pendingBreakReminderSpeech.removeValue(forKey: identifier) {
             activeBreakReminderSpeech[identifier] = claim
         }
+        if let claim = pendingFuelReminderSpeech.removeValue(forKey: identifier) {
+            activeFuelReminderSpeech[identifier] = claim
+        }
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
@@ -2973,6 +3030,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let breakClaim = NavigationAnnouncementDeliveryPolicy.completedClaims(
             active: activeBreakReminderSpeech.removeValue(forKey: identifier),
             queued: pendingBreakReminderSpeech.removeValue(forKey: identifier)
+        )
+        let fuelClaim = NavigationAnnouncementDeliveryPolicy.completedClaims(
+            active: activeFuelReminderSpeech.removeValue(forKey: identifier),
+            queued: pendingFuelReminderSpeech.removeValue(forKey: identifier)
         )
         if let claims,
            NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(didFinish: true) {
@@ -3004,6 +3065,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingRestState.pendingSpokenReminderRawValue = nil
             drivingRestStore.save(drivingRestState)
         }
+        if let fuelClaim,
+           NavigationFuelReminderSpeechDeliveryPolicy.shouldClearPending(
+                pendingKey: drivingFuelState.pendingSpokenReminderKey,
+                completedKey: fuelClaim.key
+           ) {
+            DriveDiagnosticStore.append(
+                .fuelReminderAnnounced,
+                detail: "Tankhinweis · gesprochen · \(fuelClaim.text)"
+            )
+            drivingFuelState.pendingSpokenReminderKey = nil
+            drivingFuelState.pendingSpokenReminderText = nil
+            drivingFuelStore.save(drivingFuelState)
+        }
         finishAudioSession(for: utterance)
     }
 
@@ -3016,6 +3090,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeManeuverSpeech.removeValue(forKey: identifier)
         pendingBreakReminderSpeech.removeValue(forKey: identifier)
         activeBreakReminderSpeech.removeValue(forKey: identifier)
+        pendingFuelReminderSpeech.removeValue(forKey: identifier)
+        activeFuelReminderSpeech.removeValue(forKey: identifier)
         finishAudioSession(for: utterance)
     }
 

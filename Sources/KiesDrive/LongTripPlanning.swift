@@ -956,22 +956,29 @@ struct DrivingFuelState: Codable, Equatable {
     var lastCoordinate: DriveCoordinate?
     var lastSampleAt: Date?
     var deliveredReminderKeys: Set<String> = []
+    var pendingSpokenReminderKey: String?
+    var pendingSpokenReminderText: String?
 
     init(tripID: UUID? = nil, observedFuelFraction: Double = 1,
          distanceSinceObservationMetres: Double = 0,
          lastCoordinate: DriveCoordinate? = nil, lastSampleAt: Date? = nil,
-         deliveredReminderKeys: Set<String> = []) {
+         deliveredReminderKeys: Set<String> = [],
+         pendingSpokenReminderKey: String? = nil,
+         pendingSpokenReminderText: String? = nil) {
         self.tripID = tripID
         self.observedFuelFraction = observedFuelFraction
         self.distanceSinceObservationMetres = distanceSinceObservationMetres
         self.lastCoordinate = lastCoordinate
         self.lastSampleAt = lastSampleAt
         self.deliveredReminderKeys = deliveredReminderKeys
+        self.pendingSpokenReminderKey = pendingSpokenReminderKey
+        self.pendingSpokenReminderText = pendingSpokenReminderText
     }
 
     private enum CodingKeys: String, CodingKey {
         case tripID, observedFuelFraction, distanceSinceObservationMetres
         case lastCoordinate, lastSampleAt, deliveredReminderKeys
+        case pendingSpokenReminderKey, pendingSpokenReminderText
     }
 
     init(from decoder: Decoder) throws {
@@ -988,6 +995,12 @@ struct DrivingFuelState: Codable, Equatable {
         deliveredReminderKeys = try values.decodeIfPresent(
             Set<String>.self, forKey: .deliveredReminderKeys
         ) ?? []
+        pendingSpokenReminderKey = try values.decodeIfPresent(
+            String.self, forKey: .pendingSpokenReminderKey
+        )
+        pendingSpokenReminderText = try values.decodeIfPresent(
+            String.self, forKey: .pendingSpokenReminderText
+        )
     }
 }
 
@@ -1043,6 +1056,13 @@ enum NavigationFuelReminderPolicy {
             return max(0, stop.afterDistanceMetres)
         }
         return max(0, insertion - currentProgress) * installedRouteDistance
+    }
+}
+
+enum NavigationFuelReminderSpeechDeliveryPolicy {
+    static func shouldClearPending(pendingKey: String?, completedKey: String?) -> Bool {
+        guard let completedKey else { return false }
+        return pendingKey == completedKey
     }
 }
 
