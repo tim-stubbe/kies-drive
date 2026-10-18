@@ -82,6 +82,18 @@ enum OfflineTileCoordinatePolicy {
         let tile = Tile(z: zoom, x: min((1 << zoom) - 1, x), y: min((1 << zoom) - 1, y))
         return isValid(z: tile.z, x: tile.x, y: tile.y) ? tile : nil
     }
+
+    static func neighbourhood(containing coordinate: CLLocationCoordinate2D,
+                              zoom: Int, radius: Int = 1) -> Set<Tile> {
+        guard let centre = tile(containing: coordinate, zoom: zoom) else { return [] }
+        let radius = max(0, radius)
+        return Set((-radius...radius).flatMap { dx in
+            (-radius...radius).compactMap { dy in
+                let tile = Tile(z: zoom, x: centre.x + dx, y: centre.y + dy)
+                return isValid(z: tile.z, x: tile.x, y: tile.y) ? tile : nil
+            }
+        })
+    }
 }
 
 enum OfflineTileFilePolicy {
@@ -169,16 +181,16 @@ final class OfflineMapPackageStore: ObservableObject {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let activePackageKey = "drive.offlineMap.activePackageID"
-    private struct BaseTileCoverageKey: Hashable {
+    private struct TileCoverageKey: Hashable {
         let packageID: String
         let tiles: [OfflineTileCoordinatePolicy.Tile]
     }
-    private struct BaseTileCoverageEntry {
+    private struct TileCoverageEntry {
         let result: Bool
         let checkedAt: Date
     }
-    private var baseTileCoverageCache: [BaseTileCoverageKey: BaseTileCoverageEntry] = [:]
-    private let baseTileCoverageCacheLifetime: TimeInterval = 2
+    private var tileCoverageCache: [TileCoverageKey: TileCoverageEntry] = [:]
+    private let tileCoverageCacheLifetime: TimeInterval = 2
 
     init(fileManager: FileManager = .default, rootURL: URL? = nil,
          defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
@@ -195,7 +207,7 @@ final class OfflineMapPackageStore: ObservableObject {
     }
 
     func reload() {
-        baseTileCoverageCache.removeAll(keepingCapacity: true)
+        tileCoverageCache.removeAll(keepingCapacity: true)
         try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         let directories = (try? fileManager.contentsOfDirectory(
             at: rootURL,
@@ -261,19 +273,39 @@ final class OfflineMapPackageStore: ObservableObject {
             )
         })
         guard requiredTiles.count > 0, requiredTiles.count <= coordinates.count else { return false }
+        return hasTiles(requiredTiles, package: package)
+    }
+
+    /// The driving camera operates around street-level zoom. A package with
+    /// only its coarse overview tile is not an offline navigation map and must
+    /// not be labelled as one. Require the current tile plus its neighbours at
+    /// a useful local zoom so small camera movements remain local as well.
+    func hasNavigationTiles(around coordinate: CLLocationCoordinate2D,
+                            package: InstalledOfflineMapPackage) -> Bool {
+        let zoom = min(package.manifest.maximumZoom,
+                       max(package.manifest.minimumZoom, 14))
+        let requiredTiles = OfflineTileCoordinatePolicy.neighbourhood(
+            containing: coordinate, zoom: zoom
+        )
+        guard !requiredTiles.isEmpty else { return false }
+        return hasTiles(requiredTiles, package: package)
+    }
+
+    private func hasTiles(_ requiredTiles: Set<OfflineTileCoordinatePolicy.Tile>,
+                          package: InstalledOfflineMapPackage) -> Bool {
         let orderedTiles = requiredTiles.sorted {
             ($0.z, $0.x, $0.y) < ($1.z, $1.x, $1.y)
         }
-        let key = BaseTileCoverageKey(packageID: package.id, tiles: orderedTiles)
+        let key = TileCoverageKey(packageID: package.id, tiles: orderedTiles)
         let checkTime = now()
-        if let cached = baseTileCoverageCache[key],
-           checkTime.timeIntervalSince(cached.checkedAt) < baseTileCoverageCacheLifetime {
+        if let cached = tileCoverageCache[key],
+           checkTime.timeIntervalSince(cached.checkedAt) < tileCoverageCacheLifetime {
             return cached.result
         }
         let result = orderedTiles.allSatisfy {
             tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) != nil
         }
-        baseTileCoverageCache[key] = .init(result: result, checkedAt: checkTime)
+        tileCoverageCache[key] = .init(result: result, checkedAt: checkTime)
         return result
     }
 

@@ -1493,6 +1493,10 @@ struct DriveContentView: View {
               offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package) else {
             return nil
         }
+        if !needsRouteCoverage, let coordinate = location.location?.coordinate,
+           !offlineMaps.hasNavigationTiles(around: coordinate, package: package) {
+            return nil
+        }
         return package
     }
 

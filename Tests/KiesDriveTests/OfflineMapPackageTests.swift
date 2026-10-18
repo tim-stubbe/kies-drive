@@ -198,6 +198,39 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertFalse(store.hasBaseTiles(covering: [], package: package))
     }
 
+    func testDrivingCoverageRequiresStreetLevelNeighbourhood() throws {
+        try writeManifest(id: "driving-coverage")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+        let navigationTiles = OfflineTileCoordinatePolicy.neighbourhood(
+            containing: coordinate, zoom: 14
+        )
+        XCTAssertEqual(navigationTiles.count, 9)
+        for tile in navigationTiles {
+            let directory = source.appendingPathComponent(
+                "tiles/\(tile.z)/\(tile.x)", isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            try validPNG().write(to: directory.appendingPathComponent("\(tile.y).png"))
+        }
+        let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let package = try store.install(from: source)
+
+        XCTAssertTrue(store.hasNavigationTiles(around: coordinate, package: package))
+        let missing = try XCTUnwrap(navigationTiles.first)
+        let installedTile = try XCTUnwrap(store.tileURL(
+            z: missing.z, x: missing.x, y: missing.y, package: package
+        ))
+        try FileManager.default.removeItem(at: installedTile)
+        let refreshedStore = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let refreshedPackage = try XCTUnwrap(refreshedStore.activePackage)
+        XCTAssertFalse(refreshedStore.hasNavigationTiles(
+            around: coordinate, package: refreshedPackage
+        ))
+    }
+
     func testRuntimeCoverageCacheExpiresAndDetectsRemovedTile() throws {
         try writeManifest(id: "runtime-expiry")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
