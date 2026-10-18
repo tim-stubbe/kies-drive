@@ -502,17 +502,25 @@ def toll_source_matches_route(text: str, origin: str, destination: str,
                               via: list[str]) -> bool:
     """Require both route endpoints and every mandatory via point in evidence."""
     haystack = text.casefold()
-    stop_words = {"der", "die", "das", "den", "dem", "von", "nach", "via", "und", "the"}
-    groups = [
-        {
+    stop_words = {
+        "der", "die", "das", "den", "dem", "von", "nach", "via", "und", "the",
+        "am", "an", "auf", "bei", "route", "strecke", "straße", "strasse",
+        "autobahn", "auffahrt",
+    }
+    # Labels are formed as "place, region, country" or as a named mandatory
+    # point. The first meaningful token is therefore the route identity; a
+    # generic secondary token such as "Main", "Steiermark" or "Kroatien"
+    # must not make an unrelated route look corroborated.
+    identities: list[str | None] = []
+    for label in [origin, destination, *via]:
+        tokens = [
             token.casefold()
             for token in re.findall(r"[\wÀ-ÿ-]{3,}", label)
             if not token.isdigit() and token.casefold() not in stop_words
-        }
-        for label in [origin, destination, *via]
-    ]
-    return bool(groups) and all(group and any(token in haystack for token in group)
-                                for group in groups)
+        ]
+        identities.append(tokens[0] if tokens else None)
+    return bool(identities) and all(identity and identity in haystack
+                                    for identity in identities)
 
 
 OFFICIAL_TOLL_HOSTS = ("asfinag.at", "dars.si", "hac.hr", "autostrade.it",
