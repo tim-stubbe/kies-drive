@@ -118,7 +118,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             planner.$upcomingManeuverInstructions.removeDuplicates(),
             planner.$isManeuverGuidanceReliable.removeDuplicates()
         )
-            .receive(on: DispatchQueue.main)
+            // RoutePlanner publishes the next instruction and its following
+            // list in consecutive assignments on the same location update.
+            // Coalesce that tiny burst so CarPlay never renders the new title
+            // once with the previous maneuver list in between junctions.
+            .debounce(for: .milliseconds(20), scheduler: DispatchQueue.main)
             .sink { [weak self] _, _, _ in
                 self?.publishManeuver()
                 self?.updateGuidanceEstimates()
