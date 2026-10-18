@@ -4,6 +4,52 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testRouteOptionRollbackPreservesProgressWrittenDuringCalculation() throws {
+        let createdAt = Date(timeIntervalSince1970: 1_000)
+        let baseline = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Ziel",
+            destination: .init(latitude: 50, longitude: 8),
+            waypoints: [.init(
+                id: "pass", name: "Pass", coordinate: .init(latitude: 49, longitude: 9),
+                required: true, optionsAfter: nil, kind: .routeConstraint
+            )],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil, visitedWaypointIDs: [],
+            lastRouteProgress: 0.1, status: .active,
+            createdAt: createdAt, updatedAt: createdAt
+        )
+        var mutated = baseline
+        mutated.defaultOptions.avoidTolls = true
+        var current = mutated
+        current.lastRouteProgress = 0.65
+        current.visitedWaypointIDs = ["pass"]
+        current.updatedAt = createdAt.addingTimeInterval(60)
+
+        let restored = try XCTUnwrap(RouteOptionRollbackPolicy.restoringOptions(
+            current: current, mutated: mutated, baseline: baseline
+        ))
+        XCTAssertEqual(restored.defaultOptions, baseline.defaultOptions)
+        XCTAssertEqual(restored.lastRouteProgress, 0.65)
+        XCTAssertEqual(restored.visitedWaypointIDs, ["pass"])
+        XCTAssertEqual(restored.updatedAt, current.updatedAt)
+    }
+
+    func testRouteOptionRollbackCannotOverwriteNewerStopEdit() {
+        let baseline = ActiveRouteLock.croatiaSplit(now: Date(timeIntervalSince1970: 1))
+        var mutated = baseline
+        mutated.defaultOptions.avoidTolls.toggle()
+        var current = mutated
+        current.waypoints.append(.init(
+            id: "new-stop", name: "Pause",
+            coordinate: .init(latitude: 47, longitude: 12),
+            required: true, optionsAfter: nil, kind: .userStop
+        ))
+
+        XCTAssertNil(RouteOptionRollbackPolicy.restoringOptions(
+            current: current, mutated: mutated, baseline: baseline
+        ))
+    }
+
     func testRouteCalculationSnapshotTracksConstraintsButIgnoresLiveProgress() throws {
         let createdAt = Date(timeIntervalSince1970: 1_000)
         var lock = ActiveRouteLock(

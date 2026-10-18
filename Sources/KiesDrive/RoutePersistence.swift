@@ -201,6 +201,62 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var isActive: Bool { status == .active }
 }
 
+enum RouteOptionRollbackPolicy {
+    /// Restores only route-option fields while retaining live progress,
+    /// visited waypoints, corridor checkpoints and timestamps written during
+    /// an in-flight MapKit request. A structural route edit must win instead.
+    static func restoringOptions(
+        current: ActiveRouteLock,
+        mutated: ActiveRouteLock,
+        baseline: ActiveRouteLock
+    ) -> ActiveRouteLock? {
+        guard structure(of: current) == structure(of: mutated),
+              structure(of: current) == structure(of: baseline),
+              current.defaultOptions == mutated.defaultOptions,
+              current.waypoints.map(\.optionsAfter) == mutated.waypoints.map(\.optionsAfter)
+        else { return nil }
+
+        var restored = current
+        restored.defaultOptions = baseline.defaultOptions
+        let baselineOptions = Dictionary(uniqueKeysWithValues: baseline.waypoints.map {
+            ($0.id, $0.optionsAfter)
+        })
+        for index in restored.waypoints.indices {
+            restored.waypoints[index].optionsAfter = baselineOptions[restored.waypoints[index].id] ?? nil
+        }
+        return restored
+    }
+
+    private struct Structure: Equatable {
+        let id: UUID
+        let destination: DriveCoordinate
+        let waypoints: [Waypoint]
+        let status: ActiveRouteLock.Status
+    }
+
+    private struct Waypoint: Equatable {
+        let id: String
+        let name: String
+        let coordinate: DriveCoordinate
+        let required: Bool
+        let kind: LockedWaypoint.Kind?
+    }
+
+    private static func structure(of lock: ActiveRouteLock) -> Structure {
+        Structure(
+            id: lock.id,
+            destination: lock.destination,
+            waypoints: lock.waypoints.map {
+                Waypoint(
+                    id: $0.id, name: $0.name, coordinate: $0.coordinate,
+                    required: $0.required, kind: $0.kind
+                )
+            },
+            status: lock.status
+        )
+    }
+}
+
 enum OfflineRouteConstraintIdentityPolicy {
     /// Stable identity of every instruction that can materially change route
     /// geometry. Progress and timestamps are deliberately excluded: passing a

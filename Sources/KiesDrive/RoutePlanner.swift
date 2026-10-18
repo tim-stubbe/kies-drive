@@ -945,13 +945,27 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                avoidHighways: settings.avoidHighways)
         guard await recalculateCurrentRoute(from: start, settings: settings) else {
             guard mutationGeneration == routeOptionMutationGeneration else { return false }
-            if RouteMutationRollbackPolicy.shouldRollback(
+            let didRestoreLock: Bool
+            if let currentLock = routeLockStore.activeLock,
+               let mutatedLock,
+               let baselineLock = rollback.lock,
+               let restored = RouteOptionRollbackPolicy.restoringOptions(
+                   current: currentLock, mutated: mutatedLock, baseline: baselineLock
+               ) {
+                routeLockStore.replace(with: restored)
+                activeRouteLock = restored
+                didRestoreLock = true
+            } else if RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
             ) {
                 routeLockStore.replace(with: rollback.lock)
                 activeRouteLock = rollback.lock
+                didRestoreLock = true
+            } else {
+                didRestoreLock = false
             }
-            if settings.avoidTolls == mutatedSettings.avoidTolls,
+            if didRestoreLock,
+               settings.avoidTolls == mutatedSettings.avoidTolls,
                settings.avoidHighways == mutatedSettings.avoidHighways {
                 settings.avoidTolls = rollback.avoidTolls
                 settings.avoidHighways = rollback.avoidHighways
