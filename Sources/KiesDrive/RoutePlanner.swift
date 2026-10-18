@@ -1769,6 +1769,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard let reachedID = RouteWaypointVisitPolicy.reachedWaypointID(
             waypoints: lock.waypoints, visitedIDs: visited, location: location
         ) else { return }
+        // At bridges and motorway junctions distance alone can match the road
+        // below. Only after the cheap proximity check do we sample the route
+        // and verify a trustworthy vehicle course against the intended road.
+        if let waypoint = lock.waypoints.first(where: { $0.id == reachedID }) {
+            let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 600) }
+            let expectedCourse = NavigationCourseMatchingPolicy.routeCourse(
+                near: waypoint.coordinate.clLocationCoordinate,
+                coordinates: routeCoordinates
+            )
+            guard RouteWaypointVisitPolicy.reachedWaypointID(
+                waypoints: lock.waypoints, visitedIDs: visited, location: location,
+                expectedCourseDegrees: expectedCourse
+            ) == reachedID else { return }
+        }
         pendingReachedWaypointID = reachedID
         let session = navigationSessionGeneration
         Task {

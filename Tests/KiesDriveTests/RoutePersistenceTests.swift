@@ -232,6 +232,33 @@ final class RoutePersistenceTests: XCTestCase {
         ), "first")
     }
 
+    func testWaypointVisitRejectsCrossingRoadWithOppositeCourse() {
+        let waypoints = [
+            LockedWaypoint(id: "motorway", name: "Autobahn-Punkt",
+                           coordinate: .init(latitude: 50, longitude: 8), required: true,
+                           optionsAfter: nil)
+        ]
+        let wrongRoad = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 6, verticalAccuracy: 5,
+            course: 180, speed: 20, timestamp: Date()
+        )
+        let matchingRoad = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 6, verticalAccuracy: 5,
+            course: 5, speed: 20, timestamp: Date()
+        )
+
+        XCTAssertNil(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: waypoints, visitedIDs: [], location: wrongRoad,
+            expectedCourseDegrees: 0
+        ))
+        XCTAssertEqual(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: waypoints, visitedIDs: [], location: matchingRoad,
+            expectedCourseDegrees: 0
+        ), "motorway")
+    }
+
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")
