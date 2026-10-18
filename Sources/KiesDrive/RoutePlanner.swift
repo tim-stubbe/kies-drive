@@ -258,6 +258,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         case failed(String)
         case timedOut
     }
+    private enum RouteSearchDetourOutcome {
+        case candidate(RouteSearchResult?)
+        case superseded
+    }
     private let drivingRestStore = DrivingRestStateStore.live
     private var drivingRestState = DrivingRestStateStore.live.load()
     private let drivingFuelStore = DrivingFuelStateStore.live
@@ -1049,7 +1053,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let remainingRouteDistance = isNavigating && remainingDistanceMetres > 0
             ? remainingDistanceMetres : totalDistance
         var routed: [RouteSearchResult] = []
-        await withTaskGroup(of: RouteSearchResult?.self) { group in
+        var detourSearchWasSuperseded = false
+        await withTaskGroup(of: RouteSearchDetourOutcome.self) { group in
             for candidate in shortlist {
                 group.addTask { [weak self] in
                     let driven = await self?.drivingDetour(
@@ -1057,24 +1062,52 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     )
                     guard let detour = driven ?? RouteSearchPolicy.estimatedDetour(
                         airDistance: candidate.airDistance
-                    ) else { return nil }
+                    ) else { return .candidate(nil) }
                     guard RouteSearchPolicy.acceptsDetour(
                         detour, remainingRouteDistance: remainingRouteDistance
-                    ) else { return nil }
+                    ) else { return .candidate(nil) }
                     let coordinate = candidate.item.placemark.coordinate
-                    return RouteSearchResult(
+                    return .candidate(RouteSearchResult(
                         id: "\(candidate.item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
                         mapItem: candidate.item,
                         detourMetres: detour,
                         detourIsEstimated: driven == nil,
                         routeProgress: candidate.progress
-                    )
+                    ))
                 }
             }
-            for await result in group {
-                if let result { routed.append(result) }
+            // MKDirections requests used for detour measurement are more
+            // expensive than the POI search itself. Observe route/query
+            // ownership while they run so a new search cancels their entire
+            // task tree instead of leaving up to six obsolete requests alive
+            // until their individual network timeouts.
+            group.addTask { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    guard !Task.isCancelled else { break }
+                    guard let self else { return .superseded }
+                    if !(await self.isCurrentRouteSearch(
+                        generation: generation, routeGeneration: routeGeneration,
+                        query: cleanQuery
+                    )) { return .superseded }
+                }
+                return .superseded
             }
+            var remainingCandidates = shortlist.count
+            while remainingCandidates > 0, let outcome = await group.next() {
+                switch outcome {
+                case .candidate(let result):
+                    remainingCandidates -= 1
+                    if let result { routed.append(result) }
+                case .superseded:
+                    detourSearchWasSuperseded = true
+                    group.cancelAll()
+                    return
+                }
+            }
+            group.cancelAll()
         }
+        if detourSearchWasSuperseded { return }
         switch RouteSearchCompletionPolicy.disposition(
             request: generation, currentRequest: routeSearchGeneration,
             routeGeneration: routeGeneration, currentRouteGeneration: routeCalculationGeneration,
@@ -1112,6 +1145,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteSearches = []
         if clearResults { routeSearchResults = [] }
         isSearchingAlongRoute = false
+    }
+
+    private func isCurrentRouteSearch(generation: UUID, routeGeneration: UUID,
+                                      query: String) -> Bool {
+        RouteSearchCompletionPolicy.disposition(
+            request: generation, currentRequest: routeSearchGeneration,
+            routeGeneration: routeGeneration,
+            currentRouteGeneration: routeCalculationGeneration,
+            query: query, currentQuery: routeSearchQuery
+        ) == .publish
     }
 
     /// Constrains current-position matching around route progress already known
