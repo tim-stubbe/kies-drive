@@ -202,6 +202,26 @@ enum FuelStationPricePresentationPolicy {
     }
 }
 
+enum RouteFuelStationArrivalPolicy {
+    /// Converts a station's installed-route position into an ETA on the
+    /// remaining route. Opening data describes "now", so it may reject a
+    /// nearby closed station without pretending that a distant one will still
+    /// be closed hours later.
+    static func secondsUntilArrival(candidateProgress: Double,
+                                    currentProgress: Double,
+                                    remainingTravelTime: TimeInterval)
+        -> TimeInterval? {
+        guard candidateProgress.isFinite, currentProgress.isFinite,
+              remainingTravelTime.isFinite, remainingTravelTime >= 0 else { return nil }
+        let current = min(1, max(0, currentProgress))
+        let candidate = min(1, max(0, candidateProgress))
+        guard candidate >= current else { return nil }
+        guard current < 1 else { return 0 }
+        let fraction = min(1, max(0, (candidate - current) / (1 - current)))
+        return remainingTravelTime * fraction
+    }
+}
+
 enum CarPlayBreakReminderPresentationPolicy {
     static func titleVariants(for message: String) -> [String] {
         let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)

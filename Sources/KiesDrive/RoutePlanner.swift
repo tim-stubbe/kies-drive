@@ -933,11 +933,25 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             let progress = RouteGeometryProgress.nearestProgress(
                 of: station.coordinate, on: routeCoordinates
             )?.progress
-            return PlannedStopSelectionPolicy.acceptsFuelStation(
+            guard PlannedStopSelectionPolicy.acceptsFuelStation(
                 id: station.id, coordinate: station.coordinate,
                 currentlySelected: selected, available: stations,
                 candidateProgress: progress, currentProgress: currentProgress,
                 totalRouteDistance: totalDistance, navigationActive: true
+            ) else { return false }
+            // A selected stop must remain visible so it can be removed even
+            // when its latest provider status changes to closed.
+            guard !selected else { return true }
+            let arrival = progress.flatMap {
+                RouteFuelStationArrivalPolicy.secondsUntilArrival(
+                    candidateProgress: $0,
+                    currentProgress: currentProgress,
+                    remainingTravelTime: remainingTravelTime > 0
+                        ? remainingTravelTime : totalTravelTime
+                )
+            }
+            return PlannedStopOpeningStatusPolicy.mayUse(
+                isOpen: station.open, secondsUntilArrival: arrival
             )
         }
     }

@@ -2132,6 +2132,36 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRouteFuelStationArrivalUsesOnlyRemainingJourney() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(RouteFuelStationArrivalPolicy.secondsUntilArrival(
+                candidateProgress: 0.6,
+                currentProgress: 0.4,
+                remainingTravelTime: 3_600
+            )),
+            1_200,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            RouteFuelStationArrivalPolicy.secondsUntilArrival(
+                candidateProgress: 1,
+                currentProgress: 1,
+                remainingTravelTime: 500
+            ),
+            0
+        )
+        XCTAssertNil(RouteFuelStationArrivalPolicy.secondsUntilArrival(
+            candidateProgress: 0.3,
+            currentProgress: 0.4,
+            remainingTravelTime: 3_600
+        ))
+        XCTAssertNil(RouteFuelStationArrivalPolicy.secondsUntilArrival(
+            candidateProgress: .nan,
+            currentProgress: 0.4,
+            remainingTravelTime: 3_600
+        ))
+    }
+
     func testCarPlayPriorityKeepsRouteOptionsAheadOfComfortSearch() {
         let allocation = CarPlayListPriorityPolicy.allocation(
             groupCounts: [2, 4, 2, 3, 3, 7, 3], maximum: 12
