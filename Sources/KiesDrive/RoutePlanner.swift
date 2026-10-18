@@ -4230,8 +4230,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
             ) else { return true }
             let navigationSession = isNavigating ? navigationSessionGeneration : nil
-            let previousStations = viaStations
-            let previousLock = routeLockStore.activeLock
+            let mutationGeneration = UUID()
+            routeStopMutationGeneration = mutationGeneration
+            let rollback = RouteMutationBaselinePolicy.choose(
+                existing: routeStopMutationSnapshot,
+                current: RouteStopMutationSnapshot(
+                    lock: routeLockStore.activeLock,
+                    stations: viaStations,
+                    searchResults: routeSearchResults,
+                    searchQuery: routeSearchQuery
+                )
+            )
+            routeStopMutationSnapshot = rollback
+            defer {
+                if mutationGeneration == routeStopMutationGeneration {
+                    routeStopMutationSnapshot = nil
+                }
+            }
             viaStations.append(station)
             let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(along: legs)
                 .map { ($0.id, $0.progress) })
@@ -4251,14 +4266,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 from: start, settings: settings,
                 navigationSession: navigationSession
             ) else {
+                guard mutationGeneration == routeStopMutationGeneration else { return false }
                 guard RouteMutationRollbackPolicy.shouldRollback(
                     current: viaStations, mutated: mutatedStations
                 ), RouteMutationRollbackPolicy.shouldRollback(
                     current: routeLockStore.activeLock, mutated: mutatedLock
                 ) else { return false }
-                viaStations = previousStations
-                routeLockStore.replace(with: previousLock)
-                activeRouteLock = previousLock
+                viaStations = rollback.stations
+                routeLockStore.replace(with: rollback.lock)
+                activeRouteLock = rollback.lock
+                routeSearchResults = rollback.searchResults
+                routeSearchQuery = rollback.searchQuery
+                isSearchingAlongRoute = false
                 return false
             }
             return true
