@@ -567,6 +567,28 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertNil(object["headingDegrees"])
     }
 
+    func testRemoteCommandJournalPersistsOutcomeUntilServerAcknowledgesIt() throws {
+        let suite = "KiesDriveTests.RemoteJournal.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let journal = DriveRemoteCommandJournal(defaults: defaults, maximumCount: 2)
+        journal.save([
+            1: .init(ok: true, message: "fertig"),
+            2: .init(ok: false, message: "keine Route"),
+            3: .init(ok: true, message: "später bestätigt"),
+        ])
+
+        let restored = journal.load()
+        XCTAssertNil(restored[1], "The bounded journal keeps only the newest outcomes")
+        XCTAssertEqual(restored[2], .init(ok: false, message: "keine Route"))
+        XCTAssertEqual(restored[3], .init(ok: true, message: "später bestätigt"))
+
+        var acknowledged = restored
+        acknowledged.removeValue(forKey: 2)
+        journal.save(acknowledged)
+        XCTAssertNil(journal.load()[2])
+    }
+
     func testSpeechInstructionsRemoveSymbolsAndSoundLikeSentences() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("rechts ↗ Richtung A 66 / Wiesbaden", distance: 112),

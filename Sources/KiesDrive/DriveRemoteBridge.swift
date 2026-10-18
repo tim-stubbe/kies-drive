@@ -44,6 +44,33 @@ struct DriveRemoteCommand: Decodable {
 
 struct DriveRemoteCommandEnvelope: Decodable { let commands: [DriveRemoteCommand] }
 
+struct DriveRemoteCommandResult: Codable, Equatable {
+    let ok: Bool
+    let message: String
+}
+
+struct DriveRemoteCommandJournal {
+    let defaults: UserDefaults
+    var key = "drive.remoteCommandJournal.v1"
+    var maximumCount = 128
+
+    static let live = DriveRemoteCommandJournal(defaults: .standard)
+
+    func load() -> [Int: DriveRemoteCommandResult] {
+        guard let data = defaults.data(forKey: key) else { return [:] }
+        return (try? JSONDecoder().decode([Int: DriveRemoteCommandResult].self, from: data)) ?? [:]
+    }
+
+    func save(_ values: [Int: DriveRemoteCommandResult]) {
+        var retained: [Int: DriveRemoteCommandResult] = [:]
+        for commandID in values.keys.sorted().suffix(max(0, maximumCount)) {
+            retained[commandID] = values[commandID]
+        }
+        guard let data = try? JSONEncoder().encode(retained) else { return }
+        defaults.set(data, forKey: key)
+    }
+}
+
 enum JSONValue: Codable {
     case string(String), number(Double), bool(Bool), array([JSONValue]), object([String: JSONValue]), null
 
@@ -84,7 +111,8 @@ enum DriveRemoteSyncPolicy {
 final class DriveRemoteBridge {
     static let shared = DriveRemoteBridge()
     private var lastSync = Date.distantPast
-    private var handledCommandIDs: Set<Int> = []
+    private let commandJournal = DriveRemoteCommandJournal.live
+    private var commandResults = DriveRemoteCommandJournal.live.load()
     private var syncing = false
     private var pollingTask: Task<Void, Never>?
 
@@ -130,17 +158,28 @@ final class DriveRemoteBridge {
         )
         do {
             try await DriveAPI.publishRemoteState(state)
-            for command in try await DriveAPI.remoteCommands() where !handledCommandIDs.contains(command.id) {
-                handledCommandIDs.insert(command.id)
-                if handledCommandIDs.count > 256 {
-                    handledCommandIDs = Set(handledCommandIDs.sorted().suffix(128))
+            for command in try await DriveAPI.remoteCommands() {
+                let result: DriveRemoteCommandResult
+                if let recorded = commandResults[command.id] {
+                    // The local side effect already happened. Only retry the
+                    // lost server acknowledgement; never execute navigation
+                    // mutations twice after a radio drop or app restart.
+                    result = recorded
+                } else {
+                    do {
+                        try await execute(command, at: location.coordinate)
+                        result = .init(ok: true, message: "In Kies Drive ausgeführt")
+                    } catch {
+                        result = .init(ok: false, message: error.localizedDescription)
+                    }
+                    commandResults[command.id] = result
+                    commandJournal.save(commandResults)
                 }
-                do {
-                    try await execute(command, at: location.coordinate)
-                    try await DriveAPI.completeRemoteCommand(command.id, ok: true, message: "In Kies Drive ausgeführt")
-                } catch {
-                    try? await DriveAPI.completeRemoteCommand(command.id, ok: false, message: error.localizedDescription)
-                }
+                try await DriveAPI.completeRemoteCommand(
+                    command.id, ok: result.ok, message: result.message
+                )
+                commandResults.removeValue(forKey: command.id)
+                commandJournal.save(commandResults)
             }
         } catch {
             // Navigation bleibt absichtlich unbeeinflusst, wenn die Remote-
