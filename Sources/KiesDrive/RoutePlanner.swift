@@ -196,7 +196,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var rerouteGeneration = UUID()
     private var lastAcceptedNavigationLocation: CLLocation?
     private let usageSessionStore = DriveUsageSessionStore.live
-    private var usageSessionState = DriveUsageSessionStore.live.load()
+    @Published private(set) var usageSessionState = DriveUsageSessionStore.live.load()
     private var usageSessionLastLocation: CLLocation?
     private var lastReliableGuidanceSpeedMps: Double?
     private var lastReliableGuidanceSpeedAt: Date?

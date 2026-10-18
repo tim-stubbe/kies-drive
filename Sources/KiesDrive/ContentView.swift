@@ -1923,6 +1923,17 @@ struct DriveSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Fahrstatistik") {
+                    if planner.usageSessionState.distanceMetres > 0 ||
+                        planner.usageSessionState.movingTime > 0 {
+                        LabeledContent(
+                            planner.isNavigating ? "Aktuelle Fahrt" : "Pausierter Trip",
+                            value: usageDistance(planner.usageSessionState.distanceMetres)
+                        )
+                        LabeledContent(
+                            "Davon in Bewegung",
+                            value: usageDuration(planner.usageSessionState.movingTime)
+                        )
+                    }
                     LabeledContent("Gefahren", value: usageDistance(planner.usageStatistics.totalDistanceMetres))
                     LabeledContent("In Bewegung", value: usageDuration(planner.usageStatistics.totalMovingTime))
                     LabeledContent("Navigationsfahrten", value: "\(planner.usageStatistics.completedNavigations)")
@@ -1930,7 +1941,7 @@ struct DriveSettingsView: View {
                         LabeledContent("Letzte Fahrt", value: endedAt.formatted(date: .abbreviated, time: .shortened))
                         LabeledContent("Letzte Strecke", value: usageDistance(planner.usageStatistics.lastTripDistanceMetres))
                     }
-                    Text("Gezählt wird ausschließlich plausible Bewegung während einer aktiven Kies-Drive-Navigation. Ein Standortverlauf wird nicht gespeichert.")
+                    Text("Der aktuelle Trip bleibt auch bei einer Pause oder einem Neustart erhalten. Gezählt wird ausschließlich plausible Bewegung während einer aktiven Kies-Drive-Navigation; ein Standortverlauf wird nicht gespeichert.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Fahrstatistik zurücksetzen", role: .destructive) {
                         planner.clearUsageStatistics()
