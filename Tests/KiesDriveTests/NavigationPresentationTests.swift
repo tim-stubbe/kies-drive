@@ -1098,6 +1098,19 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechSeparatesLetteredExitAndRoadSuffixes() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Ausfahrt 69-A rechts auf A66a Richtung Wiesbaden nehmen"
+            ),
+            "Ausfahrt 69 A rechts auf A 66 a Richtung Wiesbaden nehmen."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Anschlussstelle 12 B links nehmen"),
+            "Anschlussstelle 12 B links nehmen."
+        )
+    }
+
     func testSpeechInstructionUsesImmediateCueNearManeuver() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("links abbiegen", distance: 20),

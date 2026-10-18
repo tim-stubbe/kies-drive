@@ -446,11 +446,18 @@ enum NavigationSpeechFormatter {
                          in: text, with: "Staatsstraße $1$2")
         text = replacing(#"(?i)\bSt\.\s+(?=[A-ZÄÖÜ])"#, in: text, with: "Sankt ")
         text = replacing(#"(?i)\bBAB\s*([0-9]{1,3})\b"#, in: text, with: "Autobahn $1")
+        // Exit suffixes and lettered road branches are written compactly on
+        // signs, but several German system voices pronounce `69-A` or `A66a`
+        // as one garbled word. Keep every sign component audible.
+        text = replacing(
+            #"(?i)\b(Ausfahrt|Exit|Anschlussstelle)\s+([0-9]{1,3})\s*[- ]\s*([A-Z])\b"#,
+            in: text, with: "$1 $2 $3"
+        )
         // Force a small spoken pause between road class and number. Compact
         // forms such as A66 or B40 otherwise sound like arbitrary words on
         // some installed German voices.
         text = replacing(#"(?i)\b([ABELK])\s*([0-9]{1,4})([a-z]?)\b"#,
-                         in: text, with: "$1 $2$3")
+                         in: text, with: "$1 $2 $3")
         text = text.unicodeScalars.map { scalar -> String in
             if CharacterSet.controlCharacters.contains(scalar) ||
                 CharacterSet.illegalCharacters.contains(scalar) ||
