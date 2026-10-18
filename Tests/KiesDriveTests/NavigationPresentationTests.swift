@@ -964,6 +964,30 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testFailedRerouteRetriesFromMeaningfullyNewDrivingPosition() {
+        let attemptedAt = Date(timeIntervalSince1970: 20_000)
+        XCTAssertFalse(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt, consecutiveFailures: 3,
+            distanceSinceAttempt: 2_000,
+            now: attemptedAt.addingTimeInterval(19)
+        ), "Movement must not remove the minimum anti-loop delay")
+        XCTAssertFalse(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt, consecutiveFailures: 3,
+            distanceSinceAttempt: 300,
+            now: attemptedAt.addingTimeInterval(30)
+        ), "Small GPS movement must retain normal backoff")
+        XCTAssertTrue(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt, consecutiveFailures: 3,
+            distanceSinceAttempt: 900,
+            now: attemptedAt.addingTimeInterval(30)
+        ), "A substantially newer origin should regain guidance before three minutes")
+        XCTAssertFalse(NavigationRerouteRetryPolicy.mayRetry(
+            lastAttempt: attemptedAt, consecutiveFailures: 0,
+            distanceSinceAttempt: 2_000,
+            now: attemptedAt.addingTimeInterval(29)
+        ), "Movement override applies only after an actual failed request")
+    }
+
     func testConfirmedDeviationSuppressesUnsafeOldRouteAnnouncements() {
         XCTAssertTrue(NavigationManeuverSafetyPolicy.mayAnnounceLiveManeuver(
             navigationActive: true, rerouting: false, confirmedOffRoute: false

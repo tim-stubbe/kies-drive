@@ -2072,6 +2072,9 @@ enum NavigationInstructionDisplayPolicy {
 /// recalculation loop. Successful reroutes retain the short normal cooldown;
 /// repeated failures back off while the old route remains visible.
 enum NavigationRerouteRetryPolicy {
+    static let meaningfulMovementMetres: CLLocationDistance = 750
+    static let movementRetryCooldown: TimeInterval = 20
+
     static func cooldown(consecutiveFailures: Int) -> TimeInterval {
         switch max(0, consecutiveFailures) {
         case 0: 30
@@ -2081,13 +2084,22 @@ enum NavigationRerouteRetryPolicy {
     }
 
     static func mayRetry(lastAttempt: Date?, consecutiveFailures: Int,
+                         distanceSinceAttempt: CLLocationDistance? = nil,
                          now: Date = Date()) -> Bool {
         guard let lastAttempt else { return true }
         let elapsed = now.timeIntervalSince(lastAttempt)
         // Clock corrections and restored system snapshots can make an
         // in-memory attempt appear to lie in the future. Waiting for that
         // timestamp would suppress rerouting exactly when recovery is needed.
-        return elapsed < 0 || elapsed >= cooldown(consecutiveFailures: consecutiveFailures)
+        if elapsed < 0 { return true }
+        if elapsed >= cooldown(consecutiveFailures: consecutiveFailures) { return true }
+        if consecutiveFailures > 0,
+           let distanceSinceAttempt, distanceSinceAttempt.isFinite,
+           distanceSinceAttempt >= meaningfulMovementMetres,
+           elapsed >= movementRetryCooldown {
+            return true
+        }
+        return false
     }
 }
 

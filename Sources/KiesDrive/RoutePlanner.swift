@@ -360,6 +360,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var onRouteRecoveryFixCount = 0
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
+    private var lastRerouteLocation: CLLocation?
     private var consecutiveRerouteFailures = 0
     private var navigationSessionGeneration = UUID()
     private var rerouteGeneration = UUID()
@@ -3829,7 +3830,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 65 else { return }
         let rerouteAllowed = NavigationRerouteRetryPolicy.mayRetry(
             lastAttempt: lastRerouteAt,
-            consecutiveFailures: consecutiveRerouteFailures
+            consecutiveFailures: consecutiveRerouteFailures,
+            distanceSinceAttempt: lastRerouteLocation.map { location.distance(from: $0) }
         )
         let steps = routeSteps()
         let corridor = NavigationDeviationCorridorPolicy.indices(
@@ -3890,6 +3892,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     routeCalculationGeneration = UUID()
                     isRecalculating = false
                     consecutiveRerouteFailures = 0
+                    lastRerouteLocation = nil
                 }
                 isManeuverGuidanceReliable = true
                 onRouteRecoveryFixCount = 0
@@ -3939,6 +3942,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         cancelSpeechForConfirmedDeviationIfNeeded()
         resetDeviationTracking()
         lastRerouteAt = Date()
+        lastRerouteLocation = location
         let sessionGeneration = navigationSessionGeneration
         let workGeneration = UUID()
         rerouteGeneration = workGeneration
@@ -4015,6 +4019,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ) else { return }
             if succeeded {
                 consecutiveRerouteFailures = 0
+                lastRerouteLocation = nil
                 isManeuverGuidanceReliable = true
                 onRouteRecoveryFixCount = 0
                 DriveDiagnosticStore.append(.rerouteSucceeded, detail: "\(legs.count) Etappen")
@@ -4084,6 +4089,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         rerouteGeneration = UUID()
         isRecalculating = false
         lastRerouteAt = nil
+        lastRerouteLocation = nil
         isManeuverGuidanceReliable = true
         let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id
         if let tripID { DriveDiagnosticStore.activateSession(tripID) }
@@ -4168,6 +4174,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         navigationSessionGeneration = UUID()
         rerouteGeneration = UUID()
         isRecalculating = false
+        lastRerouteLocation = nil
     }
 
     /// Kleinster Abstand zu jedem echten Liniensegment. Die frühere Stichprobe
