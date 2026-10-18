@@ -801,6 +801,25 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(events.last?.detail, "119")
     }
 
+    func testBoundedDiagnosticsRetainCurrentLongTripStart() throws {
+        let suite = "DriveDiagnosticLongTripTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        DriveDiagnosticStore.append(.navigationStarted, detail: "Urlaubsfahrt", defaults: defaults)
+        for index in 0..<120 {
+            DriveDiagnosticStore.append(
+                .maneuverAnnounced, detail: "Manöver \(index)", defaults: defaults
+            )
+        }
+        DriveDiagnosticStore.append(.arrivalReached, detail: "Ziel", defaults: defaults)
+
+        let events = DriveDiagnosticStore.load(defaults: defaults)
+        XCTAssertEqual(events.count, 100)
+        XCTAssertEqual(events.first?.kind, .navigationStarted)
+        XCTAssertNotNil(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(events.last?.kind, .arrivalReached)
+    }
+
     func testDiagnosticReportIsReadableAndContainsNoInventedLocationTrail() {
         let event = DriveDiagnosticEvent(
             kind: .maneuverFinalCueMissed,

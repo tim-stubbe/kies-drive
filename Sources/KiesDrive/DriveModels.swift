@@ -248,7 +248,18 @@ enum DriveDiagnosticStore {
     static func append(_ kind: DriveDiagnosticKind, detail: String, defaults: UserDefaults = .standard) {
         var events = load(defaults: defaults)
         events.append(.init(kind: kind, detail: detail))
-        events = Array(events.suffix(maximumCount))
+        if events.count > maximumCount {
+            let latestStart = events.last(where: { $0.kind == .navigationStarted })
+            events = Array(events.suffix(maximumCount))
+            // A long navigation can produce more than 100 maneuver events.
+            // Retain its start marker so the bounded log still yields a
+            // complete latest-session summary after arrival.
+            if let latestStart,
+               !events.contains(where: { $0.id == latestStart.id }) {
+                events.removeFirst()
+                events.insert(latestStart, at: 0)
+            }
+        }
         if let data = try? JSONEncoder().encode(events) { defaults.set(data, forKey: key) }
     }
 
