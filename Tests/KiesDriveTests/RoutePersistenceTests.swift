@@ -4,6 +4,33 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testRouteCalculationSnapshotTracksConstraintsButIgnoresLiveProgress() throws {
+        let createdAt = Date(timeIntervalSince1970: 1_000)
+        var lock = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Ziel",
+            destination: .init(latitude: 50, longitude: 8),
+            waypoints: [.init(
+                id: "pass", name: "Pass", coordinate: .init(latitude: 49, longitude: 9),
+                required: true, optionsAfter: .init(avoidTolls: true, avoidHighways: true)
+            )],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil, visitedWaypointIDs: [],
+            lastRouteProgress: 0.1, status: .active,
+            createdAt: createdAt, updatedAt: createdAt
+        )
+        let original = try XCTUnwrap(RouteCalculationConstraintSnapshot(lock))
+
+        lock.lastRouteProgress = 0.8
+        lock.updatedAt = createdAt.addingTimeInterval(60)
+        XCTAssertEqual(RouteCalculationConstraintSnapshot(lock), original)
+
+        lock.waypoints[0].optionsAfter = .init(avoidTolls: false, avoidHighways: false)
+        XCTAssertNotEqual(RouteCalculationConstraintSnapshot(lock), original)
+        lock.waypoints[0].optionsAfter = .init(avoidTolls: true, avoidHighways: true)
+        lock.visitedWaypointIDs = ["pass"]
+        XCTAssertNotEqual(RouteCalculationConstraintSnapshot(lock), original)
+    }
+
     func testStopSelectionSurvivesLossOfTransientStationState() {
         let lockedFuel = LockedWaypoint(
             id: "fuel-1", name: "Autohof",

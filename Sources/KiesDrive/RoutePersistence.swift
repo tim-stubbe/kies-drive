@@ -201,6 +201,30 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var isActive: Bool { status == .active }
 }
 
+/// Identity of the route constraints used by one asynchronous MapKit request.
+/// Live corridor progress and timestamps are intentionally excluded: they can
+/// change on every GPS checkpoint without changing the route to calculate.
+/// Waypoints, visited state and scoped options are authoritative and must still
+/// match before a delayed result is allowed to publish.
+struct RouteCalculationConstraintSnapshot: Equatable {
+    let tripID: UUID
+    let destination: DriveCoordinate
+    let waypoints: [LockedWaypoint]
+    let defaultOptions: LockedRouteOptions
+    let visitedWaypointIDs: [String]
+    let status: ActiveRouteLock.Status
+
+    init?(_ lock: ActiveRouteLock?) {
+        guard let lock else { return nil }
+        tripID = lock.id
+        destination = lock.destination
+        waypoints = lock.waypoints
+        defaultOptions = lock.defaultOptions
+        visitedWaypointIDs = lock.visitedWaypointIDs ?? []
+        status = lock.status
+    }
+}
+
 extension ActiveRouteLock {
     /// Prevents the same real-world stop from being added repeatedly through
     /// slightly different MapKit search results. An exact coordinate match is

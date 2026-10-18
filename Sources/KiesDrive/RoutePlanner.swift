@@ -1367,6 +1367,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let startItem = MKMapItem(placemark: MKPlacemark(coordinate: start))
         do {
             let lock = routeLockStore.activeLock
+            let constraintSnapshot = RouteCalculationConstraintSnapshot(lock)
             var newlyPassed = Set(lock?.passedWaypointIDs(at: .init(
                 latitude: start.latitude, longitude: start.longitude
             )) ?? [])
@@ -1441,7 +1442,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 shouldLoadComparison = false
             }
             guard calculationGeneration == routeCalculationGeneration,
-                  lock?.id == routeLockStore.activeLock?.id,
+                  constraintSnapshot == RouteCalculationConstraintSnapshot(
+                    routeLockStore.activeLock
+                  ),
                   NavigationAsyncWorkPolicy.mayCommitCalculation(
                     navigationActive: isNavigating,
                     session: navigationSession,
