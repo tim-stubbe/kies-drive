@@ -1176,7 +1176,18 @@ struct DriveContentView: View {
         #else
         routeRect = planner.completeDisplayMapRect
         #endif
-        if let rect = routeRect {
+        let requiredCoordinates = [
+            location.location?.coordinate,
+            planner.destination?.placemark.coordinate,
+        ].compactMap { $0 } + (planner.activeRouteLock?.waypoints
+            .filter {
+                $0.required &&
+                    !(planner.activeRouteLock?.visitedWaypointIDs?.contains($0.id) ?? false)
+            }
+            .map(\.coordinate.clLocationCoordinate) ?? [])
+        if let rect = RouteOverviewMapRectPolicy.including(
+            routeRect, coordinates: requiredCoordinates
+        ) {
             // MapKit fits against the full screen, although instruction and
             // ETA cards cover part of it. Extra breathing room keeps both
             // ends of the route inside the actually visible map area.

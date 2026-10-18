@@ -837,6 +837,24 @@ enum CarPlayRouteLinePolicy {
     }
 }
 
+enum RouteOverviewMapRectPolicy {
+    static func including(_ base: MKMapRect?,
+                          coordinates: [CLLocationCoordinate2D]) -> MKMapRect? {
+        var rect = base ?? .null
+        for coordinate in coordinates where
+            coordinate.latitude.isFinite && coordinate.longitude.isFinite &&
+            (-90...90).contains(coordinate.latitude) &&
+            (-180...180).contains(coordinate.longitude) {
+            let point = MKMapPoint(coordinate)
+            // A tiny non-zero rect reliably participates in MapKit unions;
+            // zero-sized point rects can be discarded at an existing edge.
+            rect = rect.union(MKMapRect(x: point.x - 0.5, y: point.y - 0.5,
+                                        width: 1, height: 1))
+        }
+        return rect.isNull ? nil : rect
+    }
+}
+
 enum NavigationLocationAuthorizationPolicy {
     /// iOS commonly answers the first "Always" request with When-In-Use.
     /// Ask for the background upgrade only when guidance actually begins, so

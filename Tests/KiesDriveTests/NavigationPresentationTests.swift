@@ -1,5 +1,6 @@
 import XCTest
 import CoreLocation
+import MapKit
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
@@ -224,6 +225,27 @@ final class NavigationPresentationTests: XCTestCase {
             CarPlayRouteLinePolicy.width(isOverview: true),
             CarPlayRouteLinePolicy.width(isOverview: false)
         )
+    }
+
+    func testRouteOverviewIncludesVehicleDestinationAndRequiredStops() throws {
+        let routeStart = MKMapPoint(CLLocationCoordinate2D(latitude: 50, longitude: 8))
+        let routeEnd = MKMapPoint(CLLocationCoordinate2D(latitude: 50.1, longitude: 8.1))
+        let base = MKMapRect(
+            x: min(routeStart.x, routeEnd.x), y: min(routeStart.y, routeEnd.y),
+            width: abs(routeEnd.x - routeStart.x), height: abs(routeEnd.y - routeStart.y)
+        )
+        let vehicle = CLLocationCoordinate2D(latitude: 49.9, longitude: 7.9)
+        let destination = CLLocationCoordinate2D(latitude: 50.2, longitude: 8.2)
+
+        let expanded = try XCTUnwrap(RouteOverviewMapRectPolicy.including(
+            base, coordinates: [vehicle, destination]
+        ))
+
+        XCTAssertTrue(expanded.contains(MKMapPoint(vehicle)))
+        XCTAssertTrue(expanded.contains(MKMapPoint(destination)))
+        XCTAssertNil(RouteOverviewMapRectPolicy.including(
+            nil, coordinates: [.init(latitude: .nan, longitude: 8)]
+        ))
     }
 
     func testLocationBatchKeepsUsefulFixesBeforeBadTrailingSample() {
