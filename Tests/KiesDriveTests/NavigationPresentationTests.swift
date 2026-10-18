@@ -1298,6 +1298,27 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 10), 0)
     }
 
+    func testLiveMetricEvaluationIsBoundedOnVeryLongRoute() {
+        XCTAssertEqual(
+            NavigationStepSelectionPolicy.metricEvaluationIndices(
+                current: 400, stepCount: 1_000
+            ),
+            400..<481
+        )
+        XCTAssertEqual(
+            NavigationStepSelectionPolicy.metricEvaluationIndices(
+                current: 980, stepCount: 1_000
+            ),
+            980..<1_000
+        )
+        XCTAssertEqual(
+            NavigationStepSelectionPolicy.metricEvaluationIndices(
+                current: 0, stepCount: 0
+            ),
+            0..<0
+        )
+    }
+
     func testStepSelectionAdvancesSequentiallyAtJunction() {
         let metrics = [
             NavigationStepMetric(distanceFromRoute: 5, remainingOnStep: 4),

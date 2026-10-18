@@ -896,6 +896,12 @@ enum NavigationStepSelectionPolicy {
     private static let maximumMeasuredRecoveryStepAdvance = 80
     private static let maximumRecoveryDistance: CLLocationDistance = 25_000
 
+    static func metricEvaluationIndices(current: Int, stepCount: Int) -> Range<Int> {
+        guard stepCount > 0 else { return 0..<0 }
+        let cursor = min(max(0, current), stepCount - 1)
+        return cursor..<min(stepCount, cursor + maximumMeasuredRecoveryStepAdvance + 1)
+    }
+
     static func selectedIndex(current: Int, metrics: [NavigationStepMetric],
                               transitionRadius: CLLocationDistance,
                               allowsFullRecovery: Bool = false) -> Int {

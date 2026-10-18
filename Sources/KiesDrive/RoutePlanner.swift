@@ -1821,16 +1821,28 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let steps = routeSteps()
         guard !steps.isEmpty else { return nil }
 
-        let metrics = steps.map {
-            Self.navigationMetric(
-                from: location.coordinate, on: $0.step.polyline,
-                stepDistance: $0.step.distance,
-                vehicleCourse: NavigationMotionPolicy.reliableCourse(for: location)
+        let cursor = min(navigationStepCursor, steps.count - 1)
+        var metrics = steps.map {
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: $0.step.distance
+            )
+        }
+        let evaluationIndices = NavigationStepSelectionPolicy.metricEvaluationIndices(
+            current: cursor, stepCount: steps.count
+        )
+        let vehicleCourse = NavigationMotionPolicy.reliableCourse(for: location)
+        for index in evaluationIndices {
+            metrics[index] = Self.navigationMetric(
+                from: location.coordinate, on: steps[index].step.polyline,
+                stepDistance: steps[index].step.distance,
+                vehicleCourse: vehicleCourse
             )
         }
         let transitionRadius = max(8, location.horizontalAccuracy * 1.5)
         navigationStepCursor = NavigationStepSelectionPolicy.selectedIndex(
-            current: min(navigationStepCursor, steps.count - 1), metrics: metrics,
+            current: cursor, metrics: metrics,
             transitionRadius: transitionRadius
         )
         let currentIndex = navigationStepCursor
