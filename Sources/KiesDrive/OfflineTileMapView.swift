@@ -1,7 +1,5 @@
 import SwiftUI
 import MapKit
-import ImageIO
-import UniformTypeIdentifiers
 
 /// MapKit renderer for user-supplied raster XYZ packages. The tile overlay
 /// replaces Apple's online basemap while route geometry and location remain
@@ -45,30 +43,14 @@ struct OfflineTileMapView: View {
 
 private final class LocalXYZTileOverlay: MKTileOverlay {
     private let package: InstalledOfflineMapPackage
-    private static let missingTileData: Data = {
-        let data = NSMutableData()
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8,
-                                      bytesPerRow: 0, space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return Data() }
-        context.setFillColor(CGColor(red: 0.94, green: 0.92, blue: 0.86, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
-        context.setStrokeColor(CGColor(gray: 0.75, alpha: 1))
-        context.setLineWidth(2)
-        context.stroke(CGRect(x: 1, y: 1, width: 254, height: 254))
-        guard let image = context.makeImage(),
-              let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
-            return Data()
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        CGImageDestinationFinalize(destination)
-        return data as Data
-    }()
 
     init(package: InstalledOfflineMapPackage) {
         self.package = package
         super.init(urlTemplate: nil)
-        canReplaceMapContent = true
+        // Keep MapKit underneath as a safe fallback for a missing/corrupt
+        // local tile. A complete package still covers it; an incomplete one
+        // never turns the driving view into an opaque blank square.
+        canReplaceMapContent = false
         tileSize = CGSize(width: 256, height: 256)
         minimumZ = package.manifest.minimumZoom
         maximumZ = package.manifest.maximumZoom
@@ -79,7 +61,7 @@ private final class LocalXYZTileOverlay: MKTileOverlay {
             z: path.z, x: path.x, y: path.y,
             packageDirectory: package.directoryURL, manifest: package.manifest
         ), let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
-            result(Self.missingTileData, nil)
+            result(nil, nil)
             return
         }
         result(data, nil)
@@ -100,7 +82,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
         let packageChanged = packageID != package.id
         if packageChanged {
             mapView.removeOverlays(mapView.overlays)
-            mapView.addOverlay(LocalXYZTileOverlay(package: package), level: .aboveLabels)
+            mapView.addOverlay(LocalXYZTileOverlay(package: package), level: .aboveRoads)
             packageID = package.id
         }
 
@@ -111,7 +93,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
         let routeGeometryChanged = routeSignature != lastRouteSignature
         if packageChanged || routeGeometryChanged {
             mapView.removeOverlays(mapView.overlays.filter { $0 is MKPolyline })
-            routes.forEach { mapView.addOverlay($0, level: .aboveRoads) }
+            routes.forEach { mapView.addOverlay($0, level: .aboveLabels) }
         }
         let destinationSignature = destination.map {
             "\($0.name ?? "Ziel"):\($0.placemark.coordinate.latitude):\($0.placemark.coordinate.longitude)"

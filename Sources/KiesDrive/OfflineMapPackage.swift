@@ -53,6 +53,15 @@ enum OfflineTileCoordinatePolicy {
         let axisTileCount = 1 << z
         return x < axisTileCount && y < axisTileCount
     }
+
+    static func center(z: Int, x: Int, y: Int) -> CLLocationCoordinate2D? {
+        guard isValid(z: z, x: x, y: y) else { return nil }
+        let tiles = pow(2.0, Double(z))
+        let longitude = (Double(x) + 0.5) / tiles * 360 - 180
+        let mercatorY = .pi * (1 - 2 * (Double(y) + 0.5) / tiles)
+        let latitude = atan(sinh(mercatorY)) * 180 / .pi
+        return .init(latitude: latitude, longitude: longitude)
+    }
 }
 
 enum OfflineTileFilePolicy {
@@ -240,6 +249,8 @@ final class OfflineMapPackageStore: ObservableObject {
                   let y = Int(tileURL.deletingPathExtension().lastPathComponent),
                   (manifest.minimumZoom...manifest.maximumZoom).contains(zoom),
                   OfflineTileCoordinatePolicy.isValid(z: zoom, x: x, y: y),
+                  let center = OfflineTileCoordinatePolicy.center(z: zoom, x: x, y: y),
+                  manifest.bounds.contains(center),
                   let data = try? Data(contentsOf: tileURL, options: .mappedIfSafe),
                   data.count > pngSignature.count, data.prefix(pngSignature.count) == pngSignature else { continue }
             return true

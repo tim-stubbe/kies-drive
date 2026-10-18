@@ -27,7 +27,7 @@ final class OfflineMapPackageTests: XCTestCase {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defaults = try XCTUnwrap(UserDefaults(suiteName: "OfflineMapPackageTests.\(UUID().uuidString)"))
-        try FileManager.default.createDirectory(at: source.appendingPathComponent("tiles/8/132"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: source.appendingPathComponent("tiles/8/136"), withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
@@ -37,7 +37,7 @@ final class OfflineMapPackageTests: XCTestCase {
 
     func testInstallActivateResolveAndRemovePackage() throws {
         try writeManifest(id: "alpen-2026")
-        let tile = source.appendingPathComponent("tiles/8/132/87.png")
+        let tile = source.appendingPathComponent("tiles/8/136/89.png")
         try validPNG().write(to: tile)
         let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
 
@@ -45,8 +45,8 @@ final class OfflineMapPackageTests: XCTestCase {
 
         XCTAssertEqual(installed.manifest.name, "Alpen")
         XCTAssertEqual(store.activePackageID, "alpen-2026")
-        XCTAssertNotNil(store.tileURL(z: 8, x: 132, y: 87, package: installed))
-        XCTAssertNil(store.tileURL(z: 7, x: 132, y: 87, package: installed))
+        XCTAssertNotNil(store.tileURL(z: 8, x: 136, y: 89, package: installed))
+        XCTAssertNil(store.tileURL(z: 7, x: 136, y: 89, package: installed))
         XCTAssertGreaterThan(installed.byteCount, 3)
         try store.remove(installed)
         XCTAssertTrue(store.packages.isEmpty)
@@ -66,13 +66,25 @@ final class OfflineMapPackageTests: XCTestCase {
         try writeManifest(id: "empty")
         XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
 
-        try Data([1, 2, 3]).write(to: source.appendingPathComponent("tiles/8/132/87.png"))
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("tiles/8/136/89.png"))
         XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
 
         try FileManager.default.createDirectory(at: source.appendingPathComponent("tiles/7/66"),
                                                 withIntermediateDirectories: true)
         try validPNG().write(to: source.appendingPathComponent("tiles/7/66/43.png"))
         XCTAssertThrowsError(try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source))
+    }
+
+    func testRejectsTileOutsideDeclaredGeographicBounds() throws {
+        try writeManifest(id: "wrong-region")
+        try FileManager.default.createDirectory(
+            at: source.appendingPathComponent("tiles/8/132"), withIntermediateDirectories: true
+        )
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/132/87.png"))
+
+        XCTAssertThrowsError(
+            try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source)
+        )
     }
 
     func testCoverageFallsBackOutsidePackageAndForIncompleteOverview() {
@@ -120,15 +132,18 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 8, x: 132, y: 256))
         XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 8, x: -1, y: 87))
         XCTAssertFalse(OfflineTileCoordinatePolicy.isValid(z: 23, x: 0, y: 0))
+        let centre = OfflineTileCoordinatePolicy.center(z: 8, x: 136, y: 89)
+        XCTAssertEqual(centre?.latitude ?? 0, 47.5, accuracy: 1)
+        XCTAssertEqual(centre?.longitude ?? 0, 11.95, accuracy: 0.1)
     }
 
     func testTileResolverRejectsSymlinkEscapingInstalledPackage() throws {
         try writeManifest(id: "alpen-safe")
-        let tile = source.appendingPathComponent("tiles/8/132/87.png")
+        let tile = source.appendingPathComponent("tiles/8/136/89.png")
         try validPNG().write(to: tile)
         let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
         let installed = try store.install(from: source)
-        let installedTile = try XCTUnwrap(store.tileURL(z: 8, x: 132, y: 87, package: installed))
+        let installedTile = try XCTUnwrap(store.tileURL(z: 8, x: 136, y: 89, package: installed))
         let outside = FileManager.default.temporaryDirectory
             .appendingPathComponent("outside-\(UUID().uuidString).png")
         defer { try? FileManager.default.removeItem(at: outside) }
@@ -136,7 +151,7 @@ final class OfflineMapPackageTests: XCTestCase {
         try FileManager.default.removeItem(at: installedTile)
         try FileManager.default.createSymbolicLink(at: installedTile, withDestinationURL: outside)
 
-        XCTAssertNil(store.tileURL(z: 8, x: 132, y: 87, package: installed))
+        XCTAssertNil(store.tileURL(z: 8, x: 136, y: 89, package: installed))
     }
 
     func testImportRejectsSymlinkedTileRoot() throws {
@@ -145,9 +160,9 @@ final class OfflineMapPackageTests: XCTestCase {
             .appendingPathComponent("outside-tiles-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: outside) }
         try FileManager.default.createDirectory(
-            at: outside.appendingPathComponent("8/132"), withIntermediateDirectories: true
+            at: outside.appendingPathComponent("8/136"), withIntermediateDirectories: true
         )
-        try validPNG().write(to: outside.appendingPathComponent("8/132/87.png"))
+        try validPNG().write(to: outside.appendingPathComponent("8/136/89.png"))
         try FileManager.default.createSymbolicLink(
             at: source.appendingPathComponent("tiles"), withDestinationURL: outside
         )
