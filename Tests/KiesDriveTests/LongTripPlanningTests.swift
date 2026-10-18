@@ -390,6 +390,31 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 900)
     }
 
+    func testPausedNavigationCountsAsRestOnlyWhenVehicleWasObservedStationary() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 20_000)
+        let existing = DrivingRestState(
+            tripID: tripID, continuousDriving: 7_000,
+            lastSampleAt: start, stationarySince: nil
+        )
+        let pause = start.addingTimeInterval(60)
+        var state = DrivingRestPolicy.paused(
+            existing, tripID: tripID, at: pause, speedMetresPerSecond: 0
+        )
+        XCTAssertEqual(state.stationarySince, pause)
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID, at: pause.addingTimeInterval(20 * 60),
+            speedMetresPerSecond: 20
+        )
+        XCTAssertEqual(state.continuousDriving, 0)
+
+        let movingPause = DrivingRestPolicy.paused(
+            existing, tripID: tripID, at: pause, speedMetresPerSecond: 20
+        )
+        XCTAssertNil(movingPause.stationarySince)
+        XCTAssertEqual(movingPause.continuousDriving, 7_000)
+    }
+
     func testBreakReminderStagesOnlyWhenJourneyCrossesDrivingLimit() {
         XCTAssertNil(NavigationBreakReminderPolicy.stage(
             continuousDriving: 90 * 60, remainingTravelTime: 30 * 60, delivered: []

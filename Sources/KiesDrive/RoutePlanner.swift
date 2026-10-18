@@ -331,6 +331,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // drop the last coordinate so no location trail is persisted.
             usageSessionLastLocation = nil
             usageSessionStore.save(usageSessionState)
+            if let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id {
+                drivingRestState = DrivingRestPolicy.paused(
+                    drivingRestState, tripID: tripID, at: Date(),
+                    speedMetresPerSecond: lastAcceptedNavigationLocation.flatMap(
+                        NavigationMotionPolicy.reliableSpeed(for:)
+                    )
+                )
+                drivingRestStore.save(drivingRestState)
+            }
         }
         invalidateNavigationAsyncWork()
         isNavigating = false

@@ -551,6 +551,17 @@ enum DrivingRestPolicy {
     static let maximumCountedSampleGap: TimeInterval = 2 * 60
     static let restResetDuration: TimeInterval = 20 * 60
 
+    static func paused(_ previous: DrivingRestState, tripID: UUID,
+                       at date: Date, speedMetresPerSecond: Double?) -> DrivingRestState {
+        var state = previous.tripID == tripID ? previous : DrivingRestState(tripID: tripID)
+        guard let speedMetresPerSecond, speedMetresPerSecond.isFinite,
+              speedMetresPerSecond >= 0,
+              speedMetresPerSecond < movingThresholdMetresPerSecond else { return state }
+        if state.stationarySince == nil { state.stationarySince = date }
+        if state.lastSampleAt.map({ date >= $0 }) ?? true { state.lastSampleAt = date }
+        return state
+    }
+
     static func updated(_ previous: DrivingRestState, tripID: UUID,
                         at date: Date, speedMetresPerSecond: Double?) -> DrivingRestState {
         var state = previous.tripID == tripID ? previous : DrivingRestState(tripID: tripID)
