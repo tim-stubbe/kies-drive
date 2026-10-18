@@ -11,7 +11,7 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(gate.complete(["late"]) { published.append($0) })
         XCTAssertTrue(gate.didComplete)
         XCTAssertEqual(published, [["first"]])
-        XCTAssertEqual(CarPlaySearchTimeoutPolicy.timeoutNanoseconds, 8_000_000_000)
+        XCTAssertEqual(NavigationSearchTimeoutPolicy.timeoutNanoseconds, 8_000_000_000)
     }
 
     func testCarPlayAlertPrefersConcreteFailureReason() {
@@ -24,6 +24,23 @@ final class NavigationPresentationTests: XCTestCase {
             ["Aktion nicht möglich"]
         )
     }
+
+    func testDestinationSearchPublishesOnlyForCurrentUnchangedQuery() {
+        let current = UUID()
+        XCTAssertTrue(DestinationSearchCompletionPolicy.mayPublish(
+            request: current, currentRequest: current,
+            query: "Hochheim", currentText: "  Hochheim  "
+        ))
+        XCTAssertFalse(DestinationSearchCompletionPolicy.mayPublish(
+            request: UUID(), currentRequest: current,
+            query: "Hochheim", currentText: "Hochheim"
+        ))
+        XCTAssertFalse(DestinationSearchCompletionPolicy.mayPublish(
+            request: current, currentRequest: current,
+            query: "Hochheim", currentText: "Mainz"
+        ))
+    }
+
 
     func testRemainingTimePreservesPerLegTravelCharacteristics() throws {
         let estimate = try XCTUnwrap(RouteRemainingTimePolicy.estimate(

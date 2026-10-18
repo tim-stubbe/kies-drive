@@ -14,8 +14,16 @@ final class NavigationSearchCompletionGate<Value> {
     }
 }
 
-enum CarPlaySearchTimeoutPolicy {
+enum NavigationSearchTimeoutPolicy {
     static let timeoutNanoseconds: UInt64 = 8_000_000_000
+}
+
+enum DestinationSearchCompletionPolicy {
+    static func mayPublish(request: UUID, currentRequest: UUID,
+                           query: String, currentText: String) -> Bool {
+        request == currentRequest &&
+            query == currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 enum CarPlayAlertPresentationPolicy {

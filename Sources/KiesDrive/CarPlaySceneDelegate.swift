@@ -437,7 +437,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let search = MKLocalSearch(request: request)
         activeCarPlaySearch = search
         let timeout = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: CarPlaySearchTimeoutPolicy.timeoutNanoseconds)
+            try? await Task.sleep(nanoseconds: NavigationSearchTimeoutPolicy.timeoutNanoseconds)
             guard !Task.isCancelled else { return }
             search.cancel()
             if generation == self?.carPlaySearchGeneration {

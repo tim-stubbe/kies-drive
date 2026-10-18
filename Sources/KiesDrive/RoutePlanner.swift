@@ -196,6 +196,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
     private var lastLongTripPlanRefreshAt: Date?
+
+    private enum DestinationSearchOutcome {
+        case results([MKMapItem])
+        case failed(String)
+        case timedOut
+    }
     private let drivingRestStore = DrivingRestStateStore.live
     private var drivingRestState = DrivingRestStateStore.live.load()
     private let drivingFuelStore = DrivingFuelStateStore.live
@@ -545,22 +551,40 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         destinationSearchGeneration = generation
         activeDestinationSearch?.cancel()
         activeDestinationSearch = nil
-        guard query.count > 2 else { suggestions = []; return }
+        suggestions = []
+        errorMessage = nil
+        guard query.count > 2 else { return }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         if let coordinate { request.region = .init(center: coordinate, latitudinalMeters: 100_000, longitudinalMeters: 100_000) }
         let search = MKLocalSearch(request: request)
         activeDestinationSearch = search
-        do {
-            let items = try await search.start().mapItems
-            guard generation == destinationSearchGeneration,
-                  destinationText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
-            activeDestinationSearch = nil
+        let outcome = await withTaskGroup(of: DestinationSearchOutcome.self) { group in
+            group.addTask {
+                do { return .results(try await search.start().mapItems) }
+                catch { return .failed(error.localizedDescription) }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: NavigationSearchTimeoutPolicy.timeoutNanoseconds)
+                return .timedOut
+            }
+            let first = await group.next() ?? .timedOut
+            group.cancelAll()
+            search.cancel()
+            return first
+        }
+        guard DestinationSearchCompletionPolicy.mayPublish(
+            request: generation, currentRequest: destinationSearchGeneration,
+            query: query, currentText: destinationText
+        ) else { return }
+        activeDestinationSearch = nil
+        switch outcome {
+        case .results(let items):
             suggestions = items
-        } catch {
-            guard generation == destinationSearchGeneration else { return }
-            activeDestinationSearch = nil
-            errorMessage = "Zielsuche fehlgeschlagen: \(error.localizedDescription)"
+        case .failed(let detail):
+            errorMessage = "Zielsuche fehlgeschlagen: \(detail)"
+        case .timedOut:
+            errorMessage = "Zielsuche dauert zu lange. Bitte erneut versuchen."
         }
     }
 
