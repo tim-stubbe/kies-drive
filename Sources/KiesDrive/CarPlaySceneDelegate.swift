@@ -606,10 +606,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                                       image: UIImage(systemName: symbol))
                 item.handler = { [weak self] _, completion in
                     Task {
-                        await planner.searchAlongRoute(query)
+                        let completedCurrentSearch = await planner.searchAlongRoute(query)
                         await MainActor.run {
                             completion()
-                            self?.showSearchResults(title: title)
+                            if completedCurrentSearch {
+                                self?.showSearchResults(title: title)
+                            }
                         }
                     }
                 }
@@ -702,8 +704,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     finish([])
                     return
                 }
-                await RoutePlanner.shared.searchAlongRoute(query)
-                guard generation == self.carPlaySearchGeneration,
+                let completedCurrentSearch = await RoutePlanner.shared.searchAlongRoute(query)
+                guard completedCurrentSearch,
+                      generation == self.carPlaySearchGeneration,
                       self.carPlaySearchPurpose == .routeStop else {
                     finish([])
                     return

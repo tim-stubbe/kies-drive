@@ -403,8 +403,8 @@ final class DriveRemoteBridge {
             }
         case "add_route_stop":
             guard let query = command.arguments["query"]?.string else { throw DriveRemoteError.destinationNotFound }
-            await planner.searchAlongRoute(query)
-            guard let result = planner.actionableRouteSearchResults.first else {
+            guard await planner.searchAlongRoute(query),
+                  let result = planner.actionableRouteSearchResults.first else {
                 throw DriveRemoteError.destinationNotFound
             }
             guard await planner.addRouteStop(

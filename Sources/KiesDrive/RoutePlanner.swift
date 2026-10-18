@@ -1396,7 +1396,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     /// Sucht POIs entlang der bereits berechneten Route statt nur am aktuellen
     /// Standort. Wenige Suchregionen und ein enger Korridor vermeiden Umwege.
-    func searchAlongRoute(_ query: String) async {
+    /// Returns true only when this exact query completed against the route
+    /// generation that is still installed. Phone, CarPlay and MCP share this
+    /// state; callers must not consume results published by a newer search.
+    @discardableResult
+    func searchAlongRoute(_ query: String) async -> Bool {
         let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let generation = UUID()
         routeSearchGeneration = generation
@@ -1407,7 +1411,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             routeSearchResults = []
             routeSearchMessage = nil
             isSearchingAlongRoute = false
-            return
+            return false
         }
         // Results belong to the exact query that produced them. Leaving the
         // previous list visible while MapKit searches lets a fast tap add an
@@ -1489,9 +1493,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 detail: "POI-Suche verworfen · Route oder Suchtext geändert"
             )
             finishRouteSearch(generation: generation, clearResults: true)
-            return
+            return false
         case .superseded:
-            return
+            return false
         }
         activeRouteSearches = []
         let candidates = matches.values.compactMap {
@@ -1590,7 +1594,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             group.cancelAll()
         }
-        if detourSearchWasSuperseded { return }
+        if detourSearchWasSuperseded { return false }
         switch RouteSearchCompletionPolicy.disposition(
             request: generation, currentRequest: routeSearchGeneration,
             routeGeneration: routeGeneration, currentRouteGeneration: routeCalculationGeneration,
@@ -1604,9 +1608,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 detail: "Umwegprüfung verworfen · Route oder Suchtext geändert"
             )
             finishRouteSearch(generation: generation, clearResults: true)
-            return
+            return false
         case .superseded:
-            return
+            return false
         }
         routeSearchResults = routed.sorted {
             let lhs = RouteSearchPolicy.rankingScore(
@@ -1635,6 +1639,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             acceptableDetours: routeSearchResults.count
         )
         isSearchingAlongRoute = false
+        return true
     }
 
     private func finishRouteSearch(generation: UUID, clearResults: Bool) {
