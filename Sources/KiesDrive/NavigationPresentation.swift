@@ -760,6 +760,23 @@ enum NavigationLocationBatchPolicy {
                 }
             }
     }
+
+    /// Returns the chronological portion of a delivered batch ending at its
+    /// newest live, plausible fix. Core Location occasionally appends one
+    /// coarse or displaced measurement after several useful fixes. Dropping
+    /// the entire batch in that case freezes the map and can hide a maneuver;
+    /// consuming values after the bad endpoint would be equally unsafe.
+    static func freshGuidanceBatch(
+        _ locations: [CLLocation],
+        after previous: CLLocation?,
+        now: Date
+    ) -> [CLLocation] {
+        let ordered = orderedDistinct(locations)
+        guard let endpoint = ordered.lastIndex(where: {
+            NavigationLocationPolicy.accepts($0, after: previous, now: now)
+        }) else { return [] }
+        return Array(ordered[...endpoint])
+    }
 }
 
 enum NavigationLocationAuthorizationPolicy {

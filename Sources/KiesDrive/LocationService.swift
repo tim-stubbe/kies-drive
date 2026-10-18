@@ -91,17 +91,15 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let deliveredAt = Date()
-        let guidanceSamples = NavigationLocationBatchPolicy.orderedDistinct(locations)
-        guard let latest = guidanceSamples.last else { return }
-        // Buffered samples are trusted only when Core Location finishes the
-        // batch with a normal, current and physically plausible fix. Keep the
-        // previously published fix when GPS briefly jumps: otherwise the map,
-        // remote status and trip restore could all show the same bad position
-        // even though turn guidance correctly rejected it.
-        let batchEndsWithFreshFix = NavigationLocationPolicy.accepts(
-            latest, after: location, now: deliveredAt
+        let guidanceSamples = NavigationLocationBatchPolicy.freshGuidanceBatch(
+            locations, after: location, now: deliveredAt
         )
-        if batchEndsWithFreshFix { location = latest }
+        guard let latest = guidanceSamples.last else { return }
+        // Buffered samples are trusted only through the newest normal,
+        // current and physically plausible fix. Keep the previously published
+        // fix when every sample is bad; a lone coarse tail must not make the
+        // map, remote status and trip restore jump away from valid guidance.
+        location = latest
 
         // Navigation progress must be driven by Core Location itself, not by
         // a SwiftUI `onReceive` callback. SwiftUI view updates are not a
@@ -115,7 +113,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         let planner = RoutePlanner.shared
         // `isNavigating` also covers guidance restored from the persisted
         // offline cache, where no fresh MapKit `legs` exist yet.
-        if planner.isNavigating, batchEndsWithFreshFix {
+        if planner.isNavigating {
             for sample in guidanceSamples where planner.isNavigating {
                 planner.updateProgress(
                     at: sample,
@@ -126,7 +124,6 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
             }
         }
 
-        guard batchEndsWithFreshFix else { return }
         Task {
             // A cached, stale or kilometre-uncertain first fix must not spend
             // the restore attempt or calculate a route from the wrong place.

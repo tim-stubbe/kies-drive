@@ -203,6 +203,47 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(ordered[1].horizontalAccuracy, 4)
     }
 
+    func testLocationBatchKeepsUsefulFixesBeforeBadTrailingSample() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        func location(_ secondsAgo: TimeInterval, latitude: Double,
+                      accuracy: CLLocationAccuracy = 5) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: latitude, longitude: 8), altitude: 0,
+                horizontalAccuracy: accuracy, verticalAccuracy: 5,
+                course: 0, speed: 15,
+                timestamp: now.addingTimeInterval(-secondsAgo)
+            )
+        }
+        let previous = location(12, latitude: 50)
+        let junction = location(4, latitude: 50.001)
+        let badTail = location(1, latitude: 50.5, accuracy: 250)
+
+        let batch = NavigationLocationBatchPolicy.freshGuidanceBatch(
+            [badTail, junction], after: previous, now: now
+        )
+
+        XCTAssertEqual(batch.count, 1)
+        XCTAssertEqual(batch.last?.coordinate.latitude, junction.coordinate.latitude)
+    }
+
+    func testLocationBatchRejectsAllSamplesWithoutFreshPlausibleEndpoint() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        let stale = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5,
+            course: 0, speed: 15, timestamp: now.addingTimeInterval(-60)
+        )
+        let inaccurate = CLLocation(
+            coordinate: .init(latitude: 50.001, longitude: 8), altitude: 0,
+            horizontalAccuracy: 250, verticalAccuracy: 5,
+            course: 0, speed: 15, timestamp: now.addingTimeInterval(-1)
+        )
+
+        XCTAssertTrue(NavigationLocationBatchPolicy.freshGuidanceBatch(
+            [stale, inaccurate], after: nil, now: now
+        ).isEmpty)
+    }
+
     func testMotionPolicyRejectsNoisyOrImpossibleSpeeds() {
         XCTAssertEqual(NavigationMotionPolicy.reliableSpeed(
             speedMetresPerSecond: 27, speedAccuracy: 1.5, horizontalAccuracy: 12), 27)
