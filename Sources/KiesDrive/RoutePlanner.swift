@@ -128,11 +128,24 @@ enum OfflineRouteCacheValidationPolicy {
 }
 
 enum OfflineRouteCacheWritePolicy {
-    static func retainedProgress(existing: CachedRoute?, currentTripID: UUID?,
+    static func progressForWrite(existing: CachedRoute?, currentTripID: UUID?,
                                  preservingProgress: Bool) -> Double? {
-        guard preservingProgress,
-              existing?.tripID == currentTripID else { return nil }
-        return existing?.navigationProgress
+        if preservingProgress, existing?.tripID == currentTripID,
+           let progress = existing?.navigationProgress {
+            return progress
+        }
+        // Every newly installed geometry starts at its own 0%, even if the
+        // original locked holiday corridor is already mostly complete.
+        return currentTripID == nil ? nil : 0
+    }
+
+    static func progressForResume(cacheProgress: Double?,
+                                  hasConstraintIdentity: Bool,
+                                  legacyTripProgress: Double?) -> Double? {
+        if let cacheProgress { return cacheProgress }
+        // A constraint-bound cache owns an independent geometry cursor.
+        // Never borrow progress from the differently shaped trip corridor.
+        return hasConstraintIdentity ? 0 : legacyTripProgress
     }
 }
 
@@ -1787,7 +1800,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let routeConstraintIdentity = routeLockStore.activeLock.map {
             OfflineRouteConstraintIdentityPolicy.identity(for: $0)
         }
-        let retainedProgress = OfflineRouteCacheWritePolicy.retainedProgress(
+        let retainedProgress = OfflineRouteCacheWritePolicy.progressForWrite(
             existing: offlineRoute,
             currentTripID: currentTripID,
             preservingProgress: preservingProgress
@@ -2012,8 +2025,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         navigationStepCursor = OfflineGuidanceResumePolicy.stepIndex(
             steps: cachedGuidanceSteps,
-            persistedProgress: cache.navigationProgress ??
-                activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress
+            persistedProgress: OfflineRouteCacheWritePolicy.progressForResume(
+                cacheProgress: cache.navigationProgress,
+                hasConstraintIdentity: cache.routeConstraintIdentity != nil,
+                legacyTripProgress: activeRouteLock?.lastRouteProgress ??
+                    routeLockStore.activeLock?.lastRouteProgress
+            )
         )
         offlineNeedsInitialPositionMatch = true
         lastOfflineRecoveryAttempt = Date()

@@ -266,15 +266,30 @@ final class RoutePersistenceTests: XCTestCase {
             legs: [], stations: [], savedAt: Date(), navigationProgress: 0.62
         )
 
-        XCTAssertEqual(OfflineRouteCacheWritePolicy.retainedProgress(
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
             existing: route, currentTripID: tripID, preservingProgress: true
         ), 0.62)
-        XCTAssertNil(OfflineRouteCacheWritePolicy.retainedProgress(
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
             existing: route, currentTripID: UUID(), preservingProgress: true
-        ))
-        XCTAssertNil(OfflineRouteCacheWritePolicy.retainedProgress(
+        ), 0)
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
             existing: route, currentTripID: tripID, preservingProgress: false
+        ), 0)
+        XCTAssertNil(OfflineRouteCacheWritePolicy.progressForWrite(
+            existing: route, currentTripID: nil, preservingProgress: false
         ))
+    }
+
+    func testConstraintBoundOfflineGeometryNeverBorrowsTripCorridorProgress() {
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForResume(
+            cacheProgress: 0.15, hasConstraintIdentity: true, legacyTripProgress: 0.8
+        ), 0.15)
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForResume(
+            cacheProgress: nil, hasConstraintIdentity: true, legacyTripProgress: 0.8
+        ), 0)
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForResume(
+            cacheProgress: nil, hasConstraintIdentity: false, legacyTripProgress: 0.8
+        ), 0.8)
     }
 
     func testOfflineRouteIdentityRequiresExactActiveTrip() {
