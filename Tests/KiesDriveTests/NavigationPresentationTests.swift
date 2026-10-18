@@ -1289,6 +1289,20 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechPronouncesRoundaboutExitAsNaturalGermanOrdinal() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Im Kreisverkehr die 2. Ausfahrt Richtung A66 nehmen"
+            ),
+            "Im Kreisverkehr die zweite Ausfahrt Richtung A 66 nehmen."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Ausfahrt 2 Richtung Zentrum nehmen"),
+            "Ausfahrt 2 Richtung Zentrum nehmen.",
+            "A motorway exit number must not be rewritten as a roundabout ordinal"
+        )
+    }
+
     func testSpeechInstructionUsesImmediateCueNearManeuver() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("links abbiegen", distance: 20),

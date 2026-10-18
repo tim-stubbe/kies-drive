@@ -484,6 +484,7 @@ enum NavigationSpeechFormatter {
             #"(?i)\b(Ausfahrt|Exit|Anschlussstelle)\s+([0-9]{1,3})\s*[- ]\s*([A-Z])\b"#,
             in: text, with: "$1 $2 $3"
         )
+        text = replacingRoundaboutExitOrdinal(in: text)
         // Force a small spoken pause between road class and number. Compact
         // forms such as A66 or B40 otherwise sound like arbitrary words on
         // some installed German voices.
@@ -533,6 +534,31 @@ enum NavigationSpeechFormatter {
             range: NSRange(value.startIndex..., in: value),
             withTemplate: replacement
         )
+    }
+
+    private static func replacingRoundaboutExitOrdinal(in value: String) -> String {
+        let ordinals = [
+            1: "erste", 2: "zweite", 3: "dritte", 4: "vierte",
+            5: "fünfte", 6: "sechste", 7: "siebte", 8: "achte",
+            9: "neunte", 10: "zehnte", 11: "elfte", 12: "zwölfte",
+        ]
+        guard value.localizedCaseInsensitiveContains("kreisverkehr"),
+              let regex = try? NSRegularExpression(
+                pattern: #"\b([1-9]|1[0-2])\.\s+(?=Ausfahrt\b)"#,
+                options: [.caseInsensitive]
+              ) else { return value }
+        var result = value
+        let matches = regex.matches(
+            in: value, range: NSRange(value.startIndex..., in: value)
+        ).reversed()
+        for match in matches {
+            guard let whole = Range(match.range, in: result),
+                  let numberRange = Range(match.range(at: 1), in: result),
+                  let number = Int(result[numberRange]),
+                  let ordinal = ordinals[number] else { continue }
+            result.replaceSubrange(whole, with: ordinal + " ")
+        }
+        return result
     }
 
     private static func sentence(_ value: String) -> String {
