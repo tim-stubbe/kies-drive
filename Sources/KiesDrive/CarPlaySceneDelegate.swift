@@ -651,7 +651,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                         self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                         return
                     }
-                    let succeeded = await planner.addRouteStop(mapItem, from: start, settings: .shared)
+                    let succeeded = await planner.addRouteStop(
+                        mapItem, from: start, settings: .shared,
+                        knownRouteProgress: result.routeProgress
+                    )
                     completion()
                     if succeeded { self.interfaceController?.popToRootTemplate(animated: true, completion: nil) }
                     else { self.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht hinzugefügt werden.") }
