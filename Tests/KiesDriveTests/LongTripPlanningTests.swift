@@ -317,6 +317,25 @@ final class LongTripPlanningTests: XCTestCase {
                        "A missing second limit must not make the long segment unrestricted")
     }
 
+    func testUnlimitedShareRejectsConflictingProviderEvidence() {
+        let points = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.01),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.02),
+        ]
+        let limits = [
+            SpeedLimitResult(maxspeed: 120, unlimited: true),
+            SpeedLimitResult(maxspeed: nil, unlimited: true),
+        ]
+
+        XCTAssertEqual(
+            SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: limits),
+            0.5,
+            accuracy: 0.02,
+            "A contradictory numeric limit must not be treated as unrestricted"
+        )
+    }
+
     func testUnlimitedShareExcludesAlreadyDrivenFastSections() {
         let points = [
             CLLocationCoordinate2D(latitude: 50.00, longitude: 8),

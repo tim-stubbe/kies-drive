@@ -223,7 +223,13 @@ enum SpeedScenarioPolicy {
             travelledDistance = segmentEnd
             guard includedDistance > 0 else { continue }
             totalDistance += includedDistance
-            if limits.indices.contains(index), limits[index].unlimited {
+            // Only an explicit, internally consistent unrestricted result is
+            // eligible for a high-speed scenario. A numeric limit alongside
+            // `unlimited` is conflicting provider data and must stay
+            // conservative just like a missing sample.
+            if limits.indices.contains(index),
+               limits[index].unlimited,
+               limits[index].maxspeed == nil {
                 unlimitedDistance += includedDistance
             }
         }
