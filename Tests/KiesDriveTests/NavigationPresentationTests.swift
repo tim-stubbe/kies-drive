@@ -1473,6 +1473,27 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testGermanVoiceReceivesTranslatedMapKitManeuverVocabulary() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "At the roundabout, take the 2nd exit toward A66"
+            ),
+            "Im Kreisverkehr, die zweite Ausfahrt nehmen Richtung A 66."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Turn right onto B40"),
+            "Rechts abbiegen auf B 40."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Keep left toward Köln"),
+            "Links halten Richtung Köln."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Make a U-turn"),
+            "Bitte wenden."
+        )
+    }
+
     func testSpeechSeparatesEuropeanHolidayRouteRoadLabels() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText(

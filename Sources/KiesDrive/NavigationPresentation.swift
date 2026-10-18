@@ -590,6 +590,27 @@ enum NavigationSpeechFormatter {
         // rule can make it understandable to the speech synthesizer.
         var text = replacing(#"(?i)\bkm\s*/\s*h\b"#, in: instruction,
                              with: "Kilometer pro Stunde")
+        // Cached routes can outlive a device-language change and MapKit can
+        // occasionally return an English maneuver near a border. A German
+        // voice reading those verbs literally is difficult to understand, so
+        // translate the small, well-defined navigation vocabulary first.
+        let englishManeuvers: [(String, String)] = [
+            (#"(?i)\bat the roundabout\b"#, "Im Kreisverkehr"),
+            (#"(?i)\btake the\s+([0-9]{1,2})(?:st|nd|rd|th)\s+exit\b"#, "die $1. Ausfahrt nehmen"),
+            (#"(?i)\btake exit\s+([0-9]{1,3}[A-Za-z]?)\b"#, "Ausfahrt $1 nehmen"),
+            (#"(?i)\bturn right onto\b"#, "rechts abbiegen auf"),
+            (#"(?i)\bturn left onto\b"#, "links abbiegen auf"),
+            (#"(?i)\bturn right\b"#, "rechts abbiegen"),
+            (#"(?i)\bturn left\b"#, "links abbiegen"),
+            (#"(?i)\bkeep right\b"#, "rechts halten"),
+            (#"(?i)\bkeep left\b"#, "links halten"),
+            (#"(?i)\bcontinue straight\b"#, "geradeaus weiterfahren"),
+            (#"(?i)\bmake a u[- ]turn\b"#, "bitte wenden"),
+            (#"(?i)\b(?:toward|towards)\b"#, "Richtung"),
+        ]
+        for (pattern, replacement) in englishManeuvers {
+            text = replacing(pattern, in: text, with: replacement)
+        }
         text = text
             .replacingOccurrences(of: "&", with: " und ")
             .replacingOccurrences(of: "/", with: ", ")
