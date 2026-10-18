@@ -1276,4 +1276,20 @@ final class LongTripPlanningTests: XCTestCase {
                                                               effectiveSpeedKmh: 90,
                                                               profile: profile).litres)
     }
+
+    func testFuelModelDoesNotRewardStopAndGoTraffic() {
+        let profile = VehicleProfile(baseConsumptionLPer100km: 7, referenceSpeedKmh: 100,
+                                     fuelPricePerLitre: 1.8, tankCapacityLitres: 50,
+                                     usableTankFraction: 0.85)
+        let model = FuelModel()
+        let reference = model.estimate(distanceMetres: 100_000, effectiveSpeedKmh: 100,
+                                       profile: profile)
+        let congestion = model.estimate(distanceMetres: 100_000, effectiveSpeedKmh: 30,
+                                        profile: profile)
+        let severeCongestion = model.estimate(distanceMetres: 100_000, effectiveSpeedKmh: 10,
+                                              profile: profile)
+
+        XCTAssertGreaterThan(congestion.litres, reference.litres)
+        XCTAssertGreaterThan(severeCongestion.litres, congestion.litres)
+    }
 }

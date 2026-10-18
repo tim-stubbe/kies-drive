@@ -160,12 +160,21 @@ struct FuelEstimate: Codable, Equatable {
 }
 
 struct FuelModel {
-    /// Aerodynamic drag rises strongly with speed. This bounded curve is a
-    /// transparent planning estimate, not a replacement for measured telemetry.
+    /// Aerodynamic drag rises strongly with speed, while congestion and
+    /// stop-and-go add idling and repeated acceleration losses at very low
+    /// effective speeds. This bounded U-shaped curve is a transparent planning
+    /// estimate, not a replacement for measured telemetry.
     func estimate(distanceMetres: Double, effectiveSpeedKmh: Double, profile: VehicleProfile) -> FuelEstimate {
         let reference = max(30, profile.referenceSpeedKmh)
-        let speedRatio = max(0.3, effectiveSpeedKmh / reference)
-        let multiplier = min(3.2, max(0.65, 0.55 + 0.45 * speedRatio * speedRatio))
+        let speed = max(0, effectiveSpeedKmh)
+        let speedRatio = max(0.3, speed / reference)
+        let aerodynamicMultiplier = 0.55 + 0.45 * speedRatio * speedRatio
+        // Effective speed below 60 km/h commonly means congestion rather than
+        // economical steady cruising on a long-distance route. Without this
+        // term, a traffic jam would misleadingly reduce the predicted fuel use.
+        let congestionRatio = max(0, 60 - speed) / 30
+        let congestionPenalty = 0.55 * congestionRatio * congestionRatio
+        let multiplier = min(3.2, max(0.65, aerodynamicMultiplier + congestionPenalty))
         let average = profile.baseConsumptionLPer100km * multiplier
         let litres = max(0, distanceMetres / 100_000 * average)
         return .init(litres: litres, cost: litres * max(0, profile.fuelPricePerLitre), averageConsumptionLPer100km: average)
