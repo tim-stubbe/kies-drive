@@ -3494,6 +3494,25 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(store.load(), DriveUsageSessionState())
     }
 
+    func testUsageCheckpointOverwritesOlderAggregateWithoutCoordinates() throws {
+        let suite = "DriveUsageCheckpointTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DriveUsageSessionStore(defaults: defaults)
+        let tripID = UUID()
+        store.save(.init(tripID: tripID, distanceMetres: 1_000, movingTime: 120))
+        let latest = DriveUsageSessionState(
+            tripID: tripID, distanceMetres: 1_850, movingTime: 181
+        )
+        store.save(latest)
+
+        XCTAssertEqual(store.load(), latest)
+        let encoded = try XCTUnwrap(defaults.data(forKey: store.key))
+        let text = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("latitude"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("longitude"))
+    }
+
     func testRouteOverviewRejectsRemoteVehicleFixButKeepsNearbyDeviation() throws {
         let route = MKMapRect(
             origin: MKMapPoint(.init(latitude: 50.0, longitude: 8.0)),

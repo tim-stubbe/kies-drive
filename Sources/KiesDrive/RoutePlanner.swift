@@ -3688,6 +3688,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         else { usageSessionStore.save(usageSessionState) }
     }
 
+    /// Flushes the latest aggregate driving state before iOS suspends the app
+    /// or CarPlay disconnects. No coordinate is encoded; only distance, moving
+    /// time, fatigue/fuel state and the already-sanitised route cache persist.
+    func checkpointNavigationState() {
+        guard isNavigating || usageSessionState.tripID != nil else { return }
+        usageSessionStore.save(usageSessionState)
+        drivingRestStore.save(drivingRestState)
+        drivingFuelStore.save(drivingFuelState)
+        if isNavigating {
+            persistActiveTrip()
+            cacheForOffline(preservingProgress: true)
+        }
+        let now = Date()
+        lastUsageSessionPersistedAt = now
+        lastDrivingStatePersistedAt = now
+    }
+
     private func invalidateNavigationAsyncWork() {
         navigationSessionGeneration = UUID()
         rerouteGeneration = UUID()

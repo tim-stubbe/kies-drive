@@ -97,6 +97,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func disconnect() {
+        // CarPlay can be the only active scene. Persist its latest aggregate
+        // navigation state before iOS tears the scene down.
+        RoutePlanner.shared.checkpointNavigationState()
         interfaceController = nil
         carWindow = nil
         mapView = nil

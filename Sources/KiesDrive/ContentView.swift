@@ -225,6 +225,9 @@ struct DriveContentView: View {
             // Keep the screen awake only while Kies Drive is actually visible.
             // Backgrounding the app restores the user's normal lock timeout.
             UIApplication.shared.isIdleTimerDisabled = phase == .active
+            if phase != .active {
+                planner.checkpointNavigationState()
+            }
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
