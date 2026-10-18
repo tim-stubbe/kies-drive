@@ -518,6 +518,24 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testVoiceSelectionPrioritisesAudioQualityBeforeSiriBranding() {
+        let compactSiri = NavigationVoiceSelectionPolicy.score(
+            qualityRawValue: 1, identifier: "com.apple.voice.compact.de-DE.siri"
+        )
+        let premium = NavigationVoiceSelectionPolicy.score(
+            qualityRawValue: 3, identifier: "com.apple.voice.premium.de-DE.anna"
+        )
+        XCTAssertGreaterThan(premium, compactSiri)
+
+        let enhancedSiri = NavigationVoiceSelectionPolicy.score(
+            qualityRawValue: 2, identifier: "com.apple.voice.enhanced.de-DE.siri"
+        )
+        let enhancedGeneric = NavigationVoiceSelectionPolicy.score(
+            qualityRawValue: 2, identifier: "com.apple.voice.enhanced.de-DE.anna"
+        )
+        XCTAssertGreaterThan(enhancedSiri, enhancedGeneric)
+    }
+
     func testSpeechNormalisesCompactRoadNamesAndUnsafeCharacters() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("\u{FFFC} ↗ A66 • B40 – Richtung Köln (E40)"),

@@ -304,6 +304,16 @@ enum NavigationSpeechFormatter {
     }
 }
 
+enum NavigationVoiceSelectionPolicy {
+    /// Voice quality is the audible requirement. Siri branding is only a
+    /// tie-breaker among equally capable installed German voices; otherwise a
+    /// compact Siri asset could incorrectly beat an enhanced or premium one.
+    static func score(qualityRawValue: Int, identifier: String) -> Int {
+        qualityRawValue * 100 +
+            (identifier.localizedCaseInsensitiveContains("siri") ? 10 : 0)
+    }
+}
+
 enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     case early
     case prepare

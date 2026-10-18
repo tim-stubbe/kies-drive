@@ -2104,8 +2104,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private static func preferredGermanVoice() -> AVSpeechSynthesisVoice? {
         let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == "de-DE" }
         return voices.max { lhs, rhs in
-            let lhsScore = lhs.quality.rawValue + (lhs.identifier.localizedCaseInsensitiveContains("siri") ? 10 : 0)
-            let rhsScore = rhs.quality.rawValue + (rhs.identifier.localizedCaseInsensitiveContains("siri") ? 10 : 0)
+            let lhsScore = NavigationVoiceSelectionPolicy.score(
+                qualityRawValue: lhs.quality.rawValue, identifier: lhs.identifier
+            )
+            let rhsScore = NavigationVoiceSelectionPolicy.score(
+                qualityRawValue: rhs.quality.rawValue, identifier: rhs.identifier
+            )
             return lhsScore < rhsScore
         } ?? AVSpeechSynthesisVoice(language: "de-DE")
     }
