@@ -1240,15 +1240,15 @@ struct DriveContentView: View {
                     Label(formatDistance(planner.totalDistance), systemImage: "road.lanes")
                     Label(formatTime(planner.totalTravelTime), systemImage: "clock")
                     if settings.avoidTolls { Label("Mautstraßen werden vermieden", systemImage: "eurosign.slash") }
-                    if !planner.viaStations.isEmpty {
+                    if !planner.transientViaStations.isEmpty {
                         Section {
-                            ForEach(planner.viaStations) { via in
+                            ForEach(planner.transientViaStations) { via in
                                 Label("Zwischenstopp: \(via.brand.isEmpty ? via.name : via.brand)", systemImage: "fuelpump.fill")
                             }
                             Button("Zwischenstopps entfernen", systemImage: "xmark.circle") {
                                 guard let start = location.location?.coordinate else { return }
                                 Task {
-                                    for via in planner.viaStations {
+                                    for via in planner.transientViaStations {
                                         await planner.toggleWaypoint(via, from: start, settings: settings)
                                     }
                                 }

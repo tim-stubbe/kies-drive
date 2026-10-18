@@ -149,6 +149,10 @@ struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
         mayAutoCompleteWhenPassed
     }
 
+    var isRemovableComfortStop: Bool {
+        kind == .userStop || kind == .fuelStop
+    }
+
     /// Historic waypoints and explicit route constraints describe a road the
     /// driver must use, so a trustworthy forward corridor match may complete
     /// them after an app restart. Real user, food and fuel stops must instead

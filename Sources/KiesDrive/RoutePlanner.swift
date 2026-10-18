@@ -1034,29 +1034,44 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     var removableRouteStops: [LockedWaypoint] {
-        activeRouteLock?.waypoints.filter { $0.id.hasPrefix("poi-") } ?? []
+        activeRouteLock?.waypoints.filter(\.isRemovableComfortStop) ?? []
+    }
+
+    /// Compatibility-only station state that has not already been promoted
+    /// into the persistent route lock. Locked fuel stops are shown through
+    /// `removableRouteStops`; exposing both produced duplicate remove actions.
+    var transientViaStations: [FuelStation] {
+        let lockedIDs = Set(removableRouteStops.map(\.id))
+        return viaStations.filter { !lockedIDs.contains($0.id) }
     }
 
     @discardableResult
     func removeRouteStop(id: String, from start: CLLocationCoordinate2D,
                          settings: DriveSettings) async -> Bool {
-        guard id.hasPrefix("poi-"),
-              routeLockStore.activeLock?.waypoints.contains(where: { $0.id == id }) == true else {
+        guard routeLockStore.activeLock?.waypoints.contains(where: {
+            $0.id == id && $0.isRemovableComfortStop
+        }) == true else {
             return false
         }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousLock = routeLockStore.activeLock
+        let previousStations = viaStations
         routeLockStore.update { $0.removeWaypoint(id: id) }
+        viaStations.removeAll { $0.id == id }
         activeRouteLock = routeLockStore.activeLock
         let mutatedLock = routeLockStore.activeLock
+        let mutatedStations = viaStations
         guard await calculate(
             from: start, settings: settings,
             navigationSession: navigationSession
         ) else {
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
+            ), RouteMutationRollbackPolicy.shouldRollback(
+                current: viaStations, mutated: mutatedStations
             ) else { return false }
             routeLockStore.replace(with: previousLock)
+            viaStations = previousStations
             activeRouteLock = previousLock
             return false
         }

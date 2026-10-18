@@ -247,6 +247,9 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertTrue(constraint.isTollEvidenceAnchor)
         XCTAssertFalse(restaurant.isTollEvidenceAnchor)
         XCTAssertFalse(fuel.isTollEvidenceAnchor)
+        XCTAssertFalse(constraint.isRemovableComfortStop)
+        XCTAssertTrue(restaurant.isRemovableComfortStop)
+        XCTAssertTrue(fuel.isRemovableComfortStop)
 
         // A lock written before the kind field existed must still decode and
         // retain its historic meaning as a mandatory route constraint.

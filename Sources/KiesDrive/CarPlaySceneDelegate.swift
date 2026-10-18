@@ -278,7 +278,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             items.append(item)
         }
-        for station in planner.viaStations.prefix(2) {
+        for station in planner.transientViaStations.prefix(2) {
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
                                   detailText: "Tankstopp entfernen",
                                   image: UIImage(systemName: "fuelpump.slash.fill"))
