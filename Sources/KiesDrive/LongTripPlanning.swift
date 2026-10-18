@@ -601,8 +601,11 @@ struct FuelStopPlanner {
     /// theoretical last kilometre of the tank.
     func plan(distanceMetres: Double, consumptionLPer100km: Double,
               vehicle: VehicleProfile, candidates: [BreakCandidate]) -> [PlannedFuelStop] {
-        guard distanceMetres > 0, consumptionLPer100km > 0,
-              vehicle.tankCapacityLitres > 0 else { return [] }
+        guard distanceMetres.isFinite, distanceMetres > 0,
+              consumptionLPer100km.isFinite, consumptionLPer100km > 0,
+              vehicle.tankCapacityLitres.isFinite, vehicle.tankCapacityLitres > 0,
+              vehicle.usableTankFraction.isFinite,
+              vehicle.initialFuelFraction.isFinite else { return [] }
         let usableFraction = min(0.95, max(0.5, vehicle.usableTankFraction))
         let reserveFraction = 1 - usableFraction
         let departureFraction = min(1, max(0, vehicle.initialFuelFraction))
@@ -898,13 +901,19 @@ enum DrivingFuelPolicy {
                                   tankCapacityLitres: Double,
                                   consumptionLPer100km: Double,
                                   fallback: Double) -> Double {
-        guard state.tripID == tripID, tankCapacityLitres > 0 else {
-            return min(1, max(0, fallback))
+        let safeFallback = fallback.isFinite ? min(1, max(0, fallback)) : 0
+        guard state.tripID == tripID,
+              state.observedFuelFraction.isFinite,
+              state.distanceSinceObservationMetres.isFinite,
+              tankCapacityLitres.isFinite, tankCapacityLitres > 0,
+              consumptionLPer100km.isFinite, consumptionLPer100km >= 0 else {
+            return safeFallback
         }
         let observedLitres = min(1, max(0, state.observedFuelFraction)) * tankCapacityLitres
         let usedLitres = max(0, state.distanceSinceObservationMetres) / 100_000 *
             max(0, consumptionLPer100km)
-        return min(1, max(0, (observedLitres - usedLitres) / tankCapacityLitres))
+        let fraction = (observedLitres - usedLitres) / tankCapacityLitres
+        return fraction.isFinite ? min(1, max(0, fraction)) : safeFallback
     }
 }
 

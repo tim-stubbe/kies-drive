@@ -851,6 +851,23 @@ final class LongTripPlanningTests: XCTestCase {
         ), 0.45, accuracy: 0.001)
     }
 
+    func testDrivingFuelPolicyFallsBackFromCorruptedNumericState() {
+        let tripID = UUID()
+        let corrupted = DrivingFuelState(
+            tripID: tripID, observedFuelFraction: .infinity,
+            distanceSinceObservationMetres: .nan,
+            lastCoordinate: nil, lastSampleAt: nil
+        )
+        XCTAssertEqual(DrivingFuelPolicy.estimatedFraction(
+            corrupted, tripID: tripID, tankCapacityLitres: 50,
+            consumptionLPer100km: 8, fallback: 0.4
+        ), 0.4, accuracy: 0.001)
+        XCTAssertEqual(DrivingFuelPolicy.estimatedFraction(
+            corrupted, tripID: tripID, tankCapacityLitres: .infinity,
+            consumptionLPer100km: 8, fallback: .nan
+        ), 0, accuracy: 0.001)
+    }
+
     func testDrivingFuelPolicyDoesNotInventDistanceAcrossUnknownGap() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 50_000)
@@ -1220,6 +1237,25 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(stops.count, 1)
         XCTAssertEqual(stops.first?.candidate?.id, "station")
         XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
+    }
+
+    func testFuelPlannerRejectsNonFiniteTripAndVehicleInputs() {
+        let validVehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, usableTankFraction: 0.8
+        )
+        XCTAssertTrue(FuelStopPlanner().plan(
+            distanceMetres: .infinity, consumptionLPer100km: 10,
+            vehicle: validVehicle, candidates: []
+        ).isEmpty)
+        let invalidVehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: .infinity, usableTankFraction: 0.8
+        )
+        XCTAssertTrue(FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: invalidVehicle, candidates: []
+        ).isEmpty)
     }
 
     func testFuelPlannerRejectsStationBeyondSafeRange() {
