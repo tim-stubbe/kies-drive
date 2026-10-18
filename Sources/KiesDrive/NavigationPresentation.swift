@@ -307,6 +307,17 @@ enum NavigationAnnouncementDeliveryPolicy {
     static func shouldCommitDelivery(didFinish: Bool) -> Bool { didFinish }
 }
 
+enum NavigationSpeechClaimTimeoutPolicy {
+    static let pendingTimeout: TimeInterval = 4
+    static let activeTimeout: TimeInterval = 20
+
+    static func isExpired(issuedAt: Date, now: Date, active: Bool) -> Bool {
+        let age = now.timeIntervalSince(issuedAt)
+        guard age >= 0 else { return false }
+        return age >= (active ? activeTimeout : pendingTimeout)
+    }
+}
+
 enum NavigationSpeechInterruptionPolicy {
     static func shouldInterrupt(active: NavigationSpeechPriority,
                                 incoming: NavigationSpeechPriority) -> Bool {

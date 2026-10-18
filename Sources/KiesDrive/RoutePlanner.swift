@@ -156,6 +156,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let stage: NavigationAnnouncementStage
         let instruction: String
         let distance: CLLocationDistance
+        let issuedAt: Date
     }
     private var pendingManeuverSpeech: [ObjectIdentifier: ManeuverSpeechClaim] = [:]
     private var activeManeuverSpeech: [ObjectIdentifier: ManeuverSpeechClaim] = [:]
@@ -1082,6 +1083,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         updateUsageSession(at: location)
         lastAcceptedNavigationLocation = location
+        expireStaleManeuverSpeech(now: evaluationDate)
         let currentSpeed = NavigationMotionPolicy.reliableSpeed(for: location)
         let guidanceSpeed = NavigationGuidanceSpeedPolicy.effective(
             current: currentSpeed,
@@ -1346,7 +1348,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         _ = speak(
             speech, priority: .forAnnouncementStage(stage),
             maneuverClaim: .init(key: key, stage: stage, instruction: progress.instruction,
-                                 distance: progress.distanceToManeuver)
+                                 distance: progress.distanceToManeuver, issuedAt: Date())
         )
     }
 
@@ -1640,7 +1642,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             speech, priority: .forAnnouncementStage(stage),
             maneuverClaim: .init(
                 key: key, stage: stage, instruction: progress.maneuver.step.instructions,
-                distance: progress.distance
+                distance: progress.distance, issuedAt: Date()
             )
         )
     }
@@ -1723,6 +1725,33 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func pendingStages(for key: String) -> Set<NavigationAnnouncementStage> {
         Set((Array(pendingManeuverSpeech.values) + Array(activeManeuverSpeech.values))
             .lazy.filter { $0.key == key }.map(\.stage))
+    }
+
+    private func expireStaleManeuverSpeech(now: Date) {
+        let expiredPending = pendingManeuverSpeech.filter {
+            NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.value.issuedAt, now: now, active: false
+            )
+        }
+        let expiredActive = activeManeuverSpeech.filter {
+            NavigationSpeechClaimTimeoutPolicy.isExpired(
+                issuedAt: $0.value.issuedAt, now: now, active: true
+            )
+        }
+        guard !expiredPending.isEmpty || !expiredActive.isEmpty else { return }
+        for identifier in expiredPending.keys { pendingManeuverSpeech.removeValue(forKey: identifier) }
+        for identifier in expiredActive.keys { activeManeuverSpeech.removeValue(forKey: identifier) }
+        // Remove the stale queued utterance from AVSpeechSynthesizer as well;
+        // otherwise it could start after the retry and produce a duplicate.
+        synthesizer.stopSpeaking(at: .immediate)
+        let claim = expiredActive.values.first ?? expiredPending.values.first
+        DriveDiagnosticStore.append(
+            .speechDeliveryFailed,
+            detail: DriveDiagnosticDetail.navigationSample(
+                claim.map { "\($0.stage) · \($0.instruction)" } ?? "Unbekannte Fahransage",
+                location: lastAcceptedNavigationLocation
+            )
+        )
     }
 
     /// Route calculation is intentionally non-destructive until its complete

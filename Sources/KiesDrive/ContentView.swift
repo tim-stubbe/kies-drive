@@ -1825,6 +1825,7 @@ struct DriveSettingsView: View {
                     let arrivals = diagnosticEvents.filter { $0.kind == .arrivalReached }.count
                     let announcements = diagnosticEvents.filter { $0.kind == .maneuverAnnounced }.count
                     let missedFinalCues = diagnosticEvents.filter { $0.kind == .maneuverFinalCueMissed }.count
+                    let speechFailures = diagnosticEvents.filter { $0.kind == .speechDeliveryFailed }.count
                     if let latestSummary {
                         LabeledContent("Letzte Fahrt", value: latestSummary.quality.rawValue)
                         Text(latestSummary.recommendation)
@@ -1833,7 +1834,7 @@ struct DriveSettingsView: View {
                             LabeledContent("Automatisch behoben", value: "\(latestSummary.resolvedRouteIssues)")
                         }
                         if latestSummary.quality != .good {
-                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
+                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     } else {
@@ -1845,6 +1846,7 @@ struct DriveSettingsView: View {
                     LabeledContent("GPS-Ausreißer verworfen", value: "\(rejectedLocations)")
                     LabeledContent("Ziele sicher erkannt", value: "\(arrivals)")
                     LabeledContent("Gesprochene Fahrhinweise", value: "\(announcements)")
+                    LabeledContent("Nicht beendete Fahransagen", value: "\(speechFailures)")
                     LabeledContent("Letzte Ansage verpasst", value: "\(missedFinalCues)")
                     Text("Die Diagnose bleibt lokal auf diesem Gerät und enthält keine vollständige Standortspur.")
                         .font(.caption).foregroundStyle(.secondary)

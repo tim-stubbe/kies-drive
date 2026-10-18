@@ -203,7 +203,7 @@ enum DriveUsageSegmentPolicy {
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
-    case offlineRouteDeparture
+    case offlineRouteDeparture, speechDeliveryFailed
 }
 
 /// Produces useful driving diagnostics without ever recording coordinates or
@@ -267,6 +267,7 @@ struct DriveDiagnosticSummary: Equatable {
     let rerouteFailures: Int
     let rejectedLocations: Int
     let missedFinalCues: Int
+    let speechDeliveryFailures: Int
     let offlineRouteDepartures: Int
     let resolvedRouteIssues: Int
     let recommendation: String
@@ -288,16 +289,25 @@ struct DriveDiagnosticSummary: Equatable {
         let failures = unresolved.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
+        let lastSpeechRecovery = session.lastIndex(where: { $0.kind == .maneuverAnnounced })
+        let unresolvedSpeech = lastSpeechRecovery.map {
+            session[session.index(after: $0)...]
+        } ?? session[session.startIndex...]
+        let totalSpeechFailures = session.filter { $0.kind == .speechDeliveryFailed }.count
+        let speechFailures = unresolvedSpeech.filter { $0.kind == .speechDeliveryFailed }.count
         let offlineDepartures = unresolved.filter { $0.kind == .offlineRouteDeparture }.count
         let resolved = max(0, totalFailures - failures) +
-            max(0, totalOfflineDepartures - offlineDepartures)
+            max(0, totalOfflineDepartures - offlineDepartures) +
+            max(0, totalSpeechFailures - speechFailures)
         let reroutes = session.filter { $0.kind == .rerouteRequested }.count
         let quality: Quality
         let recommendation: String
-        if failures > 0 || missed > 0 || offlineDepartures > 0 {
+        if failures > 0 || missed > 0 || offlineDepartures > 0 || speechFailures > 0 {
             quality = .critical
             if missed > 0 {
                 recommendation = "Fahrhinweise prüfen; mindestens eine letzte Abbiegeansage fehlte."
+            } else if speechFailures > 0 {
+                recommendation = "Die letzte Fahransage wurde vom Audiosystem nicht beendet; Bluetooth- und Lautstärkeeinstellungen prüfen."
             } else if offlineDepartures > 0 {
                 recommendation = "Die gespeicherte Route wurde verlassen und noch nicht online ersetzt."
             } else {
@@ -316,7 +326,8 @@ struct DriveDiagnosticSummary: Equatable {
         }
         return .init(quality: quality, eventCount: session.count,
                      rerouteFailures: failures, rejectedLocations: rejected,
-                     missedFinalCues: missed, offlineRouteDepartures: offlineDepartures,
+                     missedFinalCues: missed, speechDeliveryFailures: speechFailures,
+                     offlineRouteDepartures: offlineDepartures,
                      resolvedRouteIssues: resolved, recommendation: recommendation)
     }
 }

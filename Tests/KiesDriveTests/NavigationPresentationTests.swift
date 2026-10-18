@@ -524,6 +524,25 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testStalledSpeechClaimExpiresAndCanBeRetried() {
+        let issuedAt = Date(timeIntervalSince1970: 100)
+        XCTAssertFalse(NavigationSpeechClaimTimeoutPolicy.isExpired(
+            issuedAt: issuedAt, now: issuedAt.addingTimeInterval(3.9), active: false
+        ))
+        XCTAssertTrue(NavigationSpeechClaimTimeoutPolicy.isExpired(
+            issuedAt: issuedAt, now: issuedAt.addingTimeInterval(4), active: false
+        ))
+        XCTAssertFalse(NavigationSpeechClaimTimeoutPolicy.isExpired(
+            issuedAt: issuedAt, now: issuedAt.addingTimeInterval(19.9), active: true
+        ))
+        XCTAssertTrue(NavigationSpeechClaimTimeoutPolicy.isExpired(
+            issuedAt: issuedAt, now: issuedAt.addingTimeInterval(20), active: true
+        ))
+        XCTAssertFalse(NavigationSpeechClaimTimeoutPolicy.isExpired(
+            issuedAt: issuedAt, now: issuedAt.addingTimeInterval(-1), active: false
+        ))
+    }
+
     func testManeuverDeliveryCommitsOnlyAfterCompletePlayback() {
         XCTAssertFalse(NavigationAnnouncementDeliveryPolicy.shouldCommitDelivery(
             didFinish: false
@@ -767,6 +786,31 @@ final class NavigationPresentationTests: XCTestCase {
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
         XCTAssertEqual(summary.quality, .critical)
         XCTAssertEqual(summary.missedFinalCues, 1)
+    }
+
+    func testDiagnosticSummaryFlagsUnrecoveredSpeechDeliveryFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .speechDeliveryFailed, detail: "Ausfahrt"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.speechDeliveryFailures, 1)
+        XCTAssertTrue(summary.recommendation.contains("Audiosystem"))
+    }
+
+    func testDiagnosticSummaryClearsSpeechFailureAfterSuccessfulRetry() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .speechDeliveryFailed, detail: "Ausfahrt"),
+            DriveDiagnosticEvent(kind: .maneuverAnnounced, detail: "Ausfahrt"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.speechDeliveryFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
     func testDiagnosticSummaryClearsTransientRouteFailureAfterSuccessfulRecovery() throws {
