@@ -1998,6 +1998,36 @@ final class LongTripPlanningTests: XCTestCase {
         ).isEmpty)
     }
 
+    func testMalformedStopCandidatesCannotEnterBreakOrFuelPlanning() {
+        let malformed = [
+            BreakCandidate(
+                id: "nan-progress", name: "Defekt", coordinate: .init(latitude: 50, longitude: 8),
+                progress: .nan, detourMetres: 100, isOpen: true, supportsFuel: true
+            ),
+            BreakCandidate(
+                id: "infinite-detour", name: "Defekt", coordinate: .init(latitude: 50, longitude: 8),
+                progress: 0.4, detourMetres: .infinity, isOpen: true, supportsFuel: true
+            ),
+            BreakCandidate(
+                id: "bad-coordinate", name: "Defekt", coordinate: .init(latitude: 120, longitude: 8),
+                progress: 0.4, detourMetres: 100, isOpen: true, supportsFuel: true
+            ),
+        ]
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, usableTankFraction: 0.8
+        )
+
+        XCTAssertTrue(BreakCandidateSelectionPolicy.shortlist(malformed).isEmpty)
+        XCTAssertNil(BreakPlanner().plan(
+            drivingTime: 5 * 3600, candidates: malformed
+        ).first?.candidate)
+        XCTAssertNil(FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: malformed
+        ).first?.candidate)
+    }
+
     func testFuelPlannerRejectsStationBeyondSafeRange() {
         let tooLate = BreakCandidate(id: "late", name: "Zu spät", coordinate: .init(),
                                      progress: 0.62, detourMetres: 50, isOpen: true, supportsFuel: true)

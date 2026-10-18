@@ -416,6 +416,28 @@ struct BreakCandidate: Identifiable, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
+enum BreakCandidateValidationPolicy {
+    /// Search and fuel providers are enrichment, never an authority allowed to
+    /// destabilise the route plan. Reject malformed geometry/progress values
+    /// before bucket indexing or stop-range arithmetic can turn NaN/Infinity
+    /// into a crash or an impossible recommendation.
+    static func isUsable(_ candidate: BreakCandidate) -> Bool {
+        let coordinate = candidate.coordinate
+        return !candidate.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            coordinate.latitude.isFinite && coordinate.longitude.isFinite &&
+            (-90...90).contains(coordinate.latitude) &&
+            (-180...180).contains(coordinate.longitude) &&
+            candidate.progress.isFinite && (0...1).contains(candidate.progress) &&
+            candidate.installedRouteProgress.map {
+                $0.isFinite && (0...1).contains($0)
+            } ?? true &&
+            candidate.timeProgress.map {
+                $0.isFinite && (0...1).contains($0)
+            } ?? true &&
+            candidate.detourMetres.isFinite && candidate.detourMetres >= 0
+    }
+}
+
 enum BreakCandidateSelectionPolicy {
     /// Long routes can contain hundreds of nearby places. Keep one useful
     /// candidate per route section so the UI stays small and only a bounded
@@ -427,7 +449,8 @@ enum BreakCandidateSelectionPolicy {
         startingTimeProgress: Double = 0
     ) -> [BreakCandidate] {
         guard maximum > 0 else { return [] }
-        let unique = candidates.reduce(into: [String: BreakCandidate]()) { result, candidate in
+        let unique = candidates.filter(BreakCandidateValidationPolicy.isUsable)
+            .reduce(into: [String: BreakCandidate]()) { result, candidate in
             if let existing = result[candidate.id] {
                 result[candidate.id] = preferred(existing, candidate)
             } else {
@@ -784,6 +807,7 @@ struct FuelStopPlanner {
         let fullSafeRange = fullUsableLitres / consumptionLPer100km * 100_000
         guard fullSafeRange > 0, distanceMetres > departureSafeRange else { return [] }
         var remaining = candidates.filter { candidate in
+            guard BreakCandidateValidationPolicy.isUsable(candidate) else { return false }
             let arrival = routeTravelTime.flatMap { travelTime -> TimeInterval? in
                 guard travelTime.isFinite, travelTime >= 0 else { return nil }
                 return (candidate.timeProgress ?? candidate.progress) * travelTime
@@ -1437,6 +1461,7 @@ struct BreakPlanner {
         let elapsed = min(maximumContinuousDriving, max(0, alreadyDrivenSinceBreak))
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
         var remaining = candidates.filter { candidate in
+            guard BreakCandidateValidationPolicy.isUsable(candidate) else { return false }
             let arrival = (candidate.timeProgress ?? candidate.progress) * drivingTime
             return PlannedStopOpeningStatusPolicy.mayUse(
                 isOpen: candidate.isOpen, secondsUntilArrival: arrival
