@@ -3864,7 +3864,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             tankCapacityLitres: settings.tankCapacityL,
             initialFuelFraction: currentFuelFraction
         ).sanitized
-        let scenarios = [SpeedScenario.target(settings.targetSpeedKmh)] + (settings.targetSpeedKmh == 200 ? [] : [.target(200)])
+        let scenarios = SpeedScenarioPolicy.scenarios(
+            configuredSpeed: settings.targetSpeedKmh
+        )
         longTripPlan = RouteComparison(fuelModel: .init(), breakPlanner: .init())
             .compare(routes: inputs, scenarios: scenarios, vehicle: profile,
                      alreadyDrivenSinceBreak: drivingRestState.continuousDriving)

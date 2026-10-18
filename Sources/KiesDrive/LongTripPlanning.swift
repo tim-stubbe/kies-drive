@@ -244,6 +244,32 @@ enum SpeedScenarioPolicy {
         var totalTime: TimeInterval { limitedTime + adjustedUnlimitedTime }
     }
 
+    static func comparisonTargetSpeed(
+        configuredSpeed: Double,
+        referenceSpeed: Double = 200,
+        fallbackSpeed: Double = 150
+    ) -> Double {
+        let configured = SpeedScenario.target(configuredSpeed).targetSpeedKmh
+        let reference = SpeedScenario.target(referenceSpeed).targetSpeedKmh
+        return abs(configured - reference) <= 0.1
+            ? SpeedScenario.target(fallbackSpeed).targetSpeedKmh
+            : reference
+    }
+
+    static func scenarios(
+        configuredSpeed: Double,
+        referenceSpeed: Double = 200,
+        fallbackSpeed: Double = 150
+    ) -> [SpeedScenario] {
+        let configured = SpeedScenario.target(configuredSpeed)
+        let comparison = SpeedScenario.target(comparisonTargetSpeed(
+            configuredSpeed: configured.targetSpeedKmh,
+            referenceSpeed: referenceSpeed,
+            fallbackSpeed: fallbackSpeed
+        ))
+        return configured.id == comparison.id ? [configured] : [configured, comparison]
+    }
+
     /// Measures unrestricted motorway share by route distance. Missing speed
     /// data stays conservative instead of inflating the known unrestricted
     /// samples to 100 percent of the journey.
@@ -1447,13 +1473,16 @@ enum SpeedScenarioComparisonPolicy {
                            configuredSpeed: Double,
                            referenceSpeed: Double = 200) -> SpeedScenarioComparison? {
         let tolerance = 0.1
-        guard abs(configuredSpeed - referenceSpeed) > tolerance,
-              let baseline = plan.results.first(where: {
+        let comparisonSpeed = SpeedScenarioPolicy.comparisonTargetSpeed(
+            configuredSpeed: configuredSpeed,
+            referenceSpeed: referenceSpeed
+        )
+        guard let baseline = plan.results.first(where: {
                   abs($0.scenario.targetSpeedKmh - configuredSpeed) <= tolerance
               }),
               let alternative = plan.results.first(where: {
                   $0.routeTitle == baseline.routeTitle &&
-                      abs($0.scenario.targetSpeedKmh - referenceSpeed) <= tolerance
+                      abs($0.scenario.targetSpeedKmh - comparisonSpeed) <= tolerance
               }),
               baseline.id != alternative.id else { return nil }
         return .init(baseline: baseline, alternative: alternative)

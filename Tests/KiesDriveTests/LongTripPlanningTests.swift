@@ -635,11 +635,24 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(comparison?.eligibleDistanceMetres ?? 0, 200_000, accuracy: 1)
     }
 
-    func testSpeedScenarioComparisonIsHiddenWhenConfiguredSpeedIsReference() {
-        let plan = LongTripPlan(createdAt: Date(), results: [], note: "")
-        XCTAssertNil(SpeedScenarioComparisonPolicy.comparison(
+    func testConfiguredReferenceSpeedStillComparesAgainstSafeFallback() {
+        let scenarios = SpeedScenarioPolicy.scenarios(configuredSpeed: 200.000_01)
+        XCTAssertEqual(scenarios.map { Int($0.targetSpeedKmh.rounded()) }, [200, 150])
+
+        let route = RoutePlanningInput(
+            id: "route", title: "Route", distanceMetres: 400_000,
+            mapKitExpectedTravelTime: 14_000, unlimitedMotorwayFraction: 0.4,
+            typicalUnlimitedSpeedKmh: 130,
+            toll: .unknown(reason: "test"), breakCandidates: []
+        )
+        let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
+            routes: [route], scenarios: scenarios, vehicle: .init()
+        )
+        let comparison = SpeedScenarioComparisonPolicy.comparison(
             in: plan, configuredSpeed: 200.000_01, referenceSpeed: 200
-        ))
+        )
+        XCTAssertEqual(comparison?.baseline.scenario.targetSpeedKmh ?? 0, 200, accuracy: 0.1)
+        XCTAssertEqual(comparison?.alternative.scenario.targetSpeedKmh ?? 0, 150, accuracy: 0.1)
     }
 
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {
