@@ -412,13 +412,17 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     func searchTemplate(_ searchTemplate: CPSearchTemplate, updatedSearchText searchText: String,
                         completionHandler: @escaping ([CPListItem]) -> Void) {
+        let completionGate = NavigationSearchCompletionGate<[CPListItem]>()
+        let finish: ([CPListItem]) -> Void = { items in
+            _ = completionGate.complete(items, using: completionHandler)
+        }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.count >= 2 else {
             carPlaySearchGeneration = UUID()
             activeCarPlaySearch?.cancel()
             activeCarPlaySearch = nil
             carPlaySearchResults = [:]
-            completionHandler([])
+            finish([])
             return
         }
         let generation = UUID()
@@ -432,17 +436,29 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeCarPlaySearch?.cancel()
         let search = MKLocalSearch(request: request)
         activeCarPlaySearch = search
+        let timeout = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: CarPlaySearchTimeoutPolicy.timeoutNanoseconds)
+            guard !Task.isCancelled else { return }
+            search.cancel()
+            if generation == self?.carPlaySearchGeneration {
+                self?.activeCarPlaySearch = nil
+                self?.carPlaySearchResults = [:]
+            }
+            finish([])
+        }
         Task { [weak self] in
             let response = try? await search.start()
+            timeout.cancel()
+            guard !completionGate.didComplete else { return }
             guard let self else {
-                completionHandler([])
+                finish([])
                 return
             }
             // CarPlay requires every search update to complete. Returning an
             // empty result for a superseded query prevents an old spinner
             // from surviving while the driver is already typing a new query.
             guard generation == self.carPlaySearchGeneration else {
-                completionHandler([])
+                finish([])
                 return
             }
             self.activeCarPlaySearch = nil
@@ -457,7 +473,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 return item
             }
             self.carPlaySearchResults = mapped
-            completionHandler(items)
+            finish(items)
         }
     }
 
@@ -570,7 +586,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func showFailure(_ message: String) {
         let action = CPAlertAction(title: "OK", style: .default) { _ in }
-        let alert = CPAlertTemplate(titleVariants: ["Aktion nicht möglich", message], actions: [action])
+        let alert = CPAlertTemplate(
+            titleVariants: CarPlayAlertPresentationPolicy.titleVariants(for: message),
+            actions: [action]
+        )
         interfaceController?.presentTemplate(alert, animated: true, completion: nil)
     }
 

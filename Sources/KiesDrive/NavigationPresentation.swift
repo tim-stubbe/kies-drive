@@ -2,6 +2,29 @@ import Foundation
 import CoreLocation
 import MapKit
 
+final class NavigationSearchCompletionGate<Value> {
+    private(set) var didComplete = false
+
+    @discardableResult
+    func complete(_ value: Value, using handler: (Value) -> Void) -> Bool {
+        guard !didComplete else { return false }
+        didComplete = true
+        handler(value)
+        return true
+    }
+}
+
+enum CarPlaySearchTimeoutPolicy {
+    static let timeoutNanoseconds: UInt64 = 8_000_000_000
+}
+
+enum CarPlayAlertPresentationPolicy {
+    static func titleVariants(for message: String) -> [String] {
+        let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? ["Aktion nicht möglich"] : [cleaned, "Aktion nicht möglich"]
+    }
+}
+
 struct CarPlayPlannedStopAction: Equatable {
     enum Purpose: Equatable {
         case breakOnly

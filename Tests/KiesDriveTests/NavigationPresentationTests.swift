@@ -3,6 +3,28 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testSearchCompletionGatePublishesExactlyOnce() {
+        let gate = NavigationSearchCompletionGate<[String]>()
+        var published: [[String]] = []
+
+        XCTAssertTrue(gate.complete(["first"]) { published.append($0) })
+        XCTAssertFalse(gate.complete(["late"]) { published.append($0) })
+        XCTAssertTrue(gate.didComplete)
+        XCTAssertEqual(published, [["first"]])
+        XCTAssertEqual(CarPlaySearchTimeoutPolicy.timeoutNanoseconds, 8_000_000_000)
+    }
+
+    func testCarPlayAlertPrefersConcreteFailureReason() {
+        XCTAssertEqual(
+            CarPlayAlertPresentationPolicy.titleVariants(for: "  Standort fehlt.  "),
+            ["Standort fehlt.", "Aktion nicht möglich"]
+        )
+        XCTAssertEqual(
+            CarPlayAlertPresentationPolicy.titleVariants(for: "  "),
+            ["Aktion nicht möglich"]
+        )
+    }
+
     func testRemainingTimePreservesPerLegTravelCharacteristics() throws {
         let estimate = try XCTUnwrap(RouteRemainingTimePolicy.estimate(
             currentLegRemainingDistance: 25_000,
