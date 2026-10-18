@@ -95,6 +95,22 @@ final class OfflineMapPackageTests: XCTestCase {
                 .init(latitude: 50, longitude: 8.3),
             ], showsRouteOverview: true
         ))
+        XCTAssertFalse(OfflineMapCoveragePolicy.canUse(
+            bounds: bounds,
+            currentCoordinate: nil,
+            routeCoordinates: [
+                .init(latitude: 47, longitude: 12),
+                .init(latitude: 50, longitude: 8.3),
+            ], showsRouteOverview: false
+        ), "Before the first GPS fix an incompletely covered restored route must use the normal map")
+        XCTAssertTrue(OfflineMapCoveragePolicy.canUse(
+            bounds: bounds,
+            currentCoordinate: nil,
+            routeCoordinates: [
+                .init(latitude: 47, longitude: 12),
+                .init(latitude: 46, longitude: 13),
+            ], showsRouteOverview: false
+        ))
     }
 
     func testXYZTileCoordinatesStayInsideZoomGrid() {

@@ -30,7 +30,11 @@ enum OfflineMapCoveragePolicy {
                        routeCoordinates: [CLLocationCoordinate2D],
                        showsRouteOverview: Bool) -> Bool {
         if let currentCoordinate, !bounds.contains(currentCoordinate) { return false }
-        if showsRouteOverview, !routeCoordinates.isEmpty,
+        // Before the first trustworthy GPS fix, route geometry is the only
+        // evidence for which map area is needed. Require complete coverage in
+        // that state as well; otherwise the app could launch into blank local
+        // tiles merely because it cannot yet prove where the car is.
+        if (showsRouteOverview || currentCoordinate == nil), !routeCoordinates.isEmpty,
            !routeCoordinates.allSatisfy(bounds.contains) { return false }
         return true
     }

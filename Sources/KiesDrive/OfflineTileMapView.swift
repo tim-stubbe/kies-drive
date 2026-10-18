@@ -144,6 +144,18 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
                 heading: heading
             )
             mapView.setCamera(camera, animated: false)
+        } else if followsLocation, currentLocation == nil, !routes.isEmpty {
+            // A restored route can be available before Core Location returns
+            // its first post-launch fix. Show the covered journey instead of
+            // leaving MKMapView at an arbitrary world camera with blank tiles.
+            let rect = routes.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
+            if !rect.isNull, !rect.isEmpty {
+                mapView.setVisibleMapRect(
+                    rect,
+                    edgePadding: .init(top: 150, left: 45, bottom: 210, right: 45),
+                    animated: false
+                )
+            }
         } else if packageID == package.id, routes.isEmpty, currentLocation == nil {
             let bounds = package.manifest.bounds
             let center = CLLocationCoordinate2D(latitude: (bounds.north + bounds.south) / 2,

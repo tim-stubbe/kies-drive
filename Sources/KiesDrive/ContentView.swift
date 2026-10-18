@@ -1397,7 +1397,8 @@ struct DriveContentView: View {
 
     private var applicableOfflinePackage: InstalledOfflineMapPackage? {
         guard let package = offlineMaps.activePackage else { return nil }
-        let routeCoordinates: [CLLocationCoordinate2D] = isShowingRouteOverview
+        let needsRouteCoverage = isShowingRouteOverview || location.location == nil
+        let routeCoordinates: [CLLocationCoordinate2D] = needsRouteCoverage
             ? visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
                 guard polyline.pointCount > 0 else { return [] }
                 let points = polyline.points()
