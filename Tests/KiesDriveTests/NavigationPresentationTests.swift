@@ -925,6 +925,49 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertNil(object["headingDegrees"])
     }
 
+    func testRemoteTripLockOmitsDenseLocalCorridorButKeepsMandatoryRules() throws {
+        let waypoint = LockedWaypoint(
+            id: "slovenia", name: "Slowenien ohne Autobahn",
+            coordinate: .init(latitude: 46.5, longitude: 15.6),
+            required: true,
+            optionsAfter: .init(avoidTolls: true, avoidHighways: true),
+            kind: .routeConstraint
+        )
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Kroatien", destinationName: "Hochheim",
+            destination: .init(latitude: 50.0, longitude: 8.3),
+            waypoints: [waypoint],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000,
+            corridorPoints: (0..<20_000).map {
+                .init(latitude: 43 + Double($0) / 10_000, longitude: 16)
+            },
+            visitedWaypointIDs: [], lastRouteProgress: 0.4,
+            status: .active,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 2)
+        )
+        let state = DriveRemoteState(
+            location: nil, headingDegrees: nil, speedKmh: nil,
+            activeRoute: nil, nextManeuver: nil,
+            routeLock: .init(lock), navigationActive: true,
+            recordedAt: Date(timeIntervalSince1970: 3)
+        )
+
+        let data = try JSONEncoder().encode(state)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let remoteLock = try XCTUnwrap(object["route_lock"] as? [String: Any])
+        let waypoints = try XCTUnwrap(remoteLock["waypoints"] as? [[String: Any]])
+
+        XCTAssertNil(remoteLock["corridorPoints"])
+        XCTAssertNil(remoteLock["corridor_points"])
+        XCTAssertEqual(waypoints.first?["id"] as? String, "slovenia")
+        XCTAssertNotNil(waypoints.first?["optionsAfter"])
+        XCTAssertLessThan(data.count, 16_000)
+    }
+
     func testRemoteCommandJournalPersistsOutcomeUntilServerAcknowledgesIt() throws {
         let suite = "KiesDriveTests.RemoteJournal.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

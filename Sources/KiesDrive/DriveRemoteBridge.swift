@@ -14,13 +14,44 @@ struct DriveRemoteState: Encodable {
             case distanceMetres = "distance_metres"
         }
     }
+    /// Public trip-lock view for MCP. The dense corridor polyline remains
+    /// local because it is navigation implementation data, not useful remote
+    /// context. Omitting it keeps holiday-route updates small and reliable on
+    /// mobile connections while retaining every mandatory stop and rule.
+    struct RouteLock: Encodable {
+        let id: UUID
+        let title: String
+        let destinationName: String
+        let destination: DriveCoordinate
+        let waypoints: [LockedWaypoint]
+        let defaultOptions: LockedRouteOptions
+        let visitedWaypointIDs: [String]
+        let lastRouteProgress: Double?
+        let status: ActiveRouteLock.Status
+        let createdAt: Date
+        let updatedAt: Date
+
+        init(_ lock: ActiveRouteLock) {
+            id = lock.id
+            title = lock.title
+            destinationName = lock.destinationName
+            destination = lock.destination
+            waypoints = lock.waypoints
+            defaultOptions = lock.defaultOptions
+            visitedWaypointIDs = lock.visitedWaypointIDs ?? []
+            lastRouteProgress = lock.lastRouteProgress
+            status = lock.status
+            createdAt = lock.createdAt
+            updatedAt = lock.updatedAt
+        }
+    }
 
     let location: Position?
     let headingDegrees: Double?
     let speedKmh: Double?
     let activeRoute: Route?
     let nextManeuver: Maneuver?
-    let routeLock: ActiveRouteLock?
+    let routeLock: RouteLock?
     let navigationActive: Bool
     let recordedAt: Date
 
@@ -182,7 +213,7 @@ final class DriveRemoteBridge {
             nextManeuver: (planner.nextManeuverInstruction ?? planner.nextInstruction).map {
                 .init(instruction: $0, distanceMetres: planner.nextManeuverDistance)
             },
-            routeLock: planner.activeRouteLock,
+            routeLock: planner.activeRouteLock.map(DriveRemoteState.RouteLock.init),
             navigationActive: planner.isNavigating, recordedAt: Date()
         )
         do {
