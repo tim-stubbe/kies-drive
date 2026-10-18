@@ -739,6 +739,34 @@ enum NavigationChainedManeuverPolicy {
     }
 }
 
+enum NavigationTransitionRecoverySpeechPolicy {
+    static func shouldChainFollowingManeuver(
+        distance: CLLocationDistance,
+        speedMetresPerSecond: Double
+    ) -> Bool {
+        distance.isFinite && distance >= 0 &&
+            distance <= NavigationChainedManeuverPolicy.maximumFollowingDistance(
+                speedMetresPerSecond: speedMetresPerSecond
+            )
+    }
+
+    static func text(previousInstruction: String,
+                     nextInstruction: String,
+                     nextDistance: CLLocationDistance,
+                     speedMetresPerSecond: Double) -> String {
+        let maximumDistance = NavigationChainedManeuverPolicy.maximumFollowingDistance(
+            speedMetresPerSecond: speedMetresPerSecond
+        )
+        return NavigationSpeechFormatter.spokenText(
+            previousInstruction,
+            distance: 0,
+            then: nextInstruction,
+            followingDistance: nextDistance,
+            maximumFollowingDistance: maximumDistance
+        )
+    }
+}
+
 enum NavigationManeuverSpeechPolicy {
     static func text(instruction: String, distance: CLLocationDistance,
                      stage: NavigationAnnouncementStage,

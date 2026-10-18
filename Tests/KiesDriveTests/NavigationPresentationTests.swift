@@ -1581,6 +1581,42 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRecoveredTransitionChainsHighSpeedMotorwayManeuver() {
+        let motorwaySpeed = 200.0 / 3.6
+        XCTAssertTrue(
+            NavigationTransitionRecoverySpeechPolicy.shouldChainFollowingManeuver(
+                distance: 700, speedMetresPerSecond: motorwaySpeed
+            )
+        )
+        XCTAssertEqual(
+            NavigationTransitionRecoverySpeechPolicy.text(
+                previousInstruction: "Ausfahrt rechts nehmen",
+                nextInstruction: "Links halten Richtung A 66",
+                nextDistance: 700,
+                speedMetresPerSecond: motorwaySpeed
+            ),
+            "Jetzt, Ausfahrt rechts nehmen. Danach, Links halten Richtung A 66."
+        )
+    }
+
+    func testRecoveredTransitionDoesNotChainDistantUrbanManeuver() {
+        let urbanSpeed = 30.0 / 3.6
+        XCTAssertFalse(
+            NavigationTransitionRecoverySpeechPolicy.shouldChainFollowingManeuver(
+                distance: 700, speedMetresPerSecond: urbanSpeed
+            )
+        )
+        XCTAssertEqual(
+            NavigationTransitionRecoverySpeechPolicy.text(
+                previousInstruction: "Rechts abbiegen",
+                nextInstruction: "Links abbiegen",
+                nextDistance: 700,
+                speedMetresPerSecond: urbanSpeed
+            ),
+            "Jetzt, Rechts abbiegen."
+        )
+    }
+
     func testMissedCueIsNeverRecoveredAfterTheOldJunctionIsClearlyBehind() {
         XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: "old", nextKey: "new", stages: [],

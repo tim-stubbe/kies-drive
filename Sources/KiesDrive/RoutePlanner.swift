@@ -3362,7 +3362,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 key: previousKey, stage: .now, instruction: previousInstruction,
                 distance: 0, issuedAt: Date()
             )]
-            if distance <= NavigationChainedManeuverPolicy.maximumFollowingDistance,
+            if NavigationTransitionRecoverySpeechPolicy.shouldChainFollowingManeuver(
+                distance: distance, speedMetresPerSecond: guidanceSpeedMps
+            ),
                let currentStage = NavigationAnnouncementStage.stage(
                    distance: distance, speedKmh: guidanceSpeedMps * 3.6
                ) {
@@ -3372,11 +3374,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 ))
             }
             recovered = speak(
-                NavigationSpeechFormatter.spokenText(
-                    previousInstruction,
-                    distance: 0,
-                    then: instruction,
-                    followingDistance: distance
+                NavigationTransitionRecoverySpeechPolicy.text(
+                    previousInstruction: previousInstruction,
+                    nextInstruction: instruction,
+                    nextDistance: distance,
+                    speedMetresPerSecond: guidanceSpeedMps
                 ),
                 priority: .critical,
                 maneuverClaims: claims
