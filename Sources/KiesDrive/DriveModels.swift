@@ -245,7 +245,7 @@ enum DriveUsageSegmentPolicy {
 enum DriveDiagnosticKind: String, Codable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed
     case navigationStopped, arrivalReached, locationRejected, maneuverAnnounced, maneuverFinalCueMissed
-    case offlineRouteDeparture, speechDeliveryFailed
+    case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
 }
 
 /// Produces useful driving diagnostics without ever recording coordinates or
@@ -353,11 +353,19 @@ struct DriveDiagnosticSummary: Equatable {
         // work from that drive may finish later, but must not retroactively
         // turn a clean session into a warning or critical result.
         let session = terminal.map { events[start...$0] } ?? events[start...]
-        let lastRecovery = session.lastIndex(where: { $0.kind == .rerouteSucceeded })
-        let unresolved = lastRecovery.map { session[session.index(after: $0)...] } ?? session[session.startIndex...]
+        let lastRerouteRecovery = session.lastIndex(where: { $0.kind == .rerouteSucceeded })
+        let unresolvedReroutes = lastRerouteRecovery.map {
+            session[session.index(after: $0)...]
+        } ?? session[session.startIndex...]
+        let lastOfflineRecovery = session.lastIndex(where: {
+            $0.kind == .rerouteSucceeded || $0.kind == .offlineRouteRejoined
+        })
+        let unresolvedOffline = lastOfflineRecovery.map {
+            session[session.index(after: $0)...]
+        } ?? session[session.startIndex...]
         let totalFailures = session.filter { $0.kind == .rerouteFailed }.count
         let totalOfflineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
-        let failures = unresolved.filter { $0.kind == .rerouteFailed }.count
+        let failures = unresolvedReroutes.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
         let rejectedBurst = maximumBurst(of: .locationRejected, in: session)
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
@@ -367,7 +375,7 @@ struct DriveDiagnosticSummary: Equatable {
         } ?? session[session.startIndex...]
         let totalSpeechFailures = session.filter { $0.kind == .speechDeliveryFailed }.count
         let speechFailures = unresolvedSpeech.filter { $0.kind == .speechDeliveryFailed }.count
-        let offlineDepartures = unresolved.filter { $0.kind == .offlineRouteDeparture }.count
+        let offlineDepartures = unresolvedOffline.filter { $0.kind == .offlineRouteDeparture }.count
         let resolved = max(0, totalFailures - failures) +
             max(0, totalOfflineDepartures - offlineDepartures) +
             max(0, totalSpeechFailures - speechFailures)

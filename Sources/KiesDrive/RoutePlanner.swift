@@ -1723,6 +1723,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if offlineDeviationWarningActive {
             offlineDeviationWarningActive = false
             isManeuverGuidanceReliable = true
+            DriveDiagnosticStore.append(
+                .offlineRouteRejoined,
+                detail: DriveDiagnosticDetail.navigationSample(
+                    "Offline-Routenkorridor wieder erreicht", location: location
+                )
+            )
             if settings.voiceGuidance {
                 _ = speak("Du bist wieder auf der gespeicherten Route.", priority: .status)
             }

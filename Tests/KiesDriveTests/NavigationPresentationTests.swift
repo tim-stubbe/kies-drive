@@ -1159,6 +1159,34 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(summary.recommendation.contains("automatisch behoben"))
     }
 
+    func testDiagnosticSummaryClearsOfflineDepartureAfterRejoiningCache() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .offlineRouteDeparture, detail: "Korridor verlassen"),
+            DriveDiagnosticEvent(kind: .offlineRouteRejoined, detail: "Korridor erreicht"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.offlineRouteDepartures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
+    func testOfflineRejoinDoesNotHideFailedOnlineReroute() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .rerouteFailed, detail: "Kein Netz"),
+            DriveDiagnosticEvent(kind: .offlineRouteDeparture, detail: "Korridor verlassen"),
+            DriveDiagnosticEvent(kind: .offlineRouteRejoined, detail: "Korridor erreicht"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.rerouteFailures, 1)
+        XCTAssertEqual(summary.offlineRouteDepartures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
     func testDiagnosticSummaryKeepsFailureAfterLatestRecoveryOpen() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
