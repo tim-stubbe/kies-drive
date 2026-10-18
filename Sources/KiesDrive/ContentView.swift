@@ -106,6 +106,14 @@ struct DriveContentView: View {
 
     private var showsNavigationUI: Bool { planner.isNavigating || isSimulatorNavigationPreview }
 
+    private var hasSimulatorPlannedRoutePreview: Bool {
+        #if targetEnvironment(simulator)
+        isSimulatorRouteDetailsPreview || isSimulatorRouteOverviewPreview || isSimulatorStationPreview
+        #else
+        false
+        #endif
+    }
+
     private var bypassesAccountForSimulatorPreview: Bool {
         #if targetEnvironment(simulator)
         return ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("-preview") }
@@ -207,8 +215,10 @@ struct DriveContentView: View {
                                          latitudinalMeters: 18_000, longitudinalMeters: 18_000))
             }
             if isSimulatorSearchPreview { installSimulatorSearchPreview() }
-            if isSimulatorRouteDetailsPreview {
+            if hasSimulatorPlannedRoutePreview {
                 installSimulatorRouteDetailsPreview()
+            }
+            if isSimulatorRouteDetailsPreview {
                 showRouteDetails = true
             }
             if isSimulatorRouteOverviewPreview { showCompleteRoute() }
@@ -425,9 +435,9 @@ struct DriveContentView: View {
                 if settings.avoidTolls { Image(systemName: "eurosign.slash").foregroundStyle(Color.kiesBrass) }
             }
             HStack(spacing: 0) {
-                routeOverviewMetric(formatDistance(planner.totalDistance), "Strecke")
+                routeOverviewMetric(formatDistance(routePreviewDistance), "Strecke")
                 Divider().frame(height: 36)
-                routeOverviewMetric(formatTime(planner.totalTravelTime), "Fahrzeit")
+                routeOverviewMetric(formatTime(routePreviewTravelTime), "Fahrzeit")
                 Divider().frame(height: 36)
                 routeOverviewMetric("\(planner.longTripPlan?.results.first?.breaks.count ?? 0)", "Pausen")
             }
@@ -1199,6 +1209,12 @@ struct DriveContentView: View {
                     }
                 }
                 Button {
+                    #if targetEnvironment(simulator)
+                    if hasSimulatorPlannedRoutePreview {
+                        selectedStation = nil
+                        return
+                    }
+                    #endif
                     guard let start = location.location?.coordinate else {
                         planner.errorMessage = "Standort ist noch nicht verfügbar."
                         return
@@ -1220,7 +1236,7 @@ struct DriveContentView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent).tint(Color.kiesForest).controlSize(.large)
-                .disabled(planner.route == nil || isUpdating)
+                .disabled((planner.route == nil && !hasSimulatorPlannedRoutePreview) || isUpdating)
                 Spacer()
             }
             .padding(22).background(Color.kiesIvory.ignoresSafeArea())
@@ -1242,7 +1258,7 @@ struct DriveContentView: View {
         #endif
         let routeRect: MKMapRect?
         #if targetEnvironment(simulator)
-        routeRect = planner.completeDisplayMapRect ?? simulatorPreviewPolyline.boundingMapRect
+        routeRect = planner.completeDisplayMapRect ?? simulatorPlannedRoutePolyline.boundingMapRect
         #else
         routeRect = planner.completeDisplayMapRect
         #endif
@@ -1596,6 +1612,14 @@ struct DriveContentView: View {
                     .stroke(Color.kiesRouteBlue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
                     .mapOverlayLevel(level: .aboveLabels)
             }
+            if hasSimulatorPlannedRoutePreview {
+                MapPolyline(simulatorPlannedRoutePolyline)
+                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .mapOverlayLevel(level: .aboveLabels)
+                MapPolyline(simulatorPlannedRoutePolyline)
+                    .stroke(Color.kiesRouteBlue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    .mapOverlayLevel(level: .aboveLabels)
+            }
             #else
             if planner.isNavigating, let coordinate = location.location?.coordinate {
                 Annotation("Mein Auto", coordinate: coordinate, anchor: .center) {
@@ -1784,6 +1808,34 @@ struct DriveContentView: View {
             CLLocationCoordinate2D(latitude: 50.027, longitude: 8.402),
         ]
         return MKPolyline(coordinates: &coordinates, count: coordinates.count)
+    }
+
+    private var simulatorPlannedRoutePolyline: MKPolyline {
+        var coordinates = [
+            CLLocationCoordinate2D(latitude: 43.5081, longitude: 16.4402), // Split
+            CLLocationCoordinate2D(latitude: 45.8150, longitude: 15.9819), // Zagreb
+            CLLocationCoordinate2D(latitude: 46.0569, longitude: 14.5058), // Ljubljana
+            CLLocationCoordinate2D(latitude: 46.6111, longitude: 13.7144), // Wurzenpass
+            CLLocationCoordinate2D(latitude: 47.8095, longitude: 13.0550), // Salzburg
+            CLLocationCoordinate2D(latitude: 48.1351, longitude: 11.5820), // München
+            CLLocationCoordinate2D(latitude: 49.4521, longitude: 11.0767), // Nürnberg
+            CLLocationCoordinate2D(latitude: 50.0143, longitude: 8.3522),  // Hochheim
+        ]
+        return MKPolyline(coordinates: &coordinates, count: coordinates.count)
+    }
+
+    private var routePreviewDistance: CLLocationDistance {
+        #if targetEnvironment(simulator)
+        if hasSimulatorPlannedRoutePreview && planner.legs.isEmpty { return 1_170_000 }
+        #endif
+        return planner.totalDistance
+    }
+
+    private var routePreviewTravelTime: TimeInterval {
+        #if targetEnvironment(simulator)
+        if hasSimulatorPlannedRoutePreview && planner.legs.isEmpty { return 12 * 60 * 60 + 35 * 60 }
+        #endif
+        return planner.totalTravelTime
     }
 
     private func centerIdleMap() {
