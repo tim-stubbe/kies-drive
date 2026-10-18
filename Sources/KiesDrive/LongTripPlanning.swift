@@ -66,6 +66,11 @@ struct TollLookupBatchItem: Sendable {
     let fetched: Bool
 }
 
+enum TollLookupBatchOutcome: Sendable {
+    case item(TollLookupBatchItem)
+    case superseded
+}
+
 enum TollLookupBatchPolicy {
     /// Both route variants form one comparison. Do not publish either result
     /// until the requested pair is complete, otherwise the UI can briefly

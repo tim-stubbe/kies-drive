@@ -4204,7 +4204,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 requests.append((avoidTolls, routeIdentity))
             }
         }
-        await withTaskGroup(of: TollLookupBatchItem.self) { group in
+        var lookupWasSuperseded = false
+        await withTaskGroup(of: TollLookupBatchOutcome.self) { group in
             for request in requests {
                 group.addTask {
                     do {
@@ -4212,21 +4213,50 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                             origin: origin, destination: destinationName, via: via,
                             avoidTolls: request.avoidTolls
                         )
-                        return .init(avoidTolls: request.avoidTolls,
-                                     routeIdentity: request.routeIdentity,
-                                     cost: cost, fetched: true)
+                        return .item(.init(
+                            avoidTolls: request.avoidTolls,
+                            routeIdentity: request.routeIdentity,
+                            cost: cost, fetched: true
+                        ))
                     } catch {
-                        return .init(
+                        return .item(.init(
                             avoidTolls: request.avoidTolls,
                             routeIdentity: request.routeIdentity,
                             cost: .unknown(reason: "SearXNG-Mautrecherche nicht verfügbar: \(error.localizedDescription)"),
                             fetched: true
-                        )
+                        ))
                     }
                 }
             }
-            for await result in group { results.append(result) }
+            if !requests.isEmpty {
+                group.addTask { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                        guard !Task.isCancelled else { break }
+                        guard let self else { return .superseded }
+                        if !(await self.isCurrentTollLookup(
+                            routeGeneration: routeGeneration,
+                            lookupGeneration: generation
+                        )) { return .superseded }
+                    }
+                    return .superseded
+                }
+            }
+            var remainingRequests = requests.count
+            while remainingRequests > 0, let outcome = await group.next() {
+                switch outcome {
+                case .item(let result):
+                    remainingRequests -= 1
+                    results.append(result)
+                case .superseded:
+                    lookupWasSuperseded = true
+                    group.cancelAll()
+                    return
+                }
+            }
+            group.cancelAll()
         }
+        if lookupWasSuperseded { return }
         guard TollLookupBatchPolicy.complete(results, expected: requestedVariants),
               RouteEnrichmentPublicationPolicy.isCurrent(
                 route: routeGeneration, currentRoute: routeCalculationGeneration,
@@ -4242,6 +4272,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }
         }
+    }
+
+    private func isCurrentTollLookup(routeGeneration: UUID,
+                                     lookupGeneration: UUID) -> Bool {
+        TollLookupBatchPolicy.mayStartRequests(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: lookupGeneration, currentRequest: tollLoadGeneration
+        )
     }
 
     private func tollOriginLabel(for coordinate: CLLocationCoordinate2D) async -> String? {
