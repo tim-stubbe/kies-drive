@@ -523,13 +523,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position
     /// wird neu gerechnet; dadurch setzt MapKit am passenden aktuellen
     /// Routenabschnitt an, waehrend Pflichtpunkte und Segmentregeln erhalten bleiben.
-    func restoreActiveTripIfNeeded(from current: CLLocationCoordinate2D, settings: DriveSettings) async {
-        guard let lock = routeLockStore.activeLock, lock.isActive else { return }
+    @discardableResult
+    func restoreActiveTripIfNeeded(from current: CLLocationCoordinate2D,
+                                   settings: DriveSettings) async -> Bool {
+        guard let lock = routeLockStore.activeLock, lock.isActive else { return false }
         guard RouteLockRestorePolicy.shouldAttempt(
             navigationActive: isNavigating,
             attemptInProgress: automaticRestoreInProgress,
             lastAttempt: lastAutomaticRestoreAttempt
-        ) else { return }
+        ) else { return isNavigating }
         automaticRestoreInProgress = true
         lastAutomaticRestoreAttempt = Date()
         defer { automaticRestoreInProgress = false }
@@ -559,16 +561,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) {
         case .online, .staleLive:
             startNavigation(voiceGuidance: settings.voiceGuidance)
+            return isNavigating
         case .offline:
-            _ = startOfflineGuidanceIfAvailable(replacingLiveRoute: true)
+            return startOfflineGuidanceIfAvailable(replacingLiveRoute: true)
         case .unavailable:
-            break
+            return false
         }
     }
 
-    func restoreActiveTrip(from current: CLLocationCoordinate2D, settings: DriveSettings) async {
+    @discardableResult
+    func restoreActiveTrip(from current: CLLocationCoordinate2D,
+                           settings: DriveSettings) async -> Bool {
         lastAutomaticRestoreAttempt = nil
-        await restoreActiveTripIfNeeded(from: current, settings: settings)
+        return await restoreActiveTripIfNeeded(from: current, settings: settings)
     }
 
     func installCroatiaSplitTripLock() {

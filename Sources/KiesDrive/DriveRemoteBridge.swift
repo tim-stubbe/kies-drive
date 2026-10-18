@@ -153,7 +153,9 @@ final class DriveRemoteBridge {
         let settings = DriveSettings.shared
         switch command.command {
         case "restore_route":
-            await planner.restoreActiveTrip(from: current, settings: settings)
+            guard await planner.restoreActiveTrip(from: current, settings: settings) else {
+                throw DriveRemoteError.routeUnavailable
+            }
         case "set_route_options":
             if let value = command.arguments["avoid_tolls"]?.bool { settings.avoidTolls = value }
             if let value = command.arguments["avoid_highways"]?.bool { settings.avoidHighways = value }
@@ -161,7 +163,9 @@ final class DriveRemoteBridge {
                 waypointID: command.arguments["waypoint_id"]?.string,
                 avoidTolls: command.arguments["avoid_tolls"]?.bool,
                 avoidHighways: command.arguments["avoid_highways"]?.bool)
-            await planner.recalculateCurrentRoute(from: current, settings: settings)
+            guard await planner.recalculateCurrentRoute(from: current, settings: settings) else {
+                throw DriveRemoteError.routeUnavailable
+            }
         case "set_destination":
             let item: MKMapItem
             if let lat = command.arguments["latitude"]?.number,
