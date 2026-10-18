@@ -681,6 +681,10 @@ enum NavigationGuidanceSpeedPolicy {
 enum NavigationArrivalPolicy {
     static let requiredConsecutiveFixes = 3
 
+    static func mayCompleteTrip(hasOpenRequiredWaypoints: Bool) -> Bool {
+        !hasOpenRequiredWaypoints
+    }
+
     static func isArrivalFix(_ location: CLLocation, destination: CLLocationCoordinate2D) -> Bool {
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 50 else { return false }
         let speed = location.speed < 0 ? 0 : location.speed

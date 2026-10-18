@@ -1594,6 +1594,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     private func detectArrival(at location: CLLocation, settings: DriveSettings) -> Bool {
         guard let coordinate = destination?.placemark.coordinate else { return false }
+        let lock = activeRouteLock ?? routeLockStore.activeLock
+        let visited = Set(lock?.visitedWaypointIDs ?? [])
+        let hasOpenRequiredWaypoints = lock?.waypoints.contains {
+            $0.required && !visited.contains($0.id)
+        } ?? false
+        guard NavigationArrivalPolicy.mayCompleteTrip(
+            hasOpenRequiredWaypoints: hasOpenRequiredWaypoints
+        ) else {
+            arrivalStrikes = 0
+            return false
+        }
         if NavigationArrivalPolicy.isArrivalFix(location, destination: coordinate) {
             arrivalStrikes += 1
         } else {

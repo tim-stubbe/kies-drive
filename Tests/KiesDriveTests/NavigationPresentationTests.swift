@@ -1048,6 +1048,10 @@ final class NavigationPresentationTests: XCTestCase {
                               course: 0, speed: 20, timestamp: Date())
         XCTAssertTrue(NavigationArrivalPolicy.isArrivalFix(nearAndSlow, destination: destination))
         XCTAssertFalse(NavigationArrivalPolicy.isArrivalFix(fast, destination: destination))
+        XCTAssertTrue(NavigationArrivalPolicy.mayCompleteTrip(hasOpenRequiredWaypoints: false))
+        XCTAssertFalse(NavigationArrivalPolicy.mayCompleteTrip(
+            hasOpenRequiredWaypoints: true
+        ), "Arrival must not silently skip a mandatory pass or user-selected stop")
     }
 
     func testAccountLoginResponseDecodesServerSession() throws {
