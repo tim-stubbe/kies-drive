@@ -2457,16 +2457,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Aktuelles Tempolimit für den nächstgelegenen abgetasteten Routenpunkt
     /// zur übergebenen Position (z.B. der aktuelle Standort während der Fahrt).
     func currentSpeedLimit(near coordinate: CLLocationCoordinate2D) -> SpeedLimitResult? {
-        guard !speedLimitPoints.isEmpty else { return nil }
-        let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        var bestIndex = 0
-        var bestDistance = Double.greatestFiniteMagnitude
-        for (i, point) in speedLimitPoints.enumerated() {
-            let dist = here.distance(from: CLLocation(latitude: point.latitude, longitude: point.longitude))
-            if dist < bestDistance { bestDistance = dist; bestIndex = i }
-        }
-        guard bestDistance <= 200 else { return nil }
-        return speedLimits[safe: bestIndex]
+        let expectedProgress = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: totalDistance,
+            remainingDistance: remainingDistanceMetres,
+            navigationActive: isNavigating
+        )
+        guard let index = SpeedLimitSelectionPolicy.index(
+            near: coordinate,
+            points: speedLimitPoints,
+            availableLimitCount: speedLimits.count,
+            expectedProgress: expectedProgress
+        ) else { return nil }
+        return speedLimits[index]
     }
 
     private func computeRoutes(from source: MKMapItem, to destination: MKMapItem, settings: DriveSettings,

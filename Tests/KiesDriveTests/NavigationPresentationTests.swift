@@ -1576,6 +1576,40 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testSpeedLimitSelectionUsesCurrentVisitAtRouteCrossing() {
+        let crossing = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let points = [
+            .init(latitude: 50, longitude: 7.99),
+            crossing,
+            .init(latitude: 50.01, longitude: 8),
+            crossing,
+            .init(latitude: 50, longitude: 8.01),
+        ]
+
+        let early = SpeedLimitSelectionPolicy.index(
+            near: crossing, points: points, availableLimitCount: points.count,
+            expectedProgress: 0.2
+        )
+        let late = SpeedLimitSelectionPolicy.index(
+            near: crossing, points: points, availableLimitCount: points.count,
+            expectedProgress: 0.8
+        )
+
+        XCTAssertEqual(early, 1)
+        XCTAssertEqual(late, 3)
+    }
+
+    func testSpeedLimitSelectionNeverIndexesBeyondProviderResponse() {
+        let points = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.01),
+        ]
+        XCTAssertNil(SpeedLimitSelectionPolicy.index(
+            near: points[1], points: points, availableLimitCount: 1,
+            expectedProgress: 1
+        ))
+    }
+
     func testRouteSearchAheadCheckUsesDistanceProgress() {
         XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.49, currentProgress: 0.50))
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateProgress: 0.40, currentProgress: 0.50))

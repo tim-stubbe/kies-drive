@@ -1375,6 +1375,38 @@ enum RouteSearchPolicy {
     }
 }
 
+enum SpeedLimitSelectionPolicy {
+    /// Selects the closest sampled speed-limit point near the current route
+    /// progress. Pure geometric proximity can pick a later visit of the same
+    /// motorway junction, bridge or loop and display the wrong limit.
+    static func index(near coordinate: CLLocationCoordinate2D,
+                      points: [CLLocationCoordinate2D],
+                      availableLimitCount: Int,
+                      expectedProgress: Double?,
+                      maximumDistance: CLLocationDistance = 200) -> Int? {
+        let usableCount = min(points.count, max(0, availableLimitCount))
+        guard usableCount > 0, maximumDistance >= 0 else { return nil }
+        let fractions = RouteGeometryProgress.cumulativeFractions(points)
+        let range = expectedProgress.map {
+            max(0, min(1, $0) - 0.04)...min(1, max(0, $0) + 0.08)
+        }
+        let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let candidates = points.indices.prefix(usableCount).filter { index in
+            guard let range else { return true }
+            return fractions.indices.contains(index) && range.contains(fractions[index])
+        }
+        guard let best = candidates.min(by: { lhs, rhs in
+            here.distance(from: CLLocation(latitude: points[lhs].latitude,
+                                           longitude: points[lhs].longitude)) <
+            here.distance(from: CLLocation(latitude: points[rhs].latitude,
+                                           longitude: points[rhs].longitude))
+        }) else { return nil }
+        let distance = here.distance(from: CLLocation(latitude: points[best].latitude,
+                                                       longitude: points[best].longitude))
+        return distance <= maximumDistance ? best : nil
+    }
+}
+
 enum RouteSearchCompletionDisposition: Equatable {
     case publish
     case discardAndFinish
