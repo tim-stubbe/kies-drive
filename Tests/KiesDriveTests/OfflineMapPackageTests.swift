@@ -127,6 +127,19 @@ final class OfflineMapPackageTests: XCTestCase {
             currentCoordinate: .init(latitude: 47, longitude: 12),
             routeCoordinates: [], showsRouteOverview: false
         ))
+        XCTAssertEqual(OfflineMapCoveragePolicy.state(
+            bounds: bounds, currentCoordinate: nil,
+            routeCoordinates: [], showsRouteOverview: false
+        ), .awaitingLocation)
+        XCTAssertEqual(OfflineMapCoveragePolicy.state(
+            bounds: bounds, currentCoordinate: .init(latitude: 50, longitude: 8.3),
+            routeCoordinates: [], showsRouteOverview: false
+        ), .currentLocationOutsideBounds)
+        XCTAssertEqual(OfflineMapCoveragePolicy.state(
+            bounds: bounds, currentCoordinate: .init(latitude: 47, longitude: 12),
+            routeCoordinates: [.init(latitude: 50, longitude: 8.3)],
+            showsRouteOverview: true
+        ), .routeOutsideBounds)
         XCTAssertFalse(OfflineMapCoveragePolicy.canUse(
             bounds: bounds,
             currentCoordinate: .init(latitude: 50, longitude: 8.3),

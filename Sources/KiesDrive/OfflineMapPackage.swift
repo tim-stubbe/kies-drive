@@ -22,6 +22,30 @@ struct OfflineMapBounds: Codable, Equatable {
 }
 
 enum OfflineMapCoveragePolicy {
+    enum State: Equatable {
+        case available
+        case awaitingLocation
+        case currentLocationOutsideBounds
+        case routeOutsideBounds
+    }
+
+    static func state(bounds: OfflineMapBounds,
+                      currentCoordinate: CLLocationCoordinate2D?,
+                      routeCoordinates: [CLLocationCoordinate2D],
+                      showsRouteOverview: Bool) -> State {
+        if let currentCoordinate, !bounds.contains(currentCoordinate) {
+            return .currentLocationOutsideBounds
+        }
+        if currentCoordinate == nil, routeCoordinates.isEmpty {
+            return .awaitingLocation
+        }
+        if (showsRouteOverview || currentCoordinate == nil), !routeCoordinates.isEmpty,
+           !routeCoordinates.allSatisfy(bounds.contains) {
+            return .routeOutsideBounds
+        }
+        return .available
+    }
+
     /// Following the car only needs coverage at the current fix. A complete
     /// route overview, however, must not switch to an offline package if any
     /// visible route geometry lies outside its declared bounds; missing XYZ
@@ -30,14 +54,10 @@ enum OfflineMapCoveragePolicy {
                        currentCoordinate: CLLocationCoordinate2D?,
                        routeCoordinates: [CLLocationCoordinate2D],
                        showsRouteOverview: Bool) -> Bool {
-        if let currentCoordinate, !bounds.contains(currentCoordinate) { return false }
-        // Before the first trustworthy GPS fix, route geometry is the only
-        // evidence for which map area is needed. Require complete coverage in
-        // that state as well; otherwise the app could launch into blank local
-        // tiles merely because it cannot yet prove where the car is.
-        if (showsRouteOverview || currentCoordinate == nil), !routeCoordinates.isEmpty,
-           !routeCoordinates.allSatisfy(bounds.contains) { return false }
-        return true
+        state(
+            bounds: bounds, currentCoordinate: currentCoordinate,
+            routeCoordinates: routeCoordinates, showsRouteOverview: showsRouteOverview
+        ) == .available
     }
 }
 

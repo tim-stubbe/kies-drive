@@ -175,6 +175,9 @@ struct DriveContentView: View {
                 } else if planner.isNavigating && location.authorization == .authorizedWhenInUse {
                     backgroundLocationPermissionCard
                 }
+                if let message = offlineMapFallbackMessage {
+                    offlineMapFallbackCard(message)
+                }
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -1504,6 +1507,43 @@ struct DriveContentView: View {
             return nil
         }
         return package
+    }
+
+    private var offlineMapFallbackMessage: String? {
+        guard let package = offlineMaps.activePackage,
+              applicableOfflinePackage == nil else { return nil }
+        let routeCoordinates = visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
+            guard polyline.pointCount > 0 else { return [] }
+            let points = polyline.points()
+            return (0..<polyline.pointCount).map { points[$0].coordinate }
+        }
+        let state = OfflineMapCoveragePolicy.state(
+            bounds: package.manifest.bounds,
+            currentCoordinate: location.location?.coordinate,
+            routeCoordinates: routeCoordinates,
+            showsRouteOverview: isShowingRouteOverview
+        )
+        switch state {
+        case .awaitingLocation:
+            return "Offlinekarte wartet auf einen zuverlässigen Standort. Bis dahin wird die normale Karte verwendet."
+        case .currentLocationOutsideBounds:
+            return "Du befindest dich außerhalb des Kartenpakets „\(package.manifest.name)“. Die normale Karte bleibt aktiv."
+        case .routeOutsideBounds:
+            return "Das Kartenpaket „\(package.manifest.name)“ deckt die angezeigte Route nicht vollständig ab."
+        case .available:
+            return "Im Kartenpaket „\(package.manifest.name)“ fehlen hier Straßenkacheln. Die normale Karte bleibt aktiv."
+        }
+    }
+
+    private func offlineMapFallbackCard(_ message: String) -> some View {
+        Label(message, systemImage: "map.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.kiesForest)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.kiesIvory.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityLabel("Offlinekarte nicht verfügbar. \(message)")
     }
 
     private var mapBase: some View {
