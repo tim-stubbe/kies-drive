@@ -1645,6 +1645,10 @@ struct NavigationStepMetric: Equatable {
 /// a compass while the car is stationary.
 enum NavigationCourseMatchingPolicy {
     static let maximumPlausibleDifference = 80.0
+    /// MapKit occasionally repeats a coordinate at step boundaries. Such a
+    /// zero-length segment has no direction and must not disable course
+    /// matching exactly where carriageways and ramps are closest together.
+    static let minimumDirectionalSegmentLength: CLLocationDistance = 1
 
     static func angularDifference(courseDegrees: Double,
                                   routeCourseDegrees: Double) -> Double? {
@@ -1668,6 +1672,8 @@ enum NavigationCourseMatchingPolicy {
         var bestIndex: Int?
         var bestDistance = CLLocationDistance.greatestFiniteMagnitude
         for index in points.indices.dropLast() {
+            guard points[index].distance(to: points[index + 1]) >=
+                    minimumDirectionalSegmentLength else { continue }
             let projection = segmentProjection(target, points[index], points[index + 1])
             guard projection.distance < bestDistance else { continue }
             bestDistance = projection.distance

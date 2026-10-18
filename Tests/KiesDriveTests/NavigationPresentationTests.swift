@@ -749,6 +749,28 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(course, 0, accuracy: 0.5)
     }
 
+    func testCourseMatchingSkipsDuplicateGeometryAtJunction() throws {
+        let junction = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let northbound = CLLocationCoordinate2D(latitude: 50.01, longitude: 8)
+        let course = try XCTUnwrap(NavigationCourseMatchingPolicy.routeCourse(
+            near: junction,
+            coordinates: [junction, junction, northbound]
+        ))
+        XCTAssertEqual(course, 0, accuracy: 0.5)
+        XCTAssertFalse(NavigationCourseMatchingPolicy.isPlausible(
+            NavigationCourseMatchingPolicy.angularDifference(
+                courseDegrees: 180, routeCourseDegrees: course
+            )
+        ), "A duplicate MapKit point must not hide an opposing carriageway")
+    }
+
+    func testCourseMatchingRejectsEntirelyDegenerateGeometry() {
+        let point = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        XCTAssertNil(NavigationCourseMatchingPolicy.routeCourse(
+            near: point, coordinates: [point, point, point]
+        ))
+    }
+
     func testGuidanceSpeedSurvivesBriefInvalidGPSReading() {
         let measuredAt = Date(timeIntervalSince1970: 1_000)
         XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(

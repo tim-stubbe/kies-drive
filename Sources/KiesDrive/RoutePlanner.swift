@@ -4320,6 +4320,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         var bestIndex = 0
         var bestProjection = points[0]
         var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        var bestDirectionalIndex: Int?
+        var bestDirectionalDistance = CLLocationDistance.greatestFiniteMagnitude
         for index in 0..<(polyline.pointCount - 1) {
             let start = points[index], end = points[index + 1]
             let dx = end.x - start.x, dy = end.y - start.y
@@ -4334,6 +4336,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 bestIndex = index
                 bestProjection = projected
             }
+            if start.distance(to: end) >=
+                    NavigationCourseMatchingPolicy.minimumDirectionalSegmentLength,
+               distance < bestDirectionalDistance {
+                bestDirectionalDistance = distance
+                bestDirectionalIndex = index
+            }
         }
         var remaining = bestProjection.distance(to: points[bestIndex + 1])
         if bestIndex + 1 < polyline.pointCount - 1 {
@@ -4341,15 +4349,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 remaining += points[index].distance(to: points[index + 1])
             }
         }
-        let difference = vehicleCourse.flatMap { course in
-            NavigationCourseMatchingPolicy.bearing(
-                from: points[bestIndex].coordinate,
-                to: points[bestIndex + 1].coordinate
-            ).flatMap {
-                NavigationCourseMatchingPolicy.angularDifference(
-                    courseDegrees: course, routeCourseDegrees: $0
-                )
-            }
+        let difference: Double?
+        if let course = vehicleCourse,
+           let directionalIndex = bestDirectionalIndex,
+           let routeCourse = NavigationCourseMatchingPolicy.bearing(
+                from: points[directionalIndex].coordinate,
+                to: points[directionalIndex + 1].coordinate
+           ) {
+            difference = NavigationCourseMatchingPolicy.angularDifference(
+                courseDegrees: course, routeCourseDegrees: routeCourse
+            )
+        } else {
+            difference = nil
         }
         return .init(
             distanceFromRoute: bestDistance, remainingOnStep: remaining,
