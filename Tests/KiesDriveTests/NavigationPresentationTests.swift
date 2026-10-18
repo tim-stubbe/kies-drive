@@ -970,6 +970,22 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRemoteRouteArgumentsNeverCoerceWrongTypesIntoDefaults() {
+        XCTAssertTrue(DriveRemoteArgumentPolicy.validOptionalBool([:], key: "avoid_tolls"))
+        XCTAssertTrue(DriveRemoteArgumentPolicy.validOptionalBool(
+            ["avoid_tolls": .bool(true)], key: "avoid_tolls"
+        ))
+        XCTAssertFalse(DriveRemoteArgumentPolicy.validOptionalBool(
+            ["avoid_tolls": .string("false")], key: "avoid_tolls"
+        ))
+        XCTAssertFalse(DriveRemoteArgumentPolicy.validOptionalArray(
+            ["required_waypoints": .object([:])], key: "required_waypoints"
+        ))
+        XCTAssertFalse(DriveRemoteArgumentPolicy.validOptionalString(
+            ["waypoint_id": .number(42)], key: "waypoint_id"
+        ))
+    }
+
     func testRemoteActiveRouteRemainsVisibleDuringOfflineGuidance() {
         XCTAssertTrue(DriveRemoteRouteVisibilityPolicy.hasRoute(
             liveLegCount: 0, offlineGuidanceActive: true

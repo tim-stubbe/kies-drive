@@ -185,6 +185,20 @@ enum DriveRemoteCoordinatePolicy {
     }
 }
 
+enum DriveRemoteArgumentPolicy {
+    static func validOptionalBool(_ arguments: [String: JSONValue], key: String) -> Bool {
+        arguments[key] == nil || arguments[key]?.bool != nil
+    }
+
+    static func validOptionalString(_ arguments: [String: JSONValue], key: String) -> Bool {
+        arguments[key] == nil || arguments[key]?.string != nil
+    }
+
+    static func validOptionalArray(_ arguments: [String: JSONValue], key: String) -> Bool {
+        arguments[key] == nil || arguments[key]?.array != nil
+    }
+}
+
 @MainActor
 final class DriveRemoteBridge {
     static let shared = DriveRemoteBridge()
@@ -312,6 +326,16 @@ final class DriveRemoteBridge {
                 throw DriveRemoteError.routeUnavailable
             }
         case "set_route_options":
+            guard DriveRemoteArgumentPolicy.validOptionalString(
+                    command.arguments, key: "waypoint_id"
+                  ), DriveRemoteArgumentPolicy.validOptionalBool(
+                    command.arguments, key: "avoid_tolls"
+                  ), DriveRemoteArgumentPolicy.validOptionalBool(
+                    command.arguments, key: "avoid_highways"
+                  ), command.arguments["avoid_tolls"] != nil ||
+                    command.arguments["avoid_highways"] != nil else {
+                throw DriveRemoteError.invalidCommandArguments
+            }
             guard await planner.updateRouteOptionsAndRecalculate(
                 waypointID: command.arguments["waypoint_id"]?.string,
                 avoidTolls: command.arguments["avoid_tolls"]?.bool,
@@ -336,6 +360,9 @@ final class DriveRemoteBridge {
                 guard let found = planner.suggestions.first else { throw DriveRemoteError.destinationNotFound }
                 item = found
             } else { throw DriveRemoteError.destinationNotFound }
+            guard DriveRemoteArgumentPolicy.validOptionalArray(
+                command.arguments, key: "required_waypoints"
+            ) else { throw DriveRemoteError.invalidCommandArguments }
             var waypoints: [LockedWaypoint] = []
             for value in command.arguments["required_waypoints"]?.array ?? [] {
                 guard let waypoint = value.object,
@@ -348,10 +375,20 @@ final class DriveRemoteBridge {
                     // remote stop and calculate a materially different trip.
                     throw DriveRemoteError.invalidCommandArguments
                 }
-                let segment = waypoint["options_after"]?.object
-                let options = segment.map {
-                    LockedRouteOptions(avoidTolls: $0["avoid_tolls"]?.bool ?? settings.avoidTolls,
-                                       avoidHighways: $0["avoid_highways"]?.bool ?? settings.avoidHighways)
+                let options: LockedRouteOptions?
+                if let rawOptions = waypoint["options_after"] {
+                    guard let segment = rawOptions.object,
+                          DriveRemoteArgumentPolicy.validOptionalBool(
+                            segment, key: "avoid_tolls"
+                          ), DriveRemoteArgumentPolicy.validOptionalBool(
+                            segment, key: "avoid_highways"
+                          ) else { throw DriveRemoteError.invalidCommandArguments }
+                    options = LockedRouteOptions(
+                        avoidTolls: segment["avoid_tolls"]?.bool ?? settings.avoidTolls,
+                        avoidHighways: segment["avoid_highways"]?.bool ?? settings.avoidHighways
+                    )
+                } else {
+                    options = nil
                 }
                 waypoints.append(LockedWaypoint(
                     id: waypoint["id"]?.string ?? UUID().uuidString,
