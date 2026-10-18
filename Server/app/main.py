@@ -5,6 +5,7 @@ import os
 import re
 import base64
 import hashlib
+import math
 import secrets
 import sqlite3
 import time
@@ -715,11 +716,92 @@ TOOLS = [
             "avoid_highways": {"type": "boolean"}}, "additionalProperties": False}},
     {"name": "set_destination", "description": "Ziel und Pflichtpunkte setzen", "inputSchema": {
         "type": "object", "properties": {
-            "query": {"type": "string"}, "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+            "query": {"type": "string", "minLength": 2, "maxLength": 180}, "latitude": {"type": "number", "minimum": -90, "maximum": 90},
             "longitude": {"type": "number", "minimum": -180, "maximum": 180},
-            "required_waypoints": {"type": "array", "items": {"type": "object"}}},
+            "required_waypoints": {"type": "array", "maxItems": 8, "items": {
+                "type": "object", "properties": {
+                    "id": {"type": "string", "maxLength": 120},
+                    "name": {"type": "string", "maxLength": 180},
+                    "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+                    "longitude": {"type": "number", "minimum": -180, "maximum": 180},
+                    "options_after": {"type": "object", "properties": {
+                        "avoid_tolls": {"type": "boolean"},
+                        "avoid_highways": {"type": "boolean"}},
+                        "additionalProperties": False}},
+                "required": ["latitude", "longitude"], "additionalProperties": False}}},
+        "anyOf": [{"required": ["query"]}, {"required": ["latitude", "longitude"]}],
         "additionalProperties": False}},
 ]
+
+TOOL_NAMES = {tool["name"] for tool in TOOLS}
+
+
+def valid_coordinate(value: Any, minimum: float, maximum: float) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and minimum <= value <= maximum)
+
+
+def validate_mcp_arguments(name: str, arguments: Any) -> str | None:
+    """Enforce mutating tool boundaries even for clients ignoring JSON Schema."""
+    if not isinstance(arguments, dict):
+        return "Argumente müssen ein Objekt sein."
+    if name in {"get_location", "get_heading", "get_speed", "get_active_route",
+                "get_next_maneuver", "restore_route"}:
+        return None if not arguments else "Dieses Tool akzeptiert keine Argumente."
+    if name == "get_command_status":
+        value = arguments.get("command_id")
+        return None if set(arguments) == {"command_id"} and isinstance(value, int) \
+            and not isinstance(value, bool) and value > 0 else "command_id ist ungültig."
+    if name == "add_route_stop":
+        query = arguments.get("query")
+        return None if set(arguments) == {"query"} and isinstance(query, str) \
+            and 2 <= len(query.strip()) <= 120 else "Die Stoppsuche ist ungültig."
+    if name == "set_route_options":
+        allowed = {"waypoint_id", "avoid_tolls", "avoid_highways"}
+        if not set(arguments) <= allowed:
+            return "Unbekannte Routenoption."
+        waypoint = arguments.get("waypoint_id")
+        if waypoint is not None and (not isinstance(waypoint, str) or len(waypoint.strip()) > 120):
+            return "waypoint_id ist ungültig."
+        option_keys = {"avoid_tolls", "avoid_highways"} & set(arguments)
+        if not option_keys or any(not isinstance(arguments[key], bool) for key in option_keys):
+            return "Mindestens eine gültige Routenoption ist erforderlich."
+        return None
+    if name == "set_destination":
+        allowed = {"query", "latitude", "longitude", "required_waypoints"}
+        if not set(arguments) <= allowed:
+            return "Unbekanntes Zielargument."
+        query = arguments.get("query")
+        has_query = isinstance(query, str) and 2 <= len(query.strip()) <= 180
+        has_latitude, has_longitude = "latitude" in arguments, "longitude" in arguments
+        has_coordinates = (has_latitude and has_longitude
+                           and valid_coordinate(arguments["latitude"], -90, 90)
+                           and valid_coordinate(arguments["longitude"], -180, 180))
+        if (has_latitude != has_longitude) or not (has_query or has_coordinates):
+            return "Ziel benötigt eine Suchanfrage oder vollständige Koordinaten."
+        waypoints = arguments.get("required_waypoints", [])
+        if not isinstance(waypoints, list) or len(waypoints) > 8:
+            return "Höchstens acht Pflichtpunkte sind erlaubt."
+        waypoint_keys = {"id", "name", "latitude", "longitude", "options_after"}
+        for waypoint in waypoints:
+            if not isinstance(waypoint, dict) or not set(waypoint) <= waypoint_keys:
+                return "Ein Pflichtpunkt enthält unbekannte Daten."
+            if not valid_coordinate(waypoint.get("latitude"), -90, 90) \
+                    or not valid_coordinate(waypoint.get("longitude"), -180, 180):
+                return "Ein Pflichtpunkt hat ungültige Koordinaten."
+            if "id" in waypoint and (not isinstance(waypoint["id"], str)
+                    or not waypoint["id"].strip() or len(waypoint["id"].strip()) > 120):
+                return "Die Kennung eines Pflichtpunkts ist ungültig."
+            if "name" in waypoint and (not isinstance(waypoint["name"], str)
+                    or not waypoint["name"].strip() or len(waypoint["name"].strip()) > 180):
+                return "Der Name eines Pflichtpunkts ist ungültig."
+            options = waypoint.get("options_after")
+            if options is not None and (not isinstance(options, dict)
+                    or not set(options) <= {"avoid_tolls", "avoid_highways"}
+                    or any(not isinstance(value, bool) for value in options.values())):
+                return "Die Abschnittsvorgaben eines Pflichtpunkts sind ungültig."
+        return None
+    return "Unbekanntes Tool."
 
 
 @app.post("/mcp")
@@ -740,6 +822,12 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
     elif method == "tools/call":
         name = params.get("name")
         args = params.get("arguments") or {}
+        if not isinstance(name, str) or name not in TOOL_NAMES:
+            return {"jsonrpc": "2.0", "id": rpc_id, "result": {
+                "content": [{"type": "text", "text": "Unbekanntes Tool."}], "isError": True}}
+        if validation_error := validate_mcp_arguments(name, args):
+            return {"jsonrpc": "2.0", "id": rpc_id, "result": {
+                "content": [{"type": "text", "text": validation_error}], "isError": True}}
         with db() as conn:
             if name == "get_command_status":
                 command_id = args.get("command_id")

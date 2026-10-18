@@ -344,6 +344,41 @@ def test_mcp_reports_remote_command_completion(tmp_path, monkeypatch):
     assert failed_data["result"] == {"ok": False, "message": "Route nicht verfügbar"}
 
 
+def test_mcp_rejects_invalid_navigation_mutations_before_queueing(tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "remote-validation.db"))
+    verification = {}
+    monkeypatch.setattr(
+        main, "send_verification_email",
+        lambda email, token: verification.update(email=email, token=token),
+    )
+    main.AUTH_ATTEMPTS.clear()
+    client = TestClient(main.app)
+    email, password = "validation@example.com", "a-secure-validation-password"
+    client.post("/auth/register", json={"email": email, "password": password})
+    client.get("/auth/verify-email", params={"token": verification["token"]})
+    session = client.post("/auth/login", json={"email": email, "password": password}).json()["session"]
+    headers = {"Authorization": f"Bearer {session}"}
+
+    invalid_calls = [
+        ("set_destination", {}),
+        ("set_destination", {"latitude": 50}),
+        ("set_destination", {"query": "Hochheim", "required_waypoints": [
+            {"latitude": 100, "longitude": 8}
+        ]}),
+        ("set_route_options", {}),
+        ("add_route_stop", {"query": " "}),
+    ]
+    for index, (name, arguments) in enumerate(invalid_calls, start=1):
+        response = client.post("/mcp", headers=headers, json={
+            "jsonrpc": "2.0", "id": index, "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        }).json()
+        assert response["result"]["isError"] is True
+
+    with main.db() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM user_commands").fetchone()[0] == 0
+
+
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
     verification = {}
