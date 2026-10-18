@@ -1517,6 +1517,21 @@ final class NavigationPresentationTests: XCTestCase {
                                                 routePointCount: 100))
     }
 
+    func testRouteSearchFallsBackToPersistedProgressDuringGPSGap() {
+        XCTAssertEqual(RouteSearchPolicy.currentProgress(
+            projected: 0.72, persisted: 0.45, navigationActive: true
+        ), 0.72)
+        XCTAssertEqual(RouteSearchPolicy.currentProgress(
+            projected: nil, persisted: 0.45, navigationActive: true
+        ), 0.45)
+        XCTAssertEqual(RouteSearchPolicy.currentProgress(
+            projected: nil, persisted: 0.45, navigationActive: false
+        ), 0)
+        XCTAssertEqual(RouteSearchPolicy.currentProgress(
+            projected: 1.4, persisted: nil, navigationActive: true
+        ), 1)
+    }
+
     func testRouteSearchAheadCheckUsesDistanceProgress() {
         XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.49, currentProgress: 0.50))
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateProgress: 0.40, currentProgress: 0.50))

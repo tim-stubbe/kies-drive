@@ -645,14 +645,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let routeGeneration = routeCalculationGeneration
         routeSearchQuery = cleanQuery
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
-        let currentRouteProgress: Double = {
+        let projectedRouteProgress: Double? = {
             guard let location = LocationService.shared.location,
                   let projection = RouteGeometryProgress.nearestProgress(
                     of: location.coordinate, on: routeCoordinates,
                     progressRange: currentRouteProgressSearchRange
-                  ), projection.distance <= 5_000 else { return 0 }
+                  ), projection.distance <= 5_000 else { return nil }
             return projection.progress
         }()
+        let currentRouteProgress = RouteSearchPolicy.currentProgress(
+            projected: projectedRouteProgress,
+            persisted: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress,
+            navigationActive: isNavigating
+        )
         let remainingCoordinates = RouteSearchPolicy.remainingRouteCoordinates(
             routeCoordinates, currentProgress: currentRouteProgress
         )

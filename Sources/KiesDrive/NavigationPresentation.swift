@@ -1198,6 +1198,17 @@ enum RouteSearchPolicy {
         let baselineMetres: CLLocationDistance
     }
 
+    static func currentProgress(projected: Double?, persisted: Double?,
+                                navigationActive: Bool) -> Double {
+        if let projected, projected.isFinite {
+            return min(1, max(0, projected))
+        }
+        if navigationActive, let persisted, persisted.isFinite {
+            return min(1, max(0, persisted))
+        }
+        return 0
+    }
+
     /// Keeps a tiny tolerance for GPS jitter around the current route point,
     /// but never sends the driver materially backwards for an added stop.
     static func isAhead(candidateIndex: Int, currentIndex: Int, routePointCount: Int) -> Bool {
