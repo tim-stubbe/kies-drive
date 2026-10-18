@@ -1715,6 +1715,26 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 10), 0)
     }
 
+    func testStepSelectionDoesNotTreatParallelRampAsMissedExit() {
+        let beforeExit = [
+            NavigationStepMetric(distanceFromRoute: 72, remainingOnStep: 650),
+            NavigationStepMetric(distanceFromRoute: 5, remainingOnStep: 900,
+                                 courseDifferenceDegrees: 2),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: beforeExit, transitionRadius: 12
+        ), 0, "A closer parallel ramp must not hide the upcoming exit")
+
+        let afterExit = [
+            NavigationStepMetric(distanceFromRoute: 72, remainingOnStep: 60),
+            NavigationStepMetric(distanceFromRoute: 5, remainingOnStep: 900,
+                                 courseDifferenceDegrees: 2),
+        ]
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: afterExit, transitionRadius: 12
+        ), 1, "The missed-step fallback must still advance near the junction")
+    }
+
     func testLiveMetricEvaluationIsBoundedOnVeryLongRoute() {
         XCTAssertEqual(
             NavigationStepSelectionPolicy.metricEvaluationIndices(

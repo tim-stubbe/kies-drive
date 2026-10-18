@@ -1124,9 +1124,15 @@ enum NavigationStepSelectionPolicy {
             )
             let reachedJunction = active.remainingOnStep <= radius &&
                 next.distanceFromRoute <= radius * 1.5 && headingMatches
+            // A parallel ramp can be much closer than the active motorway
+            // carriageway while the real exit is still hundreds of metres
+            // ahead. Treat the next step as "clearly past" only close to the
+            // end of the active step. Larger discontinuities are handled by
+            // the explicit recovery path above.
+            let nearActiveStepEnd = active.remainingOnStep <= max(120, radius * 4)
             let clearlyPastStep = active.distanceFromRoute > 60 &&
                 next.distanceFromRoute + 30 < active.distanceFromRoute &&
-                next.distanceFromRoute <= 45 && headingMatches
+                next.distanceFromRoute <= 45 && headingMatches && nearActiveStepEnd
             guard reachedJunction || clearlyPastStep else { break }
             selected += 1
         }
