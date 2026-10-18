@@ -27,13 +27,20 @@ enum RouteWaypointVisitPolicy {
         let target = CLLocation(latitude: next.coordinate.latitude,
                                 longitude: next.coordinate.longitude)
         guard location.distance(from: target) <= radius else { return nil }
-        if let expectedCourseDegrees,
-           let vehicleCourse = NavigationMotionPolicy.reliableCourse(for: location),
-           let difference = NavigationCourseMatchingPolicy.angularDifference(
-               courseDegrees: vehicleCourse,
-               routeCourseDegrees: expectedCourseDegrees
-           ), !NavigationCourseMatchingPolicy.isPlausible(difference) {
-            return nil
+        if let expectedCourseDegrees {
+            let vehicleCourse = NavigationMotionPolicy.reliableCourse(for: location)
+            // A drive-through constraint at a bridge or motorway interchange
+            // needs directional evidence. Real comfort stops intentionally
+            // remain confirmable while parked, when Core Location has no
+            // useful course.
+            if next.mayAutoCompleteWhenPassed, vehicleCourse == nil { return nil }
+            if let vehicleCourse,
+               let difference = NavigationCourseMatchingPolicy.angularDifference(
+                   courseDegrees: vehicleCourse,
+                   routeCourseDegrees: expectedCourseDegrees
+               ), !NavigationCourseMatchingPolicy.isPlausible(difference) {
+                return nil
+            }
         }
         return next.id
     }

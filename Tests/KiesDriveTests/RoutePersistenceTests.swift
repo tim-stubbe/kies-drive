@@ -362,6 +362,33 @@ final class RoutePersistenceTests: XCTestCase {
         ), "motorway")
     }
 
+    func testDriveThroughConstraintNeedsCourseButParkedStopDoesNot() {
+        let stopped = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 6, verticalAccuracy: 5,
+            course: -1, speed: 0, timestamp: Date()
+        )
+        let constraint = LockedWaypoint(
+            id: "bridge", name: "Brückenpunkt",
+            coordinate: .init(latitude: 50, longitude: 8), required: true,
+            optionsAfter: nil, kind: .routeConstraint
+        )
+        let fuel = LockedWaypoint(
+            id: "fuel", name: "Tankstelle",
+            coordinate: .init(latitude: 50, longitude: 8), required: true,
+            optionsAfter: nil, kind: .fuelStop
+        )
+
+        XCTAssertNil(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: [constraint], visitedIDs: [], location: stopped,
+            expectedCourseDegrees: 0
+        ))
+        XCTAssertEqual(RouteWaypointVisitPolicy.reachedWaypointID(
+            waypoints: [fuel], visitedIDs: [], location: stopped,
+            expectedCourseDegrees: 0
+        ), "fuel")
+    }
+
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")
