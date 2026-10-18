@@ -171,8 +171,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var navigationSessionGeneration = UUID()
     private var rerouteGeneration = UUID()
     private var lastAcceptedNavigationLocation: CLLocation?
-    private var usageSessionDistanceMetres: CLLocationDistance = 0
-    private var usageSessionMovingTime: TimeInterval = 0
+    private let usageSessionStore = DriveUsageSessionStore.live
+    private var usageSessionState = DriveUsageSessionStore.live.load()
     private var usageSessionLastLocation: CLLocation?
     private var lastReliableGuidanceSpeedMps: Double?
     private var lastReliableGuidanceSpeedAt: Date?
@@ -298,10 +298,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func startNavigation(voiceGuidance: Bool? = nil) {
         guard !legs.isEmpty else { return }
-        beginNavigationSession()
         let shouldSpeak = voiceGuidance ?? DriveSettings.shared.voiceGuidance
         isUsingOfflineGuidance = false
         persistActiveTrip()
+        beginNavigationSession()
         isNavigating = true
         hasArrived = false
         resetLiveNavigationProgress()
@@ -315,7 +315,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func stopNavigation() {
         let wasNavigating = isNavigating
         if wasNavigating { closeOutstandingManeuverDiagnostic(reason: .userStopped) }
-        if wasNavigating { finishUsageSession() }
+        if wasNavigating {
+            // Pausing guidance is not the end of the persistent trip. Keep
+            // aggregate distance/time for a later restore, but deliberately
+            // drop the last coordinate so no location trail is persisted.
+            usageSessionLastLocation = nil
+            usageSessionStore.save(usageSessionState)
+        }
         invalidateNavigationAsyncWork()
         isNavigating = false
         isUsingOfflineGuidance = false
@@ -347,6 +353,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// loescht den Lock dagegen nicht, damit Rast und App-Neustart sicher sind.
     func completeActiveTrip() {
         stopNavigation()
+        finishUsageSession()
         routeLockStore.finish()
         activeRouteLock = nil
         routeLockStore.clearFinished()
@@ -2146,8 +2153,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         rerouteGeneration = UUID()
         isRecalculating = false
         lastRerouteAt = nil
-        usageSessionDistanceMetres = 0
-        usageSessionMovingTime = 0
+        let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id
+        if usageSessionState.tripID != tripID {
+            usageSessionState = DriveUsageSessionState(tripID: tripID)
+            usageSessionStore.save(usageSessionState)
+        }
         usageSessionLastLocation = nil
     }
 
@@ -2155,26 +2165,33 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if let segment = DriveUsageSegmentPolicy.segment(
             previous: usageSessionLastLocation, current: location
         ) {
-            usageSessionDistanceMetres += segment.distanceMetres
-            usageSessionMovingTime += segment.movingTime
+            usageSessionState.distanceMetres += segment.distanceMetres
+            usageSessionState.movingTime += segment.movingTime
+            usageSessionStore.save(usageSessionState)
         }
         usageSessionLastLocation = location
     }
 
     private func finishUsageSession() {
         usageStatistics.recordTrip(
-            distanceMetres: usageSessionDistanceMetres,
-            movingTime: usageSessionMovingTime
+            distanceMetres: usageSessionState.distanceMetres,
+            movingTime: usageSessionState.movingTime
         )
         DriveUsageStatisticsStore.save(usageStatistics)
-        usageSessionDistanceMetres = 0
-        usageSessionMovingTime = 0
+        usageSessionState = .init()
+        usageSessionStore.clear()
         usageSessionLastLocation = nil
     }
 
     func clearUsageStatistics() {
         usageStatistics = .init()
         DriveUsageStatisticsStore.clear()
+        usageSessionState = DriveUsageSessionState(
+            tripID: activeRouteLock?.id ?? routeLockStore.activeLock?.id
+        )
+        usageSessionLastLocation = nil
+        if usageSessionState.tripID == nil { usageSessionStore.clear() }
+        else { usageSessionStore.save(usageSessionState) }
     }
 
     private func invalidateNavigationAsyncWork() {

@@ -1688,4 +1688,23 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(statistics.completedNavigations, 2)
         XCTAssertEqual(statistics.lastTripDistanceMetres, 7_500)
     }
+
+    func testUsageSessionSurvivesPauseWithoutPersistingLocations() throws {
+        let suite = "DriveUsageSessionTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = DriveUsageSessionStore(defaults: defaults)
+        let expected = DriveUsageSessionState(
+            tripID: UUID(), distanceMetres: 428_000, movingTime: 14_400
+        )
+        store.save(expected)
+
+        XCTAssertEqual(store.load(), expected)
+        let encoded = try XCTUnwrap(defaults.data(forKey: store.key))
+        let text = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("latitude"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("longitude"))
+        store.clear()
+        XCTAssertEqual(store.load(), DriveUsageSessionState())
+    }
 }

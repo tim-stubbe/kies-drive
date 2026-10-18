@@ -178,6 +178,31 @@ enum DriveUsageStatisticsStore {
     }
 }
 
+struct DriveUsageSessionState: Codable, Equatable {
+    var tripID: UUID?
+    var distanceMetres: CLLocationDistance = 0
+    var movingTime: TimeInterval = 0
+}
+
+struct DriveUsageSessionStore {
+    let defaults: UserDefaults
+    var key = "drive.usageSession.v1"
+
+    static let live = DriveUsageSessionStore(defaults: .standard)
+
+    func load() -> DriveUsageSessionState {
+        guard let data = defaults.data(forKey: key) else { return .init() }
+        return (try? JSONDecoder().decode(DriveUsageSessionState.self, from: data)) ?? .init()
+    }
+
+    func save(_ state: DriveUsageSessionState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    func clear() { defaults.removeObject(forKey: key) }
+}
+
 /// Counts only plausible movement samples received while guidance is active.
 /// Coordinates are deliberately never persisted.
 enum DriveUsageSegmentPolicy {
