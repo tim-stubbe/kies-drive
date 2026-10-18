@@ -41,8 +41,12 @@ enum DestinationSearchRankingPolicy {
             return value.isEmpty ? nil : value
         }
         if values.contains(query) { return 0 }
-        if values.contains(where: { $0.hasPrefix(query) || query.hasPrefix($0) }) { return 1 }
-        if values.contains(where: { $0.contains(query) }) { return 2 }
+        // Preserve locality/street qualifiers from the user's full query.
+        // A short generic result name such as "Hochheim" must not outrank an
+        // address that actually contains "Hochheim am Main" merely because
+        // the query itself begins with that short name.
+        if values.contains(where: { $0.hasPrefix(query) }) { return 1 }
+        if values.contains(where: { $0.contains(query) }) { return 1.5 }
         let queryTokens = Set(query.split(separator: " ").map(String.init))
         let overlap = values.map { value -> Double in
             let tokens = Set(value.split(separator: " ").map(String.init))

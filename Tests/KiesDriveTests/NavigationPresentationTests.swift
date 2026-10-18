@@ -71,6 +71,19 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testDestinationSearchKeepsLocalityQualifierForSameNamedPlaces() {
+        let correctLocality = DestinationSearchRankingPolicy.relevanceScore(
+            query: "Hochheim am Main", name: "Hochheim",
+            title: "Hochheim am Main, Hessen"
+        )
+        let wrongLocality = DestinationSearchRankingPolicy.relevanceScore(
+            query: "Hochheim am Main", name: "Hochheim",
+            title: "Hochheim, Thüringen"
+        )
+
+        XCTAssertLessThan(correctLocality, wrongLocality)
+    }
+
     func testDestinationSearchDeduplicatesOnlySameNearbyPlace() {
         let first = CLLocationCoordinate2D(latitude: 50, longitude: 8)
         let nearby = CLLocationCoordinate2D(latitude: 50.0001, longitude: 8)
