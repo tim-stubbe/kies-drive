@@ -9,7 +9,7 @@ import UIKit
 @MainActor
 final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate,
                                   CPSearchTemplateDelegate {
-    private enum CameraMode { case follow, overview }
+    private enum CameraMode { case follow, overview, free }
     private var interfaceController: CPInterfaceController?
     private var carWindow: CPWindow?
     private var mapView: MKMapView?
@@ -740,7 +740,18 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             lastReliableCourse = course
         }
         let heading = lastReliableCourse ?? mapView?.camera.heading ?? 0
-        let camera = MKMapCamera(lookingAtCenter: location.coordinate, fromDistance: 850, pitch: 55, heading: heading)
+        let speed = NavigationMotionPolicy.reliableSpeed(for: location)
+        let center = NavigationFollowCameraPolicy.center(
+            from: location.coordinate,
+            headingDegrees: heading,
+            speedMetresPerSecond: speed
+        )
+        let camera = MKMapCamera(
+            lookingAtCenter: center,
+            fromDistance: NavigationFollowCameraPolicy.distance(speedMetresPerSecond: speed),
+            pitch: 55,
+            heading: heading
+        )
         mapView?.setCamera(camera, animated: true)
     }
 
@@ -782,7 +793,7 @@ extension CarPlaySceneDelegate: MKMapViewDelegate {
         if isUserGesture {
             // Respect manual pan/zoom until the driver explicitly taps the
             // location button. Incoming GPS fixes must not fight the gesture.
-            cameraMode = .overview
+            cameraMode = .free
             mapView.setUserTrackingMode(.none, animated: false)
         }
     }
