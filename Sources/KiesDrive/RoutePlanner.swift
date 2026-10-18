@@ -3334,6 +3334,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // both endpoints without sending the user's street address.
         let origin = await tollOriginLabel(for: start)
             ?? String(format: "%.4f, %.4f", start.latitude, start.longitude)
+        // Reverse geocoding may take a couple of seconds. A reroute or newly
+        // selected destination during that wait owns a different toll lookup;
+        // do not send obsolete SearXNG requests that compete with it.
+        guard TollLookupBatchPolicy.mayStartRequests(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: generation, currentRequest: tollLoadGeneration
+        ) else { return }
         var results: [TollLookupBatchItem] = []
         var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
         let requestedVariants = TollLookupBatchPolicy.requestedVariants(

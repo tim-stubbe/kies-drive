@@ -278,6 +278,23 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertTrue(TollLookupBatchPolicy.complete([avoiding], expected: [true]))
     }
 
+    func testSupersededTollLookupNeverStartsProviderRequests() {
+        let route = UUID()
+        let request = UUID()
+        XCTAssertTrue(TollLookupBatchPolicy.mayStartRequests(
+            route: route, currentRoute: route,
+            request: request, currentRequest: request
+        ))
+        XCTAssertFalse(TollLookupBatchPolicy.mayStartRequests(
+            route: route, currentRoute: UUID(),
+            request: request, currentRequest: request
+        ))
+        XCTAssertFalse(TollLookupBatchPolicy.mayStartRequests(
+            route: route, currentRoute: route,
+            request: request, currentRequest: UUID()
+        ))
+    }
+
     func testRouteProjectionMeasuresBetweenSparseGeometryPoints() throws {
         let route = [
             CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0),

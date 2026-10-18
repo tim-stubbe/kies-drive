@@ -78,6 +78,11 @@ enum TollLookupBatchPolicy {
     static func complete(_ items: [TollLookupBatchItem], expected: Set<Bool> = [false, true]) -> Bool {
         Set(items.map(\.avoidTolls)) == expected
     }
+
+    static func mayStartRequests(route: UUID, currentRoute: UUID,
+                                 request: UUID, currentRequest: UUID) -> Bool {
+        route == currentRoute && request == currentRequest
+    }
 }
 
 enum TollRouteIdentityPolicy {
