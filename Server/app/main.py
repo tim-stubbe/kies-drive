@@ -637,18 +637,26 @@ def enable_2fa(payload: TOTPRequest, authorization: str | None = Header(None)):
     return {"ok": True, "recovery_codes": recovery_codes}
 
 
-def explicit_toll_amount(text: str) -> float | None:
-    """Accept only an amount explicitly labelled as the total toll price."""
+def explicit_toll_amount_and_currency(text: str) -> tuple[float, str] | None:
+    """Accept only a total toll price carrying an explicit supported currency."""
+    currency = r"(€|eur|chf|gbp|usd|pln|czk|dkk|nok|sek|huf|rsd|bam)"
     patterns = (
-        r"(?:gesamtmaut|mautkosten|toll costs?)\s*(?:von|:|-)?\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|eur)",
-        r"(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:€|eur)\s*(?:gesamtmaut|mautkosten|toll costs?)",
+        rf"(?:gesamtmaut|mautkosten|toll costs?)\s*(?:von|:|-)?\s*(\d{{1,4}}(?:[.,]\d{{1,2}})?)\s*{currency}",
+        rf"(\d{{1,4}}(?:[.,]\d{{1,2}})?)\s*{currency}\s*(?:gesamtmaut|mautkosten|toll costs?)",
     )
     lowered = text.lower()
     for pattern in patterns:
         if match := re.search(pattern, lowered):
             amount = float(match.group(1).replace(",", "."))
-            return amount if 0 <= amount <= 5_000 else None
+            parsed_currency = "EUR" if match.group(2) == "€" else match.group(2).upper()
+            return (amount, parsed_currency) if 0 <= amount <= 5_000 else None
     return None
+
+
+def explicit_toll_amount(text: str) -> float | None:
+    """Compatibility helper for callers interested only in the amount."""
+    parsed = explicit_toll_amount_and_currency(text)
+    return parsed[0] if parsed else None
 
 
 def explicit_no_toll(text: str) -> bool:
@@ -720,29 +728,34 @@ def independent_source_domain(host: str) -> str:
 
 
 def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
-                           destination: str, via: list[str]) -> tuple[float, str, str] | None:
+                           destination: str, via: list[str]) -> tuple[float, str, str, str] | None:
     """Accept one official source or two independent corroborating domains."""
-    evidence: list[tuple[float, str, str, str, bool]] = []
+    evidence: list[tuple[float, str, str, str, str, bool]] = []
     for source in sources:
         source_text = f"{source['title']} {source['snippet']}"
-        amount = explicit_toll_amount(source_text)
+        parsed_amount = explicit_toll_amount_and_currency(source_text)
         parsed = urlparse(source["url"])
         host = (parsed.hostname or "").lower()
-        if (amount is None or parsed.scheme != "https" or not host
+        if (parsed_amount is None or parsed.scheme != "https" or not host
                 or not toll_source_matches_route(source_text, origin, destination, via)):
             continue
+        amount, currency = parsed_amount
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
         if not toll_source_is_current(source_text, official):
             continue
-        evidence.append((amount, independent_source_domain(host), source["title"], source["url"], official))
-    if official := next((item for item in evidence if item[4]), None):
-        return official[0], official[2], official[3]
-    for amount, _, _, _, _ in evidence:
-        corroborating = [item for item in evidence if abs(item[0] - amount) <= 0.01]
-        if len({item[1] for item in corroborating}) >= 2:
-            titles = " + ".join(dict.fromkeys(item[2] for item in corroborating))[:300]
-            return amount, titles, corroborating[0][3]
+        evidence.append((amount, currency, independent_source_domain(host),
+                         source["title"], source["url"], official))
+    if official := next((item for item in evidence if item[5]), None):
+        return official[0], official[1], official[3], official[4]
+    for amount, currency, _, _, _, _ in evidence:
+        corroborating = [
+            item for item in evidence
+            if item[1] == currency and abs(item[0] - amount) <= 0.01
+        ]
+        if len({item[2] for item in corroborating}) >= 2:
+            titles = " + ".join(dict.fromkeys(item[3] for item in corroborating))[:300]
+            return amount, currency, titles, corroborating[0][4]
     return None
 
 
@@ -811,8 +824,8 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
         return {"status": "no_toll", "amount": 0, "currency": "EUR",
                 "source": source_name, "source_url": source_url, "sources": sources}
     if evidence := verified_toll_evidence(sources, origin, destination, via):
-        amount, source_name, source_url = evidence
-        return {"status": "known", "amount": amount, "currency": "EUR",
+        amount, currency, source_name, source_url = evidence
+        return {"status": "known", "amount": amount, "currency": currency,
                 "source": source_name, "source_url": source_url, "sources": sources}
     return {"status": "unknown", "amount": None, "currency": "EUR",
             "source": "SearXNG", "source_url": None, "sources": sources}

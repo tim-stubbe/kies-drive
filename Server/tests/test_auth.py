@@ -84,6 +84,8 @@ def test_toll_amount_parser_accepts_only_explicit_total():
     assert main.explicit_toll_amount("27.40 € Gesamtmaut") == 27.4
     assert main.explicit_toll_amount("Vignette 11,50 € und Tunnel 14 €") is None
     assert main.explicit_toll_amount("Mautkosten: 99999 EUR") is None
+    assert main.explicit_toll_amount_and_currency("Mautkosten: 42,50 CHF") == (42.5, "CHF")
+    assert main.explicit_toll_amount_and_currency("19.90 GBP toll costs") == (19.9, "GBP")
 
 
 def test_no_toll_parser_requires_complete_route_statement():
@@ -145,6 +147,29 @@ def test_toll_evidence_requires_official_or_independent_corroboration():
     assert main.verified_toll_evidence(
         [official], "Split", "Hochheim am Main", ["Wurzenpass"]
     )[0] == 27.4
+
+
+def test_toll_evidence_never_corroborates_different_currencies():
+    year = main.date.today().year
+    euro = {
+        "title": f"Basel nach Zürich Gesamtmaut: 20 EUR {year}",
+        "snippet": "", "url": "https://routes.example/trip",
+    }
+    francs = {
+        "title": f"Basel nach Zürich Mautkosten: 20 CHF {year}",
+        "snippet": "", "url": "https://prices.example.net/trip",
+    }
+    assert main.verified_toll_evidence([euro, francs], "Basel", "Zürich", []) is None
+
+    second_francs = {
+        "title": f"20 CHF Gesamtmaut Basel Zürich {year}",
+        "snippet": "", "url": "https://tolls.example.org/trip",
+    }
+    evidence = main.verified_toll_evidence(
+        [francs, second_francs], "Basel", "Zürich", []
+    )
+    assert evidence is not None
+    assert evidence[:2] == (20.0, "CHF")
 
 
 def test_toll_evidence_does_not_count_subdomains_as_independent_sources():
