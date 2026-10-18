@@ -174,6 +174,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private let synthesizer = AVSpeechSynthesizer()
     private var activeUtterance: AVSpeechUtterance?
     private var activeSpeechPriority: NavigationSpeechPriority?
+    private var audioSessionInterrupted = false
     private var navigationStepCursor = 0
     private var announcedManeuverStages: [String: Set<NavigationAnnouncementStage>] = [:]
     private struct ManeuverSpeechClaim {
@@ -266,6 +267,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     override init() {
         super.init()
         synthesizer.delegate = self
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioSessionInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        #endif
         offlineRoute = Self.loadCache()
         // Never install a personal preset on a fresh device. Public builds
         // restore only a trip the signed-in driver deliberately created.
@@ -2494,7 +2503,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func speak(_ text: String, priority: NavigationSpeechPriority,
                        maneuverClaim: ManeuverSpeechClaim? = nil,
                        maneuverClaims: [ManeuverSpeechClaim] = []) -> Bool {
-        guard !text.isEmpty else { return false }
+        // Do not queue a maneuver under an active call, Siri session or other
+        // system interruption. Returning false leaves its claim retryable on
+        // the next GPS fix after audio becomes available again.
+        guard !text.isEmpty, !audioSessionInterrupted else { return false }
         let hasActiveSpeechWork = NavigationSpeechInterruptionPolicy.hasActiveWork(
             isSpeaking: synthesizer.isSpeaking,
             hasQueuedUtterance: activeUtterance != nil
@@ -2532,6 +2544,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         synthesizer.speak(utterance)
         return true
     }
+
+    #if os(iOS)
+    @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let rawValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawValue) else { return }
+        switch type {
+        case .began:
+            audioSessionInterrupted = true
+            // A turn instruction partially spoken before a call is unsafe to
+            // resume later. Cancel it without claiming delivery; a current GPS
+            // fix can issue the appropriate stage again after the interruption.
+            cancelCurrentSpeechWork()
+        case .ended:
+            audioSessionInterrupted = false
+        @unknown default:
+            audioSessionInterrupted = true
+            cancelCurrentSpeechWork()
+        }
+    }
+    #endif
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                            didStart utterance: AVSpeechUtterance) {
