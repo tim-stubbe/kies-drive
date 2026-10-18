@@ -2350,7 +2350,7 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testRouteSearchAheadCheckUsesDistanceProgress() {
         XCTAssertTrue(RouteSearchPolicy.isAhead(
-            candidateProgress: 0.49, currentProgress: 0.50,
+            candidateProgress: 0.498, currentProgress: 0.50,
             totalRouteDistance: 100_000
         ))
         XCTAssertFalse(RouteSearchPolicy.isAhead(
@@ -2365,9 +2365,13 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testRouteSearchBackwardToleranceDoesNotScaleToManyKilometres() {
         XCTAssertTrue(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.4997, currentProgress: 0.50,
+            totalRouteDistance: 800_000
+        ), "Small GPS/projection drift remains acceptable")
+        XCTAssertFalse(RouteSearchPolicy.isAhead(
             candidateProgress: 0.4975, currentProgress: 0.50,
             totalRouteDistance: 800_000
-        ), "Two kilometres of GPS/projection tolerance remain acceptable")
+        ), "A stop two kilometres behind must never create an Autobahn return trip")
         XCTAssertFalse(RouteSearchPolicy.isAhead(
             candidateProgress: 0.48, currentProgress: 0.50,
             totalRouteDistance: 800_000
