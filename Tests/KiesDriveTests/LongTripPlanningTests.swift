@@ -1881,6 +1881,29 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(delta.totalCostDifference), -24, accuracy: 0.001)
     }
 
+    func testTwoConfirmedTollFreeRoutesDoNotInventEuroEvidence() throws {
+        let scenario = SpeedScenario.target(150)
+        let baseline = RouteScenarioResult(
+            id: "a", routeTitle: "A", scenario: scenario,
+            distanceMetres: 1, drivingTime: 1, totalTime: 1,
+            fuel: .init(litres: 10, cost: 20, averageConsumptionLPer100km: 7),
+            toll: .noToll(source: "provider-a", sourceURL: nil),
+            breaks: [], fuelStops: [], unlimitedFraction: 0
+        )
+        let alternative = RouteScenarioResult(
+            id: "b", routeTitle: "B", scenario: scenario,
+            distanceMetres: 1, drivingTime: 1, totalTime: 1,
+            fuel: .init(litres: 11, cost: 22.5, averageConsumptionLPer100km: 7),
+            toll: .noToll(source: "provider-b", sourceURL: nil),
+            breaks: [], fuelStops: [], unlimitedFraction: 0
+        )
+
+        let delta = RouteComparisonDelta(from: baseline, to: alternative)
+        XCTAssertNil(delta.tollSavings)
+        XCTAssertNil(delta.tollCurrency)
+        XCTAssertEqual(try XCTUnwrap(delta.totalCostDifference), 2.5, accuracy: 0.001)
+    }
+
     func testComparisonNeverCombinesDifferentTollCurrencies() {
         let scenario = SpeedScenario.target(150)
         let fuel = FuelEstimate(litres: 40, cost: 70, averageConsumptionLPer100km: 7)

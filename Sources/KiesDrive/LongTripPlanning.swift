@@ -1579,27 +1579,38 @@ struct RouteComparisonDelta: Equatable {
         distanceDifferenceMetres = alternative.totalDistanceMetres - baseline.totalDistanceMetres
         fuelDifferenceLitres = alternative.fuel.litres - baseline.fuel.litres
         fuelCostDifference = alternative.fuel.cost - baseline.fuel.cost
+        let bothConfirmedNoToll: Bool
         switch (baseline.toll, alternative.toll) {
         case let (.known(baselineAmount, baselineCurrency, _, _),
                   .known(alternativeAmount, alternativeCurrency, _, _))
             where baselineCurrency.caseInsensitiveCompare(alternativeCurrency) == .orderedSame:
             tollSavings = baselineAmount - alternativeAmount
             tollCurrency = baselineCurrency.uppercased()
+            bothConfirmedNoToll = false
         case let (.known(amount, currency, _, _), .noToll):
             tollSavings = amount
             tollCurrency = currency.uppercased()
+            bothConfirmedNoToll = false
         case let (.noToll, .known(amount, currency, _, _)):
             tollSavings = -amount
             tollCurrency = currency.uppercased()
+            bothConfirmedNoToll = false
         case (.noToll, .noToll):
-            tollSavings = 0
-            tollCurrency = "EUR"
+            // There is no toll delta to display and neither provider result
+            // carries a currency. Do not manufacture a €0.00 amount; only the
+            // already-euro-denominated fuel difference contributes to total.
+            tollSavings = nil
+            tollCurrency = nil
+            bothConfirmedNoToll = true
         default:
             tollSavings = nil
             tollCurrency = nil
+            bothConfirmedNoToll = false
         }
         if tollCurrency == "EUR", let tollSavings {
             totalCostDifference = fuelCostDifference - NSDecimalNumber(decimal: tollSavings).doubleValue
+        } else if bothConfirmedNoToll {
+            totalCostDifference = fuelCostDifference
         } else {
             totalCostDifference = nil
         }
