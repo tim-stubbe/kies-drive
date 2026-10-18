@@ -309,17 +309,23 @@ enum SpeedScenarioPolicy {
             travelledDistance = segmentEnd
             guard includedDistance > 0 else { continue }
             totalDistance += includedDistance
-            // Only an explicit, internally consistent unrestricted result is
-            // eligible for a high-speed scenario. A numeric limit alongside
-            // `unlimited` is conflicting provider data and must stay
-            // conservative just like a missing sample.
+            // A sampled point is not evidence for every metre up to the next
+            // (potentially distant) sample. Only count the segment when both
+            // endpoints explicitly and consistently report unrestricted
+            // motorway. This keeps ramps, limit transitions and gaps out of a
+            // 150/200 km/h comparison instead of extrapolating through them.
             if limits.indices.contains(index),
-               limits[index].unlimited,
-               limits[index].maxspeed == nil {
+               limits.indices.contains(index + 1),
+               isExplicitlyUnlimited(limits[index]),
+               isExplicitlyUnlimited(limits[index + 1]) {
                 unlimitedDistance += includedDistance
             }
         }
         return totalDistance > 0 ? min(1, max(0, unlimitedDistance / totalDistance)) : 0
+    }
+
+    private static func isExplicitlyUnlimited(_ result: SpeedLimitResult) -> Bool {
+        result.unlimited && result.maxspeed == nil
     }
 
 

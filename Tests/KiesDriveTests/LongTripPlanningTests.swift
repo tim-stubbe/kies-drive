@@ -683,14 +683,19 @@ final class LongTripPlanningTests: XCTestCase {
         ]
         let limits = [
             SpeedLimitResult(maxspeed: nil, unlimited: true),
+            SpeedLimitResult(maxspeed: nil, unlimited: true),
             SpeedLimitResult(maxspeed: nil, unlimited: false)
         ]
         let fraction = SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: limits)
         XCTAssertEqual(fraction, 1.0 / 11.0, accuracy: 0.02)
 
-        let missing = SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: [limits[0]])
+        let missing = SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: Array(limits.prefix(2)))
         XCTAssertEqual(missing, 1.0 / 11.0, accuracy: 0.02,
                        "A missing second limit must not make the long segment unrestricted")
+
+        let isolated = SpeedScenarioPolicy.unlimitedDistanceFraction(points: points, limits: [limits[0]])
+        XCTAssertEqual(isolated, 0, accuracy: 0.001,
+                       "An isolated unrestricted sample must not classify a whole segment")
     }
 
     func testUnlimitedShareRejectsConflictingProviderEvidence() {
@@ -701,6 +706,7 @@ final class LongTripPlanningTests: XCTestCase {
         ]
         let limits = [
             SpeedLimitResult(maxspeed: 120, unlimited: true),
+            SpeedLimitResult(maxspeed: nil, unlimited: true),
             SpeedLimitResult(maxspeed: nil, unlimited: true),
         ]
 
@@ -719,6 +725,7 @@ final class LongTripPlanningTests: XCTestCase {
             CLLocationCoordinate2D(latitude: 50.02, longitude: 8),
         ]
         let limits = [
+            SpeedLimitResult(maxspeed: nil, unlimited: true),
             SpeedLimitResult(maxspeed: nil, unlimited: true),
             SpeedLimitResult(maxspeed: 100, unlimited: false),
         ]
