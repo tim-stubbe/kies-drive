@@ -795,6 +795,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
             active: .maneuver, incoming: .critical
         ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldInterrupt(
+            active: .critical, incoming: .critical
+        ), "A following immediate turn must not cut the current decisive cue in half")
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldInterrupt(
             active: .maneuver, incoming: .maneuver
         ), "A later preparation stage must be able to supersede an unfinished earlier stage")

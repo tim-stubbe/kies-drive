@@ -496,7 +496,13 @@ enum NavigationSpeechInterruptionPolicy {
 
     static func shouldInterrupt(active: NavigationSpeechPriority,
                                 incoming: NavigationSpeechPriority) -> Bool {
-        incoming.rawValue >= active.rawValue
+        // Never cut one decisive "Jetzt" cue in half with the next one at a
+        // tight interchange. The second maneuver remains unclaimed and is
+        // retried on the next location fix; the first utterance often already
+        // contains its "Danach" preview. Route replacement and confirmed
+        // departure use their explicit cancellation paths instead.
+        if active == .critical && incoming == .critical { return false }
+        return incoming.rawValue >= active.rawValue
     }
 
     /// Once a replacement route is committed, every queued or audible
