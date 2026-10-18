@@ -2041,6 +2041,17 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRouteSearchSelectionRejectsResultPassedWhileListWasOpen() {
+        XCTAssertTrue(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.55, currentProgress: 0.54,
+            totalRouteDistance: 400_000
+        ))
+        XCTAssertFalse(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.55, currentProgress: 0.62,
+            totalRouteDistance: 400_000
+        ), "A stop selected after driving well past it must not route the car backwards")
+    }
+
     func testRouteSearchQueriesOnlyTheRemainingRoute() {
         let route = (0...10).map {
             CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) / 100)

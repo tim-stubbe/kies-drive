@@ -1048,9 +1048,46 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return CLLocation(latitude: resultCoordinate.latitude, longitude: resultCoordinate.longitude)
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= 30
         })?.routeProgress
+        let selectedProgress = knownRouteProgress ?? searchedProgress
+        if isNavigating, let selectedProgress {
+            let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 180) }
+            let projectedProgress = RouteGeometryProgress.nearestProgress(
+                of: start, on: routeCoordinates,
+                progressRange: currentRouteProgressSearchRange
+            )?.progress
+            let installedProgress = RouteSearchPolicy.installedRouteProgress(
+                totalDistance: totalDistance,
+                remainingDistance: remainingDistanceMetres,
+                navigationActive: true
+            )
+            let currentProgress = RouteSearchPolicy.currentProgress(
+                projected: projectedProgress ?? installedProgress,
+                persisted: activeRouteLock?.lastRouteProgress ??
+                    routeLockStore.activeLock?.lastRouteProgress,
+                navigationActive: true
+            )
+            guard RouteSearchPolicy.isAhead(
+                candidateProgress: selectedProgress,
+                currentProgress: currentProgress,
+                totalRouteDistance: totalDistance
+            ) else {
+                errorMessage = "Dieser Zwischenstopp liegt inzwischen hinter dir."
+                routeSearchResults.removeAll { result in
+                    let resultCoordinate = result.mapItem.placemark.coordinate
+                    return CLLocation(
+                        latitude: resultCoordinate.latitude,
+                        longitude: resultCoordinate.longitude
+                    ).distance(from: CLLocation(
+                        latitude: coordinate.latitude,
+                        longitude: coordinate.longitude
+                    )) <= 30
+                }
+                return false
+            }
+        }
         insertLockedWaypoint(id: "poi-\(UUID().uuidString)", name: stopName,
                              coordinate: coordinate,
-                             knownProgress: knownRouteProgress ?? searchedProgress,
+                             knownProgress: selectedProgress,
                              kind: .userStop)
         let mutatedLock = routeLockStore.activeLock
         routeSearchResults = []
