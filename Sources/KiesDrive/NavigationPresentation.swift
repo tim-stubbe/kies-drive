@@ -125,16 +125,23 @@ enum CarPlayPlannedStopPolicy {
     /// stop from the currently selected scenario, combine fuel and rest at the
     /// same place, and never offer a stop that is already locked into the route.
     static func actions(plan: LongTripPlan?, existingWaypointIDs: Set<String>,
-                        existingWaypointNames: Set<String>, maximum: Int = 2)
+                        existingWaypointNames: Set<String>, currentRouteProgress: Double,
+                        maximum: Int = 2)
         -> [CarPlayPlannedStopAction] {
-        guard maximum > 0, let result = plan?.results.first else { return [] }
+        guard maximum > 0, currentRouteProgress.isFinite,
+              let result = plan?.results.first else { return [] }
+        let progress = min(1, max(0, currentRouteProgress))
         let normalizedNames = Set(existingWaypointNames.map(normalize))
-        let fuelByID = Dictionary(uniqueKeysWithValues: result.fuelStops.compactMap { stop in
+        let remainingFuelStops = result.fuelStops.filter {
+            isAhead($0.routeProgress, current: progress)
+        }
+        let fuelByID = Dictionary(uniqueKeysWithValues: remainingFuelStops.compactMap { stop in
             stop.candidate.map { ($0.id, stop) }
         })
         var seen = Set<String>()
         var actions = result.breaks.compactMap { plannedBreak -> CarPlayPlannedStopAction? in
-            guard let candidate = plannedBreak.candidate,
+            guard isAhead(plannedBreak.routeProgress, current: progress),
+                  let candidate = plannedBreak.candidate,
                   !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
                   seen.insert(candidate.id).inserted else { return nil }
             let fuelStop = fuelByID[candidate.id]
@@ -143,7 +150,7 @@ enum CarPlayPlannedStopPolicy {
                          afterDriving: plannedBreak.afterDriving,
                          afterDistanceMetres: fuelStop?.afterDistanceMetres)
         }
-        actions += result.fuelStops.compactMap { fuelStop -> CarPlayPlannedStopAction? in
+        actions += remainingFuelStops.compactMap { fuelStop -> CarPlayPlannedStopAction? in
             guard let candidate = fuelStop.candidate,
                   !isExisting(candidate, ids: existingWaypointIDs, names: normalizedNames),
                   seen.insert(candidate.id).inserted else { return nil }
@@ -154,6 +161,10 @@ enum CarPlayPlannedStopPolicy {
             ($0.candidate.timeProgress ?? $0.candidate.progress) <
                 ($1.candidate.timeProgress ?? $1.candidate.progress)
         }.prefix(maximum))
+    }
+
+    private static func isAhead(_ candidate: Double, current: Double) -> Bool {
+        candidate.isFinite && candidate >= min(1, current + 0.000_1)
     }
 
     private static func isExisting(_ candidate: BreakCandidate, ids: Set<String>,

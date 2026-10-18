@@ -379,7 +379,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let actions = CarPlayPlannedStopPolicy.actions(
                 plan: planner.longTripPlan,
                 existingWaypointIDs: Set(lockedWaypoints.map(\.id)),
-                existingWaypointNames: Set(lockedWaypoints.map(\.name))
+                existingWaypointNames: Set(lockedWaypoints.map(\.name)),
+                currentRouteProgress: planner.currentInstalledRouteProgress
             )
             tripActionItems.append(contentsOf: actions.map { action in
                 let title: String

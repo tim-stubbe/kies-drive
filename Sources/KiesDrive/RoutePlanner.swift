@@ -610,6 +610,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
     }
 
+    var currentInstalledRouteProgress: Double {
+        let distanceProgress = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: totalDistance,
+            remainingDistance: remainingDistanceMetres,
+            navigationActive: isNavigating
+        )
+        return RouteSearchPolicy.currentProgress(
+            projected: distanceProgress,
+            persisted: activeRouteLock?.lastRouteProgress,
+            navigationActive: isNavigating
+        )
+    }
+
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position
     /// wird neu gerechnet; dadurch setzt MapKit am passenden aktuellen
     /// Routenabschnitt an, waehrend Pflichtpunkte und Segmentregeln erhalten bleiben.
