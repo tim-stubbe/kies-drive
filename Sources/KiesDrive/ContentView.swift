@@ -905,7 +905,7 @@ struct DriveContentView: View {
     }
 
     private func calculateRouteAndShowOverview(from start: CLLocationCoordinate2D) async {
-        let available = await planner.calculateWithOfflineFallback(from: start, settings: settings)
+        let available = await planner.prepareSelectedDestination(from: start, settings: settings)
         guard available else { return }
         rememberCurrentDestination()
         showCompleteRoute()
@@ -1321,7 +1321,7 @@ struct DriveContentView: View {
                 Button("Route berechnen", systemImage: "arrow.triangle.turn.up.right.diamond.fill") {
                     guard let start = location.location?.coordinate else { planner.errorMessage = "Standort ist noch nicht verfügbar."; return }
                     Task {
-                        if await planner.calculateWithOfflineFallback(from: start, settings: settings) {
+                        if await planner.prepareSelectedDestination(from: start, settings: settings) {
                             showCompleteRoute()
                         }
                     }

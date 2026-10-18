@@ -1214,7 +1214,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func activateDestination(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                              settings: DriveSettings,
-                             requiredWaypoints: [LockedWaypoint] = []) async -> Bool {
+                             requiredWaypoints: [LockedWaypoint] = [],
+                             startGuidance: Bool = true) async -> Bool {
         guard NavigationDestinationCoordinatePolicy.isValid(start) else {
             errorMessage = "Der aktuelle Standort ist nicht gültig. Bitte warte auf ein neues GPS-Signal."
             return false
@@ -1279,8 +1280,31 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) else { return false }
         finishReplacedUsageTripIfNeeded(previousTripID: rollback.lock?.id,
                                         nextTripID: routeLockStore.activeLock?.id)
-        startNavigation(voiceGuidance: settings.voiceGuidance)
+        if startGuidance {
+            startNavigation(voiceGuidance: settings.voiceGuidance)
+        }
         return true
+    }
+
+    /// Plans the currently selected destination for the phone preview. A new
+    /// destination receives a fresh lock before MapKit sees any constraints;
+    /// an unchanged locked destination keeps its mandatory waypoints and can
+    /// use the exact offline fallback.
+    @discardableResult
+    func prepareSelectedDestination(from start: CLLocationCoordinate2D,
+                                    settings: DriveSettings) async -> Bool {
+        guard let destination else { return false }
+        let activeDestination = routeLockStore.activeLock.flatMap { lock in
+            lock.isActive ? lock.destination.clLocationCoordinate : nil
+        }
+        if NavigationDestinationIdentityPolicy.matches(
+            activeDestination, destination.placemark.coordinate
+        ) {
+            return await calculateWithOfflineFallback(from: start, settings: settings)
+        }
+        return await activateDestination(
+            destination, from: start, settings: settings, startGuidance: false
+        )
     }
 
     var nextInstruction: String? {
