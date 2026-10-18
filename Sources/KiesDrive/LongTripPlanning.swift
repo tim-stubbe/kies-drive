@@ -469,15 +469,18 @@ enum BreakAmenitySearchPolicy {
         alreadyDrivenSinceBreak: TimeInterval,
         segments: [(distance: Double, travelTime: TimeInterval)],
         maximum: Int,
+        startingTimeProgress: Double = 0,
         interval: TimeInterval = 2 * 60 * 60
     ) -> [Double] {
         guard drivingTime > 0, maximum > 0, interval > 0 else { return [] }
+        let start = min(1, max(0, startingTimeProgress))
+        let remainingDrivingTime = drivingTime * (1 - start)
         let elapsed = min(interval, max(0, alreadyDrivenSinceBreak))
         var next = max(0, interval - elapsed)
         var values: [Double] = []
-        while next < drivingTime, values.count < maximum {
+        while next < remainingDrivingTime, values.count < maximum {
             values.append(RouteTravelTimeProgress.distanceProgress(
-                timeProgress: next / drivingTime, segments: segments
+                timeProgress: start + next / drivingTime, segments: segments
             ))
             next += interval
         }

@@ -3468,11 +3468,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches / queryCount
         )
         let timeline = legs.map { (distance: $0.distance, travelTime: $0.expectedTravelTime) }
+        let startingTimeProgress = isNavigating && remainingTravelTime > 0 && totalTravelTime > 0
+            ? min(1, max(0, 1 - remainingTravelTime / totalTravelTime)) : 0
         let searchProgresses = BreakAmenitySearchPolicy.distanceProgresses(
             drivingTime: totalTravelTime,
             alreadyDrivenSinceBreak: drivingRestState.continuousDriving,
             segments: timeline,
-            maximum: pointLimit
+            maximum: pointLimit,
+            startingTimeProgress: startingTimeProgress
         )
         let searchPoints = searchProgresses.compactMap {
             RouteGeometryProgress.coordinate(at: $0, on: routeCoordinates)

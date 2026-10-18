@@ -514,6 +514,24 @@ final class LongTripPlanningTests: XCTestCase {
         ).isEmpty)
     }
 
+    func testBreakAmenitySearchNeverQueriesPassedRouteAfterProgress() {
+        let segments: [(distance: Double, travelTime: TimeInterval)] = [
+            (1_200_000, 12 * 3600)
+        ]
+        let progresses = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 12 * 3600,
+            alreadyDrivenSinceBreak: 0,
+            segments: segments,
+            maximum: 4,
+            startingTimeProgress: 0.5
+        )
+
+        XCTAssertEqual(progresses.count, 2)
+        XCTAssertEqual(progresses[0], 2.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(progresses[1], 5.0 / 6.0, accuracy: 0.001)
+        XCTAssertTrue(progresses.allSatisfy { $0 > 0.5 })
+    }
+
     func testRouteGeometryInterpolatesCoordinateAtProgress() throws {
         let route = [
             CLLocationCoordinate2D(latitude: 50, longitude: 8),
