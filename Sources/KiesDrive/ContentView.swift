@@ -24,6 +24,7 @@ struct DriveContentView: View {
     @State private var showRouteDetails = false
     @State private var isFollowingLocation = true
     @State private var isShowingRouteOverview = false
+    @State private var lastReliableCameraHeading: CLLocationDirection?
     @State private var didCenterInitialLocation = false
     @State private var showFavorites = false
     @State private var favorites = DriveFavoriteStore.load()
@@ -535,12 +536,22 @@ struct DriveContentView: View {
             position = .userLocation(followsHeading: true, fallback: .automatic)
             return
         }
-        let heading = NavigationMotionPolicy.reliableCourse(for: currentLocation)
-            ?? location.heading.flatMap { $0.trueHeading >= 0 ? $0.trueHeading : $0.magneticHeading }
-            ?? 0
+        let liveHeading = NavigationMotionPolicy.reliableCourse(for: currentLocation)
+            ?? location.heading.flatMap { heading in
+                if heading.trueHeading >= 0 { return heading.trueHeading }
+                return heading.magneticHeading >= 0 ? heading.magneticHeading : nil
+            }
+        if let liveHeading { lastReliableCameraHeading = liveHeading }
+        let heading = liveHeading ?? lastReliableCameraHeading ?? 0
+        let speed = NavigationMotionPolicy.reliableSpeed(for: currentLocation)
+        let center = NavigationFollowCameraPolicy.center(
+            from: currentLocation.coordinate,
+            headingDegrees: heading,
+            speedMetresPerSecond: speed
+        )
         position = .camera(MapCamera(
-            centerCoordinate: currentLocation.coordinate,
-            distance: 750,
+            centerCoordinate: center,
+            distance: NavigationFollowCameraPolicy.distance(speedMetresPerSecond: speed),
             heading: heading,
             pitch: 58
         ))

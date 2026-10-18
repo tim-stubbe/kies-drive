@@ -177,6 +177,26 @@ final class NavigationPresentationTests: XCTestCase {
             courseDegrees: -1, courseAccuracy: 8, speedMetresPerSecond: 18))
     }
 
+    func testFollowCameraShowsMoreRoadAheadAtMotorwaySpeed() {
+        XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: nil), 700)
+        XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: 30), 1_190)
+        XCTAssertEqual(NavigationFollowCameraPolicy.lookAheadDistance(speedMetresPerSecond: 1), 0)
+        XCTAssertEqual(NavigationFollowCameraPolicy.lookAheadDistance(speedMetresPerSecond: 30), 270)
+
+        let origin = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let north = NavigationFollowCameraPolicy.center(
+            from: origin, headingDegrees: 0, speedMetresPerSecond: 30
+        )
+        XCTAssertGreaterThan(north.latitude, origin.latitude)
+        XCTAssertEqual(north.longitude, origin.longitude, accuracy: 0.000_001)
+    }
+
+    func testFollowCameraClampsImplausibleSpeedAndDistance() {
+        XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: -1), 700)
+        XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: 100), 1_400)
+        XCTAssertEqual(NavigationFollowCameraPolicy.lookAheadDistance(speedMetresPerSecond: 100), 450)
+    }
+
     func testCourseMatchingHandlesWraparoundAndOppositeCarriageway() throws {
         XCTAssertEqual(try XCTUnwrap(NavigationCourseMatchingPolicy.angularDifference(
             courseDegrees: 355, routeCourseDegrees: 5

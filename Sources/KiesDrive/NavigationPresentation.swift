@@ -659,6 +659,44 @@ enum NavigationMotionPolicy {
     }
 }
 
+/// Keeps the driver's marker low in the navigation viewport and exposes more
+/// of the road ahead as speed increases. Fixed zoom and a coordinate centered
+/// exactly on the car hide motorway exits until they are unnecessarily close.
+enum NavigationFollowCameraPolicy {
+    static func distance(speedMetresPerSecond speed: Double?) -> CLLocationDistance {
+        let value = max(0, speed ?? 0)
+        return min(1_400, max(700, 650 + value * 18))
+    }
+
+    static func lookAheadDistance(speedMetresPerSecond speed: Double?) -> CLLocationDistance {
+        let value = max(0, speed ?? 0)
+        guard value >= 2.5 else { return 0 }
+        return min(450, max(90, value * 9))
+    }
+
+    static func center(from coordinate: CLLocationCoordinate2D,
+                       headingDegrees: Double,
+                       speedMetresPerSecond: Double?) -> CLLocationCoordinate2D {
+        let metres = lookAheadDistance(speedMetresPerSecond: speedMetresPerSecond)
+        guard metres > 0, headingDegrees.isFinite else { return coordinate }
+        let radius = 6_371_000.0
+        let angularDistance = metres / radius
+        let bearing = headingDegrees * .pi / 180
+        let latitude = coordinate.latitude * .pi / 180
+        let longitude = coordinate.longitude * .pi / 180
+        let projectedLatitude = asin(
+            sin(latitude) * cos(angularDistance) +
+            cos(latitude) * sin(angularDistance) * cos(bearing)
+        )
+        let projectedLongitude = longitude + atan2(
+            sin(bearing) * sin(angularDistance) * cos(latitude),
+            cos(angularDistance) - sin(latitude) * sin(projectedLatitude)
+        )
+        return .init(latitude: projectedLatitude * 180 / .pi,
+                     longitude: projectedLongitude * 180 / .pi)
+    }
+}
+
 /// Keeps announcement timing stable when Core Location temporarily publishes
 /// an invalid speed (common after tunnels, background resumes and CarPlay
 /// reconnects). A short-lived last trustworthy value is safer than suddenly

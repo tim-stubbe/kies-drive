@@ -90,6 +90,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
     private var packageID: String?
     private var lastOverview = false
     private var lastRouteSignature: String?
+    private var lastReliableHeading: CLLocationDirection?
     var onUserInteraction: (() -> Void)?
 
     func update(_ mapView: MKMapView, package: InstalledOfflineMapPackage, routes: [MKPolyline],
@@ -126,9 +127,22 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
                 mapView.setVisibleMapRect(rect, edgePadding: .init(top: 150, left: 45, bottom: 210, right: 45), animated: lastOverview)
             }
         } else if followsLocation, let currentLocation {
-            let heading = currentLocation.course >= 0 ? currentLocation.course : 0
-            let camera = MKMapCamera(lookingAtCenter: currentLocation.coordinate,
-                                     fromDistance: 750, pitch: 58, heading: heading)
+            if let course = NavigationMotionPolicy.reliableCourse(for: currentLocation) {
+                lastReliableHeading = course
+            }
+            let heading = lastReliableHeading ?? 0
+            let speed = NavigationMotionPolicy.reliableSpeed(for: currentLocation)
+            let center = NavigationFollowCameraPolicy.center(
+                from: currentLocation.coordinate,
+                headingDegrees: heading,
+                speedMetresPerSecond: speed
+            )
+            let camera = MKMapCamera(
+                lookingAtCenter: center,
+                fromDistance: NavigationFollowCameraPolicy.distance(speedMetresPerSecond: speed),
+                pitch: 58,
+                heading: heading
+            )
             mapView.setCamera(camera, animated: false)
         } else if packageID == package.id, routes.isEmpty, currentLocation == nil {
             let bounds = package.manifest.bounds
