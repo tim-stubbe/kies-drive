@@ -69,6 +69,10 @@ enum DestinationSearchRankingPolicy {
     private static func normalised(_ value: String) -> String {
         value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Brand names vary between straight/curly apostrophes or omit
+            // them entirely (for example McDonald's/McDonalds). Treat those
+            // spellings as the same POI instead of creating duplicate rows.
+            .replacingOccurrences(of: #"['’]"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"[^\p{L}\p{N}]+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }

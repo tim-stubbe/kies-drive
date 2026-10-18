@@ -1008,6 +1008,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteSearches = searches
         for item in await boundedMapSearchResults(searches) {
             let c = item.placemark.coordinate
+            // Overlapping search regions commonly return the same chain or
+            // service-area POI with a few metres of coordinate drift. Merge
+            // those before launching expensive driving-detour requests.
+            guard !matches.values.contains(where: { existing in
+                DestinationSearchRankingPolicy.isDuplicate(
+                    name: item.name, coordinate: c,
+                    existingName: existing.name,
+                    existingCoordinate: existing.placemark.coordinate,
+                    toleranceMetres: 80
+                )
+            }) else { continue }
             matches["\(item.name ?? ""):\(c.latitude):\(c.longitude)"] = item
         }
         switch RouteSearchCompletionPolicy.disposition(

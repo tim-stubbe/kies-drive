@@ -2593,6 +2593,21 @@ final class NavigationPresentationTests: XCTestCase {
         ), .publish)
     }
 
+    func testRouteSearchCanMergeSameNamedPoiCoordinateDrift() {
+        let first = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
+        let nearby = CLLocationCoordinate2D(latitude: 50.0005, longitude: 8.0000)
+        XCTAssertTrue(DestinationSearchRankingPolicy.isDuplicate(
+            name: "McDonald’s", coordinate: first,
+            existingName: "McDonalds", existingCoordinate: nearby,
+            toleranceMetres: 80
+        ))
+        XCTAssertFalse(DestinationSearchRankingPolicy.isDuplicate(
+            name: "McDonald’s", coordinate: first,
+            existingName: "McDonalds", existingCoordinate: nearby,
+            toleranceMetres: 40
+        ))
+    }
+
     func testRouteSearchCompletionFinishesSpinnerWhenOwnedSearchBecomesStale() {
         let request = UUID()
         XCTAssertEqual(RouteSearchCompletionPolicy.disposition(
