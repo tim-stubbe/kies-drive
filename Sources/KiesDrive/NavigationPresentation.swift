@@ -2457,6 +2457,14 @@ enum RouteStopEndpointPolicy {
     }
 }
 
+enum NavigationDestinationCoordinatePolicy {
+    static func isValid(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        coordinate.latitude.isFinite && coordinate.longitude.isFinite &&
+            (-90...90).contains(coordinate.latitude) &&
+            (-180...180).contains(coordinate.longitude)
+    }
+}
+
 enum SpeedLimitSelectionPolicy {
     /// Selects the closest sampled speed-limit point near the current route
     /// progress. Pure geometric proximity can pick a later visit of the same

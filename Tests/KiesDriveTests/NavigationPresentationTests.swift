@@ -3842,6 +3842,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(RouteStopEndpointPolicy.isValid(.init(latitude: 50, longitude: .infinity)))
     }
 
+    func testNavigationDestinationRequiresValidOriginAndTargetCoordinates() {
+        XCTAssertTrue(NavigationDestinationCoordinatePolicy.isValid(
+            .init(latitude: 50.0147, longitude: 8.3522)
+        ))
+        XCTAssertFalse(NavigationDestinationCoordinatePolicy.isValid(
+            .init(latitude: .nan, longitude: 8.3522)
+        ))
+        XCTAssertFalse(NavigationDestinationCoordinatePolicy.isValid(
+            .init(latitude: -91, longitude: 8.3522)
+        ))
+        XCTAssertFalse(NavigationDestinationCoordinatePolicy.isValid(
+            .init(latitude: 50.0147, longitude: 181)
+        ))
+    }
+
     func testRouteSearchCompletionFinishesSpinnerWhenOwnedSearchBecomesStale() {
         let request = UUID()
         XCTAssertEqual(RouteSearchCompletionPolicy.disposition(

@@ -1117,6 +1117,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func activateDestination(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                              settings: DriveSettings,
                              requiredWaypoints: [LockedWaypoint] = []) async -> Bool {
+        guard NavigationDestinationCoordinatePolicy.isValid(start) else {
+            errorMessage = "Der aktuelle Standort ist nicht gültig. Bitte warte auf ein neues GPS-Signal."
+            return false
+        }
+        guard NavigationDestinationCoordinatePolicy.isValid(item.placemark.coordinate) else {
+            errorMessage = "Das ausgewählte Ziel hat keinen gültigen Standort."
+            return false
+        }
         let activationGeneration = UUID()
         // A destination replacement started during guidance belongs to that
         // exact session. Stopping or arriving while MapKit is still working
