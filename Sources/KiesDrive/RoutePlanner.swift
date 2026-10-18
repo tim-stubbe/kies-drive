@@ -2475,6 +2475,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
 
         guard settings.voiceGuidance else { return }
+        announceOfflineManeuver(progress, guidanceSpeedMps: guidanceSpeedMps)
+    }
+
+    private func announceOfflineManeuver(
+        _ progress: OfflineGuidanceProgress,
+        guidanceSpeedMps: Double
+    ) {
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
         if recordManeuverTransition(
             key: key,
@@ -2503,6 +2510,27 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             speech, priority: .forAnnouncementStage(stage),
             maneuverClaim: .init(key: key, stage: stage, instruction: progress.instruction,
                                  distance: progress.distanceToManeuver, issuedAt: Date())
+        )
+    }
+
+    private func currentOfflineGuidanceProgress(at location: CLLocation)
+        -> OfflineGuidanceProgress? {
+        guard let cache = offlineRoute else { return nil }
+        let steps = cache.legs.flatMap(\.steps).compactMap { step -> OfflineGuidanceStep? in
+            guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
+            return .init(
+                instruction: step.instructions,
+                distance: step.distance,
+                coordinates: coordinates.map(\.clLocationCoordinate)
+            )
+        }
+        return OfflineGuidanceEngine.progress(
+            at: location.coordinate,
+            currentIndex: navigationStepCursor,
+            steps: steps,
+            transitionRadius: max(8, location.horizontalAccuracy * 1.5),
+            allowsFullRecovery: false,
+            courseDegrees: NavigationMotionPolicy.reliableCourse(for: location)
         )
     }
 
@@ -3148,15 +3176,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             voiceGuidance: settings.voiceGuidance,
             guidanceReliable: isManeuverGuidanceReliable,
             hasUsableLocation: lastAcceptedNavigationLocation != nil
-        ), let location = lastAcceptedNavigationLocation,
-           let progress = liveNavigationProgress(at: location) else { return }
-        updateNextManeuver(using: progress)
+        ), let location = lastAcceptedNavigationLocation else { return }
         let speed = NavigationGuidanceSpeedPolicy.effective(
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,
             previousAt: lastReliableGuidanceSpeedAt,
             now: location.timestamp
         )
+        if isUsingOfflineGuidance {
+            guard let progress = currentOfflineGuidanceProgress(at: location) else { return }
+            announceOfflineManeuver(progress, guidanceSpeedMps: speed)
+            return
+        }
+        guard let progress = liveNavigationProgress(at: location) else { return }
+        updateNextManeuver(using: progress)
         announce(progress, guidanceSpeedMps: speed)
     }
 
