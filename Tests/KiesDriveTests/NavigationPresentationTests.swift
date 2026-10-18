@@ -117,6 +117,28 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(secondToggle, [false, false])
     }
 
+    func testGlobalRouteOptionRollbackUsesLastCalculatedLockInsteadOfNewToggleValue() {
+        let baseline = RouteOptionSettingsBaselinePolicy.baseline(
+            waypointID: nil,
+            activeDefaults: .init(avoidTolls: false, avoidHighways: true),
+            currentAvoidTolls: true,
+            currentAvoidHighways: false
+        )
+
+        XCTAssertEqual(baseline, .init(avoidTolls: false, avoidHighways: true))
+    }
+
+    func testScopedRouteOptionChangeDoesNotReplaceGlobalSettingsBaseline() {
+        let baseline = RouteOptionSettingsBaselinePolicy.baseline(
+            waypointID: "slovenia",
+            activeDefaults: .init(avoidTolls: false, avoidHighways: true),
+            currentAvoidTolls: true,
+            currentAvoidHighways: false
+        )
+
+        XCTAssertEqual(baseline, .init(avoidTolls: true, avoidHighways: false))
+    }
+
     func testDestinationSearchRanksExactAndAddressMatchesBeforeLooseResults() {
         XCTAssertLessThan(
             DestinationSearchRankingPolicy.relevanceScore(

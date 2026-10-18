@@ -919,12 +919,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         let mutationGeneration = UUID()
         routeOptionMutationGeneration = mutationGeneration
+        let settingsBaseline = RouteOptionSettingsBaselinePolicy.baseline(
+            waypointID: waypointID,
+            activeDefaults: routeLockStore.activeLock?.defaultOptions,
+            currentAvoidTolls: settings.avoidTolls,
+            currentAvoidHighways: settings.avoidHighways
+        )
         let rollback = RouteMutationBaselinePolicy.choose(
             existing: routeOptionMutationSnapshot,
             current: RouteOptionMutationSnapshot(
                 lock: routeLockStore.activeLock,
-                avoidTolls: settings.avoidTolls,
-                avoidHighways: settings.avoidHighways
+                avoidTolls: settingsBaseline.avoidTolls,
+                avoidHighways: settingsBaseline.avoidHighways
             )
         )
         routeOptionMutationSnapshot = rollback

@@ -1706,6 +1706,28 @@ enum RouteOptionScopePolicy {
     }
 }
 
+enum RouteOptionSettingsBaselinePolicy {
+    /// SwiftUI publishes a Toggle's new value before its onChange callback.
+    /// For global route options the active lock therefore is the authoritative
+    /// last-calculated settings baseline; reading DriveSettings here would
+    /// snapshot the unverified new switch value and make rollback inconsistent.
+    static func baseline(
+        waypointID: String?,
+        activeDefaults: LockedRouteOptions?,
+        currentAvoidTolls: Bool,
+        currentAvoidHighways: Bool
+    ) -> LockedRouteOptions {
+        if RouteOptionScopePolicy.mutatesGlobalSettings(waypointID: waypointID),
+           let activeDefaults {
+            return activeDefaults
+        }
+        return .init(
+            avoidTolls: currentAvoidTolls,
+            avoidHighways: currentAvoidHighways
+        )
+    }
+}
+
 /// Slow route enrichment (fuel, amenities, speed limits and tolls) may only
 /// publish while both its route and its own request are still current.
 enum RouteEnrichmentPublicationPolicy {
