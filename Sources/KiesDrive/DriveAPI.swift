@@ -220,7 +220,9 @@ enum DriveAPI {
         let boundedRadius = min(12, max(3, radiusKm))
         let path = String(format: "/api/navigation/fuel-stations?lat=%.6f&lon=%.6f&radius_km=%.1f&fuel=%@",
                           coordinate.latitude, coordinate.longitude, boundedRadius, fuel.apiValue)
-        let payload = try await data(for: try request(path: path))
+        var stationRequest = try request(path: path)
+        stationRequest.timeoutInterval = FuelStationQueryPolicy.requestTimeout
+        let payload = try await data(for: stationRequest)
         return try JSONDecoder().decode(FuelStationEnvelope.self, from: payload).stations
     }
 

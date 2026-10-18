@@ -390,6 +390,8 @@ enum FuelStationSelectionPolicy {
 
 enum FuelStationQueryPolicy {
     static let maximumSampleCount = 6
+    static let maximumResultsPerSample = 24
+    static let requestTimeout: TimeInterval = 8
 
     static func sampleCount(remainingDistanceMetres: CLLocationDistance) -> Int {
         guard remainingDistanceMetres.isFinite, remainingDistanceMetres > 0 else { return 2 }

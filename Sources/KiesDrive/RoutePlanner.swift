@@ -3422,7 +3422,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         var unique: [String: FuelStation] = [:]
         await withTaskGroup(of: [FuelStation].self) { group in
             for point in points { group.addTask { (try? await DriveAPI.stations(near: point, fuel: fuel, radiusKm: 8)) ?? [] } }
-            for await batch in group { for station in batch { unique[station.id] = station } }
+            for await batch in group {
+                // A malformed or unexpectedly broad backend response must not
+                // turn a bounded route query back into hundreds of objects to
+                // sort and project on the main actor.
+                for station in batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample) {
+                    unique[station.id] = station
+                }
+            }
         }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
