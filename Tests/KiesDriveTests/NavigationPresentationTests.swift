@@ -72,6 +72,14 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayNeverTurnsUnknownManeuverDistanceIntoZero() {
+        XCTAssertNil(CarPlayManeuverEstimatePolicy.distance(nil))
+        XCTAssertNil(CarPlayManeuverEstimatePolicy.distance(.nan))
+        XCTAssertNil(CarPlayManeuverEstimatePolicy.distance(-1))
+        XCTAssertEqual(CarPlayManeuverEstimatePolicy.distance(0), 0)
+        XCTAssertEqual(CarPlayManeuverEstimatePolicy.distance(450), 450)
+    }
+
     func testCarPlayBreakReminderKeepsConcreteTextAndShortFallback() {
         XCTAssertEqual(
             CarPlayBreakReminderPresentationPolicy.titleVariants(

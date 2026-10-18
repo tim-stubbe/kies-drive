@@ -1120,8 +1120,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             maneuver.notificationInstructionVariants = variants
             let presentation = NavigationManeuverPresentation(instruction)
             maneuver.symbolImage = UIImage(systemName: presentation.direction.symbolName)
-            if index == 0 {
-                maneuver.initialTravelEstimates = maneuverTravelEstimates()
+            if index == 0, let estimates = maneuverTravelEstimates() {
+                maneuver.initialTravelEstimates = estimates
             }
             return maneuver
         }
@@ -1133,14 +1133,17 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         // CPManeuver. Trip-level distance and ETA are still safe, useful
         // context and must continue updating while MapKit searches for the
         // replacement route or cached guidance is being rejoined.
-        if let maneuver = session.upcomingManeuvers.first {
-            session.updateEstimates(maneuverTravelEstimates(), for: maneuver)
+        if let maneuver = session.upcomingManeuvers.first,
+           let estimates = maneuverTravelEstimates() {
+            session.updateEstimates(estimates, for: maneuver)
         }
         if let trip = activeTrip { mapTemplate?.updateEstimates(travelEstimates(), for: trip) }
     }
 
-    private func maneuverTravelEstimates() -> CPTravelEstimates {
-        let distance = max(RoutePlanner.shared.nextManeuverDistance ?? 0, 0)
+    private func maneuverTravelEstimates() -> CPTravelEstimates? {
+        guard let distance = CarPlayManeuverEstimatePolicy.distance(
+            RoutePlanner.shared.nextManeuverDistance
+        ) else { return nil }
         let speed = LocationService.shared.location.flatMap(NavigationMotionPolicy.reliableSpeed(for:)) ?? 0
         return CPTravelEstimates(
             distanceRemaining: Measurement(value: distance, unit: UnitLength.meters),

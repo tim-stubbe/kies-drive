@@ -929,6 +929,16 @@ enum CarPlayGuidancePresentationPolicy {
     }
 }
 
+enum CarPlayManeuverEstimatePolicy {
+    /// Missing geometry means the distance is unknown, not zero metres. A
+    /// fabricated zero makes CarPlay present "Route folgen" like an immediate
+    /// turn. Preserve a real zero only for an explicit reached maneuver.
+    static func distance(_ value: CLLocationDistance?) -> CLLocationDistance? {
+        guard let value, value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+}
+
 enum CarPlayRouteRecoveryPresentationState: Equatable {
     case normal
     case matchingPosition
