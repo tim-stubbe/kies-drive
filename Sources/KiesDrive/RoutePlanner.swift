@@ -880,6 +880,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func addRouteStop(_ item: MKMapItem, from start: CLLocationCoordinate2D,
                       settings: DriveSettings) async -> Bool {
+        let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousLock = routeLockStore.activeLock
         let previousSearchResults = routeSearchResults
         let previousSearchQuery = routeSearchQuery
@@ -913,7 +914,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let mutatedLock = routeLockStore.activeLock
         routeSearchResults = []
         isSearchingAlongRoute = false
-        let succeeded = await calculate(from: start, settings: settings)
+        let succeeded = await calculate(
+            from: start, settings: settings,
+            navigationSession: navigationSession
+        )
         guard succeeded else {
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
@@ -943,11 +947,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
               routeLockStore.activeLock?.waypoints.contains(where: { $0.id == id }) == true else {
             return false
         }
+        let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousLock = routeLockStore.activeLock
         routeLockStore.update { $0.removeWaypoint(id: id) }
         activeRouteLock = routeLockStore.activeLock
         let mutatedLock = routeLockStore.activeLock
-        guard await calculate(from: start, settings: settings) else {
+        guard await calculate(
+            from: start, settings: settings,
+            navigationSession: navigationSession
+        ) else {
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: routeLockStore.activeLock, mutated: mutatedLock
             ) else { return false }
@@ -2923,6 +2931,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D,
                         settings: DriveSettings) async -> Bool {
+        let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousStations = viaStations
         let previousLock = routeLockStore.activeLock
         if let index = viaStations.firstIndex(where: { $0.id == station.id }) {
@@ -2941,7 +2950,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         let mutatedStations = viaStations
         let mutatedLock = routeLockStore.activeLock
-        guard await calculate(from: start, settings: settings) else {
+        guard await calculate(
+            from: start, settings: settings,
+            navigationSession: navigationSession
+        ) else {
             guard RouteMutationRollbackPolicy.shouldRollback(
                 current: viaStations, mutated: mutatedStations
             ), RouteMutationRollbackPolicy.shouldRollback(
@@ -2964,6 +2976,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         if let station = stations.first(where: { $0.id == candidate.id }) {
             guard !viaStations.contains(where: { $0.id == station.id }) else { return true }
+            let navigationSession = isNavigating ? navigationSessionGeneration : nil
             let previousStations = viaStations
             let previousLock = routeLockStore.activeLock
             viaStations.append(station)
@@ -2979,7 +2992,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
             let mutatedStations = viaStations
             let mutatedLock = routeLockStore.activeLock
-            guard await calculate(from: start, settings: settings) else {
+            guard await calculate(
+                from: start, settings: settings,
+                navigationSession: navigationSession
+            ) else {
                 guard RouteMutationRollbackPolicy.shouldRollback(
                     current: viaStations, mutated: mutatedStations
                 ), RouteMutationRollbackPolicy.shouldRollback(
