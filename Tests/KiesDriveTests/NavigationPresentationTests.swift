@@ -1971,6 +1971,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(CarPlayRouteOptionPresentationPolicy.symbol(enabled: false), "circle")
     }
 
+    func testCachedFuelPriceIsNeverPresentedAsCurrent() {
+        XCTAssertEqual(
+            FuelStationPricePresentationPolicy.compact(price: 1.899, cached: false),
+            "1.899 €"
+        )
+        XCTAssertEqual(
+            FuelStationPricePresentationPolicy.compact(price: 1.899, cached: true),
+            "Gespeichert · 1.899 €"
+        )
+        XCTAssertEqual(
+            FuelStationPricePresentationPolicy.sourceLabel(fuel: .diesel, cached: true),
+            "Zuletzt gespeicherter Preis · Diesel"
+        )
+    }
+
     func testCarPlayPriorityKeepsRouteOptionsAheadOfComfortSearch() {
         let allocation = CarPlayListPriorityPolicy.allocation(
             groupCounts: [2, 4, 2, 3, 3, 7, 3], maximum: 12

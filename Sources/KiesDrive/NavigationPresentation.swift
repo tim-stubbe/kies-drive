@@ -181,6 +181,18 @@ enum CarPlayRouteOptionPresentationPolicy {
     }
 }
 
+enum FuelStationPricePresentationPolicy {
+    static func compact(price: Double, cached: Bool) -> String {
+        let value = String(format: "%.3f €", price)
+        return cached ? "Gespeichert · \(value)" : value
+    }
+
+    static func sourceLabel(fuel: FuelKind, cached: Bool) -> String {
+        cached ? "Zuletzt gespeicherter Preis · \(fuel.label)"
+            : "Aktueller Serverpreis · \(fuel.label)"
+    }
+}
+
 enum CarPlayBreakReminderPresentationPolicy {
     static func titleVariants(for message: String) -> [String] {
         let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)

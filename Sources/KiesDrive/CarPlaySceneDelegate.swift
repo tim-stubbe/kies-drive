@@ -446,9 +446,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         }
         nearbyFuelItems.append(contentsOf: planner.stations.prefix(3).map { station in
             let selected = planner.isRouteStopSelected(id: station.id)
+            let price = FuelStationPricePresentationPolicy.compact(
+                price: station.price, cached: planner.stationPricesAreCached
+            )
             let detail = selected
-                ? String(format: "%.3f € · hinzugefügt", station.price)
-                : String(format: "%.3f € · %.1f km", station.price, station.distanceKm)
+                ? "\(price) · hinzugefügt"
+                : String(format: "%@ · %.1f km", price, station.distanceKm)
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
                                   detailText: detail,
                                   image: UIImage(systemName: selected

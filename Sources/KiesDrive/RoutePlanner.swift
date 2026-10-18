@@ -273,6 +273,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var legs: [MKRoute] = []
     @Published var alternatives: [MKRoute] = []
     @Published var stations: [FuelStation] = []
+    @Published private(set) var stationPricesAreCached = false
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isRecalculating = false
@@ -561,6 +562,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         remainingDistanceMetres = totalDistance
         remainingTravelTime = totalTravelTime
         stations = []
+        stationPricesAreCached = false
         amenityBreakCandidates = []
         speedLimitPoints = []
         speedLimits = []
@@ -733,6 +735,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         alternatives = []
         comparisonRoute = nil
         stations = []
+        stationPricesAreCached = false
         viaStations = []
         amenityBreakCandidates = []
         measuredBreakDetours = [:]
@@ -2070,6 +2073,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // a successful reroute can briefly recommend a station, break,
             // speed limit or toll amount from the abandoned road.
             stations = []
+            stationPricesAreCached = false
             amenityBreakCandidates = []
             speedLimitPoints = []
             speedLimits = []
@@ -2545,6 +2549,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         resetLiveNavigationProgress()
         errorMessage = nil
         isUsingOfflineGuidance = true
+        // Locations remain useful during an outage, while price and opening
+        // state are only the last downloaded snapshot. Presentation surfaces
+        // must therefore mark this data as cached rather than current.
+        stations = cache.stations
+        stationPricesAreCached = !cache.stations.isEmpty
         let cachedGuidanceSteps = cache.legs.flatMap(\.steps).compactMap { step -> OfflineGuidanceStep? in
             guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
             return .init(instruction: step.instructions, distance: step.distance,
@@ -4987,6 +4996,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }?.station
         }
+        stationPricesAreCached = false
     }
 
     private func isCurrentStationLoad(routeGeneration: UUID, loadGeneration: UUID) -> Bool {

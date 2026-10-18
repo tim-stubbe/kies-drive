@@ -559,6 +559,10 @@ struct DriveContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Tanken entlang der Route", systemImage: "fuelpump.fill")
                 .font(.headline).foregroundStyle(Color.kiesForest)
+            if planner.stationPricesAreCached {
+                Label("Offline verfügbar · Preise zuletzt gespeichert", systemImage: "clock.arrow.circlepath")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             ForEach(planner.stations.prefix(5)) { station in
                 Button { selectedStation = station } label: {
                     HStack {
@@ -568,7 +572,9 @@ struct DriveContentView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(String(format: "%.3f €", station.price)).font(.subheadline.bold()).monospacedDigit()
+                        Text(FuelStationPricePresentationPolicy.compact(
+                            price: station.price, cached: planner.stationPricesAreCached
+                        )).font(.subheadline.bold()).monospacedDigit()
                         Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
                     }
                 }
@@ -1176,7 +1182,9 @@ struct DriveContentView: View {
                 }
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Aktueller Serverpreis · \(settings.fuel.label)")
+                        Text(FuelStationPricePresentationPolicy.sourceLabel(
+                            fuel: settings.fuel, cached: planner.stationPricesAreCached
+                        ))
                             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         Text(station.price.formatted(.number.locale(Locale(identifier: "de_DE"))
                             .precision(.fractionLength(3))) + " €")
@@ -1440,7 +1448,9 @@ struct DriveContentView: View {
                                     Text("\(station.street), \(station.place)").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(String(format: "%.3f €", station.price)).bold().monospacedDigit()
+                                Text(FuelStationPricePresentationPolicy.compact(
+                                    price: station.price, cached: planner.stationPricesAreCached
+                                )).bold().monospacedDigit()
                             }
                         }
                         .buttonStyle(.plain)
@@ -1626,8 +1636,10 @@ struct DriveContentView: View {
                         Button { selectedStation = station } label: {
                             VStack(spacing: 2) {
                                 Image(systemName: "fuelpump.fill").padding(8).background(.green, in: Circle()).foregroundStyle(.white)
-                                Text(station.price.formatted(.number.locale(Locale(identifier: "de_DE"))
-                                    .precision(.fractionLength(3))))
+                                Text(planner.stationPricesAreCached
+                                     ? "gespeichert"
+                                     : station.price.formatted(.number.locale(Locale(identifier: "de_DE"))
+                                        .precision(.fractionLength(3))))
                                     .font(.caption.bold()).padding(.horizontal, 5)
                                     .background(.regularMaterial, in: Capsule())
                             }
