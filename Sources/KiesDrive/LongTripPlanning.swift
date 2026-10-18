@@ -733,7 +733,17 @@ enum DrivingRestPolicy {
 
         let priorSample = state.lastSampleAt
         let interval = priorSample.map { date.timeIntervalSince($0) } ?? 0
-        guard interval >= 0 else { return state }
+        guard interval >= 0 else {
+            // Preserve already accumulated driving time, but rebase the
+            // sampling clock after an NTP/device-clock rollback. Keeping the
+            // future timestamp would freeze fatigue tracking until wall time
+            // catches up; treating the gap as driving or rest would invent
+            // evidence we do not have.
+            state.lastSampleAt = date
+            state.stationarySince = speedMetresPerSecond < movingThresholdMetresPerSecond
+                ? date : nil
+            return state
+        }
         let wasStationary = state.stationarySince != nil
         state.lastSampleAt = date
 

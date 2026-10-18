@@ -655,6 +655,30 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 900)
     }
 
+    func testDrivingRestPolicyRebasesAfterClockRollbackWithoutLosingFatigue() {
+        let tripID = UUID()
+        let futureSample = Date(timeIntervalSince1970: 10_100)
+        let correctedTime = Date(timeIntervalSince1970: 10_000)
+        let existing = DrivingRestState(
+            tripID: tripID, continuousDriving: 90 * 60,
+            lastSampleAt: futureSample, stationarySince: nil
+        )
+
+        var state = DrivingRestPolicy.updated(
+            existing, tripID: tripID, at: correctedTime,
+            speedMetresPerSecond: 20
+        )
+        XCTAssertEqual(state.continuousDriving, 90 * 60)
+        XCTAssertEqual(state.lastSampleAt, correctedTime)
+        XCTAssertNil(state.stationarySince)
+
+        state = DrivingRestPolicy.updated(
+            state, tripID: tripID, at: correctedTime.addingTimeInterval(60),
+            speedMetresPerSecond: 20
+        )
+        XCTAssertEqual(state.continuousDriving, 91 * 60)
+    }
+
     func testPausedNavigationCountsAsRestOnlyWhenVehicleWasObservedStationary() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 20_000)
