@@ -1594,7 +1594,14 @@ enum NavigationStepSelectionPolicy {
             !metrics[$0].hasUsableGeometry && metrics[$0].hasManeuverInstruction
         })
         let recoveryCandidateIsSafe: (Int) -> Bool = { index in
-            protectedManeuverBoundary.map { index <= $0 } ?? true
+            // Full recovery is used only after a verified long location gap
+            // or for the initial match of a restored offline trip. The car
+            // may legitimately already be beyond an instruction-only marker;
+            // keeping that marker as an absolute wall would prevent the route
+            // from ever resuming. Ordinary continuous updates retain the wall
+            // and cross it only through the junction evidence below.
+            if allowsFullRecovery { return true }
+            return protectedManeuverBoundary.map { index <= $0 } ?? true
         }
 
         // Only the first fix of a restored offline route may search the whole

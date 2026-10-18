@@ -3199,6 +3199,32 @@ final class NavigationPresentationTests: XCTestCase {
         ), 42)
     }
 
+    func testFullRecoveryCanResumeBeyondGeometryFreeManeuver() {
+        let metrics = [
+            NavigationStepMetric(
+                distanceFromRoute: 1_500, remainingOnStep: 500, stepDistance: 2_000
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: .greatestFiniteMagnitude,
+                remainingOnStep: .greatestFiniteMagnitude,
+                stepDistance: 0, hasUsableGeometry: false,
+                hasManeuverInstruction: true
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: 9, remainingOnStep: 700, stepDistance: 900,
+                courseDifferenceDegrees: 3
+            ),
+        ]
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12,
+            allowsFullRecovery: true
+        ), 2, "A restored trip must match the road reached during the location gap")
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12
+        ), 0, "Continuous guidance must still protect the unseen maneuver")
+    }
+
     func testOfflineResumeEstimateStartsAtPersistedStepInsteadOfWholeTrip() {
         let estimate = OfflineGuidanceResumeEstimatePolicy.estimate(
             stepDistances: [10_000, 20_000, 30_000, 40_000],
