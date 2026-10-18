@@ -1936,6 +1936,27 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollEvidenceCorroborationIgnoresTrackingButNotAnotherPage() {
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider",
+            sourceURL: "https://Example.test:443/tolls/2026/?utm_source=search#price",
+            corroboratingSourceURLs: ["https://example.test/tolls/2026"]
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Unrelated page",
+            sourceURL: "https://example.test/tolls/2025",
+            corroboratingSourceURLs: ["https://example.test/tolls/2026"]
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Credential URL",
+            sourceURL: "https://user:secret@example.test/tolls/2026",
+            corroboratingSourceURLs: ["https://example.test/tolls/2026"]
+        ))
+    }
+
     func testShortTripDoesNotAddBreak() {
         XCTAssertTrue(BreakPlanner().plan(drivingTime: 90 * 60, candidates: []).isEmpty)
     }

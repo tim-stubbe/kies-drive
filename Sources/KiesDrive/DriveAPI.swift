@@ -504,11 +504,20 @@ enum TollEvidenceValidator {
     private static func normalizedURL(_ value: String) -> String? {
         guard var components = URLComponents(string: value),
               components.scheme?.lowercased() == "https",
-              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+              let host = components.host?.lowercased(), !host.isEmpty,
+              components.user == nil, components.password == nil else { return nil }
         components.scheme = "https"
         components.host = host
+        // Search results often append tracking parameters, fragments or a
+        // cosmetic trailing slash to the same official page. Ignore only
+        // those transport details; the page path itself remains strict.
+        components.query = nil
         components.fragment = nil
         if components.path.isEmpty { components.path = "/" }
+        if components.path.count > 1, components.path.hasSuffix("/") {
+            components.path.removeLast()
+        }
+        if components.port == 443 { components.port = nil }
         return components.url?.absoluteString
     }
 }
