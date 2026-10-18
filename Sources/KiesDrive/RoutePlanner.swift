@@ -239,7 +239,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ))
         }
         set {
-            drivingRestState.deliveredReminderRawValues = Set(newValue.map(\.rawValue))
+            guard let updated = DrivingRestReminderStatePolicy.changedRawValues(
+                current: drivingRestState.deliveredReminderRawValues, stages: newValue
+            ) else { return }
+            drivingRestState.deliveredReminderRawValues = updated
             drivingRestStore.save(drivingRestState)
         }
     }

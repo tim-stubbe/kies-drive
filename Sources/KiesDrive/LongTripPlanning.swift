@@ -689,6 +689,15 @@ enum NavigationBreakReminderPolicy {
     }
 }
 
+enum DrivingRestReminderStatePolicy {
+    static func changedRawValues(
+        current: Set<Int>, stages: Set<NavigationBreakReminderPolicy.Stage>
+    ) -> Set<Int>? {
+        let updated = Set(stages.map(\.rawValue))
+        return updated == current ? nil : updated
+    }
+}
+
 struct DrivingRestStateStore {
     let defaults: UserDefaults
     var key = "drive.longTrip.drivingRestState"

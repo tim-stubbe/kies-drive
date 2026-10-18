@@ -3,6 +3,23 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testBreakReminderStateWritesOnlyRealChanges() {
+        XCTAssertNil(DrivingRestReminderStatePolicy.changedRawValues(
+            current: [], stages: []
+        ))
+        XCTAssertEqual(DrivingRestReminderStatePolicy.changedRawValues(
+            current: [], stages: [.plan]
+        ), [NavigationBreakReminderPolicy.Stage.plan.rawValue])
+        XCTAssertNil(DrivingRestReminderStatePolicy.changedRawValues(
+            current: [NavigationBreakReminderPolicy.Stage.plan.rawValue],
+            stages: [.plan]
+        ))
+        XCTAssertEqual(DrivingRestReminderStatePolicy.changedRawValues(
+            current: [NavigationBreakReminderPolicy.Stage.plan.rawValue],
+            stages: []
+        ), [])
+    }
+
     func testBreakCandidateShortlistIsBoundedAndDistributed() {
         let candidates = (0..<18).map { index in
             BreakCandidate(id: "candidate-\(index)", name: "Halt \(index)", coordinate: .init(),
