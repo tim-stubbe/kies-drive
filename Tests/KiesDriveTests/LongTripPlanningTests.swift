@@ -546,6 +546,25 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertTrue(state.deliveredReminderRawValues.isEmpty)
     }
 
+    func testManualBreakConfirmationRequiresFreshStationaryFix() {
+        let now = Date(timeIntervalSince1970: 19_000)
+        XCTAssertTrue(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: now.addingTimeInterval(-10),
+            reliableSpeedMetresPerSecond: 0, now: now
+        ))
+        XCTAssertFalse(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: now.addingTimeInterval(-10),
+            reliableSpeedMetresPerSecond: 15, now: now
+        ))
+        XCTAssertFalse(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: now.addingTimeInterval(-31),
+            reliableSpeedMetresPerSecond: 0, now: now
+        ))
+        XCTAssertFalse(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: nil, reliableSpeedMetresPerSecond: nil, now: now
+        ))
+    }
+
     func testDrivingRestPolicyDoesNotInventMovementAcrossLongUnknownGap() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 20_000)

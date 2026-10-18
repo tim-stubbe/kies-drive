@@ -673,6 +673,23 @@ enum DrivingRestPolicy {
     }
 }
 
+enum DrivingRestConfirmationPolicy {
+    static let maximumLocationAge: TimeInterval = 30
+
+    /// Manual confirmation is exposed on both the phone and CarPlay. It may
+    /// reset the fatigue timer only from a recent, trustworthy stationary
+    /// sample; a missing or old zero-speed fix is not evidence that the car
+    /// is still parked.
+    static func mayConfirm(sampleAt: Date?, reliableSpeedMetresPerSecond: Double?,
+                           now: Date, maximumAge: TimeInterval = maximumLocationAge) -> Bool {
+        guard let sampleAt, let speed = reliableSpeedMetresPerSecond,
+              speed.isFinite, speed >= 0,
+              speed < DrivingRestPolicy.movingThresholdMetresPerSecond else { return false }
+        let age = now.timeIntervalSince(sampleAt)
+        return age >= -5 && age <= max(0, maximumAge)
+    }
+}
+
 enum NavigationBreakReminderPolicy {
     enum Stage: Int, Hashable, CaseIterable { case plan, soon, due }
 

@@ -513,10 +513,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             errorMessage = "Es ist keine aktive Reise vorhanden."
             return false
         }
-        if let location = lastAcceptedNavigationLocation,
-           let speed = NavigationMotionPolicy.reliableSpeed(for: location),
-           speed >= DrivingRestPolicy.movingThresholdMetresPerSecond {
-            errorMessage = "Eine Pause kann nur im Stand bestätigt werden."
+        let reliableSpeed = lastAcceptedNavigationLocation.flatMap(
+            NavigationMotionPolicy.reliableSpeed(for:)
+        )
+        guard DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: lastAcceptedNavigationLocation?.timestamp,
+            reliableSpeedMetresPerSecond: reliableSpeed,
+            now: date
+        ) else {
+            errorMessage = "Die Pause kann erst bei einem aktuellen Stillstand bestätigt werden."
             return false
         }
         drivingRestState = DrivingRestPolicy.confirmedBreak(
