@@ -4,6 +4,27 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testStopSelectionSurvivesLossOfTransientStationState() {
+        let lockedFuel = LockedWaypoint(
+            id: "fuel-1", name: "Autohof",
+            coordinate: .init(latitude: 50, longitude: 8),
+            required: true, optionsAfter: nil, kind: .fuelStop
+        )
+        XCTAssertTrue(RouteStopSelectionPolicy.contains(
+            stopID: "fuel-1", transientStationIDs: [], lockedWaypoints: [lockedFuel]
+        ))
+        XCTAssertTrue(RouteStopSelectionPolicy.contains(
+            stopID: "fuel-1", transientStationIDs: ["fuel-1"], lockedWaypoints: []
+        ))
+        XCTAssertFalse(RouteStopSelectionPolicy.contains(
+            stopID: "fuel-1", transientStationIDs: [], lockedWaypoints: [
+                .init(id: "fuel-1", name: "Pflichtpunkt",
+                      coordinate: .init(latitude: 50, longitude: 8),
+                      required: true, optionsAfter: nil, kind: .routeConstraint)
+            ]
+        ), "A mandatory corridor anchor must never become a removable fuel stop")
+    }
+
     func testCompletedLockedStationCannotReturnFromTransientState() {
         XCTAssertEqual(RouteWaypointRoutingPolicy.source(
             hasActiveLock: true,

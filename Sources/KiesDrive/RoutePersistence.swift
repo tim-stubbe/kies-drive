@@ -163,6 +163,15 @@ struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+enum RouteStopSelectionPolicy {
+    static func contains(stopID: String, transientStationIDs: [String],
+                         lockedWaypoints: [LockedWaypoint]) -> Bool {
+        transientStationIDs.contains(stopID) || lockedWaypoints.contains {
+            $0.id == stopID && $0.isRemovableComfortStop
+        }
+    }
+}
+
 struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     enum Status: String, Codable, Sendable { case active, completed, cancelled }
 

@@ -3128,8 +3128,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let previousStations = viaStations
         let previousLock = routeLockStore.activeLock
-        if let index = viaStations.firstIndex(where: { $0.id == station.id }) {
-            viaStations.remove(at: index)
+        let wasSelected = RouteStopSelectionPolicy.contains(
+            stopID: station.id,
+            transientStationIDs: viaStations.map(\.id),
+            lockedWaypoints: previousLock?.waypoints ?? []
+        )
+        if wasSelected {
+            viaStations.removeAll { $0.id == station.id }
             routeLockStore.update { lock in
                 lock.removeWaypoint(id: station.id)
             }
@@ -3172,7 +3177,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         if let station = stations.first(where: { $0.id == candidate.id }) {
-            guard !viaStations.contains(where: { $0.id == station.id }) else { return true }
+            guard !RouteStopSelectionPolicy.contains(
+                stopID: station.id,
+                transientStationIDs: viaStations.map(\.id),
+                lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
+            ) else { return true }
             let navigationSession = isNavigating ? navigationSessionGeneration : nil
             let previousStations = viaStations
             let previousLock = routeLockStore.activeLock
