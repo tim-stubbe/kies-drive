@@ -4511,6 +4511,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             transientStationIDs: viaStations.map(\.id),
             lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
         )
+        guard PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: station.id, coordinate: station.coordinate,
+            currentlySelected: wasSelected, available: stations
+        ) else {
+            errorMessage = "Diese Tankstelle gehört nicht mehr zur aktuellen Route. Bitte neu auswählen."
+            return false
+        }
         let knownProgress: Double?
         if wasSelected {
             knownProgress = nil
@@ -4587,6 +4594,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @discardableResult
     func addPlannedBreak(_ plannedBreak: PlannedBreak, from start: CLLocationCoordinate2D,
                          settings: DriveSettings) async -> Bool {
+        guard PlannedStopSelectionPolicy.acceptsBreak(
+            plannedBreak, currentPlan: longTripPlan
+        ) else {
+            errorMessage = "Der Reiseplan wurde inzwischen aktualisiert. Bitte wähle den Pausenstopp erneut."
+            return false
+        }
         guard let candidate = plannedBreak.candidate else {
             errorMessage = "Für diesen geplanten Stopp ist kein Ort verfügbar."
             return false

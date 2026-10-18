@@ -1756,6 +1756,29 @@ final class NavigationPresentationTests: XCTestCase {
         ), "Direct non-search stop additions remain supported")
     }
 
+    func testStaleFuelStationSelectionIsRejectedAfterRouteRefresh() {
+        let old = FuelStation(
+            id: "fuel-1", name: "Alt", brand: "Alt", street: "", place: "",
+            lat: 50, lon: 8, price: 1.8, open: true, distanceKm: 1
+        )
+        let current = FuelStation(
+            id: "fuel-2", name: "Neu", brand: "Neu", street: "", place: "",
+            lat: 50.1, lon: 8.1, price: 1.7, open: true, distanceKm: 1
+        )
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: old.id, coordinate: old.coordinate,
+            currentlySelected: false, available: [current]
+        ))
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: old.id, coordinate: old.coordinate,
+            currentlySelected: false, available: [old]
+        ))
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: old.id, coordinate: old.coordinate,
+            currentlySelected: true, available: []
+        ), "A locked stop must remain removable after provider results refresh")
+    }
+
     func testNamedRouteSearchPrefersRelevantBrandOverTinyUnrelatedDetour() {
         let exact = RouteSearchPolicy.rankingScore(
             detourMetres: 1_000, candidateProgress: 0.4, currentProgress: 0.2,

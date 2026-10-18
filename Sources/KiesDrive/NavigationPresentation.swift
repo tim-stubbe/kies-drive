@@ -182,6 +182,37 @@ enum RouteSearchSelectionPolicy {
     }
 }
 
+enum PlannedStopSelectionPolicy {
+    /// A sheet or CarPlay list can remain visible while a reroute replaces its
+    /// backing station list. Accept additions only when the same physical
+    /// station still belongs to the current route; selected stops remain
+    /// removable even after provider refreshes.
+    static func acceptsFuelStation(
+        id: String,
+        coordinate: CLLocationCoordinate2D,
+        currentlySelected: Bool,
+        available: [FuelStation]
+    ) -> Bool {
+        if currentlySelected { return true }
+        let selectedLocation = CLLocation(latitude: coordinate.latitude,
+                                          longitude: coordinate.longitude)
+        return available.contains { station in
+            guard station.id == id else { return false }
+            return selectedLocation.distance(from: CLLocation(
+                latitude: station.lat, longitude: station.lon
+            )) <= 30
+        }
+    }
+
+    /// Planned breaks are value snapshots. Requiring the value to still exist
+    /// in the current plan rejects a stale card whose route position, opening
+    /// state or chosen amenity changed during recalculation.
+    static func acceptsBreak(_ plannedBreak: PlannedBreak,
+                             currentPlan: LongTripPlan?) -> Bool {
+        currentPlan?.results.contains { $0.breaks.contains(plannedBreak) } ?? false
+    }
+}
+
 enum CarPlayPlannedStopPolicy {
     /// CarPlay must remain short and glanceable. Prefer the earliest remaining
     /// stop from the currently selected scenario, combine fuel and rest at the

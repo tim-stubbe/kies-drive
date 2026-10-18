@@ -3,6 +3,35 @@ import CoreLocation
 @testable import Kies_Drive
 
 final class LongTripPlanningTests: XCTestCase {
+    func testStaleBreakCardIsRejectedAfterPlanRefresh() {
+        let candidate = BreakCandidate(
+            id: "rest", name: "Rastplatz", coordinate: .init(latitude: 50, longitude: 8),
+            progress: 0.5, detourMetres: 100, isOpen: true
+        )
+        let oldBreak = PlannedBreak(
+            id: "break-1", candidate: candidate, afterDriving: 7_200,
+            duration: 1_200, routeProgress: 0.5,
+            explanation: "Alter Plan"
+        )
+        let currentBreak = PlannedBreak(
+            id: "break-1", candidate: candidate, afterDriving: 8_000,
+            duration: 1_200, routeProgress: 0.6,
+            explanation: "Neuer Plan"
+        )
+        let result = RouteScenarioResult(
+            id: "route", routeTitle: "Route", scenario: .target(150),
+            distanceMetres: 100_000, drivingTime: 9_000, totalTime: 10_200,
+            fuel: .init(litres: 7, cost: 12, averageConsumptionLPer100km: 7),
+            toll: .unknown(reason: "Nicht geprüft"), breaks: [currentBreak],
+            fuelStops: [], unlimitedFraction: 0
+        )
+        let plan = LongTripPlan(createdAt: Date(), results: [result], note: "")
+
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsBreak(oldBreak, currentPlan: plan))
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsBreak(currentBreak, currentPlan: plan))
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsBreak(currentBreak, currentPlan: nil))
+    }
+
     func testSingleRoutePlanExplainsWhyTollComparisonIsUnavailable() {
         let route = RoutePlanningInput(
             id: "fixed", title: "Feste Route", distanceMetres: 100_000,
