@@ -157,6 +157,22 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testEditedDestinationQueryCannotKeepOldCoordinateSelected() {
+        XCTAssertTrue(DestinationQuerySelectionPolicy.stillRepresentsSelection(
+            query: "  München Hauptbahnhof ",
+            selectedName: "MUNCHEN HAUPTBAHNHOF",
+            selectedTitle: "München Hauptbahnhof, Bayern"
+        ))
+        XCTAssertFalse(DestinationQuerySelectionPolicy.stillRepresentsSelection(
+            query: "Hamburg Hauptbahnhof",
+            selectedName: "München Hauptbahnhof",
+            selectedTitle: "München Hauptbahnhof, Bayern"
+        ))
+        XCTAssertFalse(DestinationQuerySelectionPolicy.stillRepresentsSelection(
+            query: "", selectedName: "München Hauptbahnhof", selectedTitle: nil
+        ))
+    }
+
     func testRapidDestinationChangesKeepOriginalRollbackBaseline() {
         let original = DestinationActivationBaselinePolicy.choose(
             existing: Optional<String>.none, current: "Original route"

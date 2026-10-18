@@ -1437,6 +1437,25 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
     }
 
+    func invalidateSelectedDestinationIfNeeded(for query: String) {
+        guard let destination else { return }
+        guard !DestinationQuerySelectionPolicy.stillRepresentsSelection(
+            query: query,
+            selectedName: destination.name,
+            selectedTitle: destination.placemark.title
+        ) else { return }
+        self.destination = nil
+    }
+
+    func clearDestinationSelection() {
+        destinationSearchGeneration = UUID()
+        activeDestinationSearches.forEach { $0.cancel() }
+        activeDestinationSearches = []
+        suggestions = []
+        destination = nil
+        destinationText = ""
+    }
+
     /// Sucht POIs entlang der bereits berechneten Route statt nur am aktuellen
     /// Standort. Wenige Suchregionen und ein enger Korridor vermeiden Umwege.
     /// Returns true only when this exact query completed against the route

@@ -41,6 +41,26 @@ enum DestinationSearchCompletionPolicy {
     }
 }
 
+enum DestinationQuerySelectionPolicy {
+    /// A text field is only a faithful representation of the selected map
+    /// item while it still contains that item's label. As soon as the driver
+    /// edits the query, the old coordinate must stop being actionable.
+    static func stillRepresentsSelection(query: String,
+                                         selectedName: String?,
+                                         selectedTitle: String?) -> Bool {
+        let query = normalised(query)
+        guard !query.isEmpty else { return false }
+        return [selectedName, selectedTitle].compactMap { $0 }.contains {
+            normalised($0) == query
+        }
+    }
+
+    private static func normalised(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+}
+
 enum DestinationSearchBatchCompletionPolicy {
     enum Resolution: Equatable {
         case results

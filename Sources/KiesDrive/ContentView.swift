@@ -673,9 +673,12 @@ struct DriveContentView: View {
                 TextField("Wohin möchtest du?", text: $planner.destinationText)
                     .textInputAutocapitalization(.words)
                     .submitLabel(.search)
+                    .onChange(of: planner.destinationText) { _, query in
+                        planner.invalidateSelectedDestinationIfNeeded(for: query)
+                    }
                     .onSubmit { Task { await planner.searchDestination(near: location.location?.coordinate) } }
                 if !planner.destinationText.isEmpty {
-                    Button { planner.destinationText = ""; planner.suggestions = [] } label: {
+                    Button { planner.clearDestinationSelection() } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                     }
                 }
@@ -1302,6 +1305,9 @@ struct DriveContentView: View {
             Section("Ziel") {
                 TextField("Adresse oder Ort", text: $planner.destinationText)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: planner.destinationText) { _, query in
+                        planner.invalidateSelectedDestinationIfNeeded(for: query)
+                    }
                     .onSubmit { Task { await planner.searchDestination(near: location.location?.coordinate) } }
                 Button("Ziel suchen", systemImage: "magnifyingglass") {
                     Task { await planner.searchDestination(near: location.location?.coordinate) }
