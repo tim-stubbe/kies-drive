@@ -565,6 +565,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeManeuverSpeech = [:]
             pendingBreakReminderSpeech = [:]
             activeBreakReminderSpeech = [:]
+            pendingFuelReminderSpeech = [:]
+            activeFuelReminderSpeech = [:]
             diagnosticManeuverKey = nil
             diagnosticManeuverInstruction = nil
             diagnosticManeuverDistance = nil
@@ -573,6 +575,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if drivingRestState.pendingSpokenReminderRawValue != nil {
                 drivingRestState.pendingSpokenReminderRawValue = nil
                 drivingRestStore.save(drivingRestState)
+            }
+            if drivingFuelState.pendingSpokenReminderKey != nil ||
+                drivingFuelState.pendingSpokenReminderText != nil {
+                drivingFuelState.clearPendingSpeech()
+                drivingFuelStore.save(drivingFuelState)
             }
             #if os(iOS)
             // `didCancel` normally releases this session, but Bluetooth route
@@ -2061,8 +2068,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 pendingKey: drivingFuelState.pendingSpokenReminderKey,
                 stops: result.fuelStops, currentProgress: currentProgress
            ) {
-            drivingFuelState.pendingSpokenReminderKey = nil
-            drivingFuelState.pendingSpokenReminderText = nil
+            drivingFuelState.clearPendingSpeech()
             drivingFuelStore.save(drivingFuelState)
         }
         if DriveSettings.shared.voiceGuidance,
@@ -2074,8 +2080,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             if speak(text, priority: .status, fuelReminderClaim: (key, text)) { return }
         } else if drivingFuelState.pendingSpokenReminderKey != nil ||
                     drivingFuelState.pendingSpokenReminderText != nil {
-            drivingFuelState.pendingSpokenReminderKey = nil
-            drivingFuelState.pendingSpokenReminderText = nil
+            drivingFuelState.clearPendingSpeech()
             drivingFuelStore.save(drivingFuelState)
         }
         guard let stop = result.fuelStops
@@ -2406,6 +2411,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeManeuverSpeech = [:]
         pendingBreakReminderSpeech = [:]
         activeBreakReminderSpeech = [:]
+        pendingFuelReminderSpeech = [:]
+        activeFuelReminderSpeech = [:]
         diagnosticManeuverKey = nil
         diagnosticManeuverInstruction = nil
         diagnosticManeuverDistance = nil
@@ -3083,8 +3090,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 .fuelReminderAnnounced,
                 detail: "Tankhinweis · gesprochen · \(fuelClaim.text)"
             )
-            drivingFuelState.pendingSpokenReminderKey = nil
-            drivingFuelState.pendingSpokenReminderText = nil
+            drivingFuelState.clearPendingSpeech()
             drivingFuelStore.save(drivingFuelState)
         }
         finishAudioSession(for: utterance)

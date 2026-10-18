@@ -116,6 +116,12 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(NavigationFuelReminderSpeechDeliveryPolicy.shouldClearPending(
             pendingKey: "station:2", completedKey: nil
         ))
+
+        var muted = decoded
+        muted.clearPendingSpeech()
+        XCTAssertNil(muted.pendingSpokenReminderKey)
+        XCTAssertNil(muted.pendingSpokenReminderText)
+        XCTAssertEqual(muted.deliveredReminderKeys, state.deliveredReminderKeys)
     }
 
     func testPendingFuelSpeechMustStillBelongToAheadStopAfterReroute() {

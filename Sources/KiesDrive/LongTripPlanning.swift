@@ -1002,6 +1002,11 @@ struct DrivingFuelState: Codable, Equatable {
             String.self, forKey: .pendingSpokenReminderText
         )
     }
+
+    mutating func clearPendingSpeech() {
+        pendingSpokenReminderKey = nil
+        pendingSpokenReminderText = nil
+    }
 }
 
 enum NavigationFuelReminderPolicy {
