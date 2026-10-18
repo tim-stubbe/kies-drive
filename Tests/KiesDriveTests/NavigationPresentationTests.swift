@@ -588,6 +588,30 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testWrongWayOnSameRoadRequiresStrongReliableCourseEvidence() {
+        XCTAssertTrue(NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: 172, distanceFromRoute: 8,
+            horizontalAccuracy: 9, speedMetresPerSecond: 18
+        ))
+        XCTAssertTrue(NavigationDeviationPolicy.shouldAccumulate(
+            distanceFromRoute: 8, previousDistance: 7,
+            horizontalAccuracy: 9, speedMetresPerSecond: 18,
+            wrongWay: true
+        ), "Driving backwards along the same polyline must eventually reroute")
+        XCTAssertFalse(NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: 120, distanceFromRoute: 8,
+            horizontalAccuracy: 9, speedMetresPerSecond: 18
+        ), "A bend must not look like opposing traffic")
+        XCTAssertFalse(NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: 175, distanceFromRoute: 8,
+            horizontalAccuracy: 50, speedMetresPerSecond: 18
+        ), "An uncertain GPS course must not force a reroute")
+        XCTAssertFalse(NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: 175, distanceFromRoute: 8,
+            horizontalAccuracy: 9, speedMetresPerSecond: 2
+        ), "Parking and turning around must not force a reroute")
+    }
+
     func testRouteRejoinRequiresSeveralInsideFixesBeforeOldGuidanceReturns() {
         XCTAssertEqual(NavigationRouteRejoinPolicy.requiredConsecutiveInsideFixes, 3)
         XCTAssertFalse(NavigationRouteRejoinPolicy.isConfirmed(consecutiveInsideFixes: 1))

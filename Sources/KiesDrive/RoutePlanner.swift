@@ -3341,12 +3341,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let corridor = NavigationDeviationCorridorPolicy.indices(
             current: navigationStepCursor, stepCount: steps.count
         )
-        guard let nearest = NavigationDeviationGeometryPolicy.nearestUsableDistance(
+        let reliableSpeed = NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
+        let reliableCourse = NavigationMotionPolicy.reliableCourse(for: location)
+        guard let nearestMetric = NavigationDeviationGeometryPolicy.nearestUsableMetric(
             corridor.map {
-                let polyline = steps[$0].step.polyline
-                return (
-                    pointCount: polyline.pointCount,
-                    distance: Self.distance(from: location.coordinate, to: polyline)
+                Self.navigationMetric(
+                    from: location.coordinate, on: steps[$0].step.polyline,
+                    stepDistance: steps[$0].step.distance,
+                    vehicleCourse: reliableCourse
                 )
             }
         ) else {
@@ -3357,11 +3359,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             resetDeviationTracking()
             return
         }
+        let nearest = nearestMetric.distanceFromRoute
+        let isWrongWay = NavigationWrongWayPolicy.isOpposing(
+            courseDifferenceDegrees: nearestMetric.courseDifferenceDegrees,
+            distanceFromRoute: nearest,
+            horizontalAccuracy: location.horizontalAccuracy,
+            speedMetresPerSecond: reliableSpeed
+        )
         let isOutsideCorridor = NavigationDeviationPolicy.isOutsideCorridor(
             distanceFromRoute: nearest,
             horizontalAccuracy: location.horizontalAccuracy,
-            speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
-        )
+            speedMetresPerSecond: reliableSpeed
+        ) || isWrongWay
         if isOutsideCorridor {
             onRouteRecoveryFixCount = 0
         } else if !isManeuverGuidanceReliable {
@@ -3385,8 +3394,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
             horizontalAccuracy: location.horizontalAccuracy,
-            speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0,
-            rerouteAllowed: rerouteAllowed
+            speedMetresPerSecond: reliableSpeed,
+            rerouteAllowed: rerouteAllowed,
+            wrongWay: isWrongWay
         )
         previousOffRouteDistance = nearest
         guard shouldAccumulate else {
@@ -3404,7 +3414,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
               NavigationDeviationPolicy.isConfirmed(
                 elapsed: now.timeIntervalSince(offRouteSince),
                 consecutiveFixes: offRouteFixCount,
-                speedMetresPerSecond: NavigationMotionPolicy.reliableSpeed(for: location) ?? 0
+                speedMetresPerSecond: reliableSpeed
               ), allowsAutomaticReroute else { return }
         isManeuverGuidanceReliable = false
         // A confirmed departure invalidates the current maneuver immediately.
@@ -3423,7 +3433,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         isRecalculating = true
         DriveDiagnosticStore.append(.rerouteRequested,
                                     detail: DriveDiagnosticDetail.navigationSample(
-                                        "Abweichung \(Int(nearest)) m", location: location
+                                        isWrongWay
+                                            ? "Falsche Fahrtrichtung auf der Route"
+                                            : "Abweichung \(Int(nearest)) m",
+                                        location: location
                                     ))
         // A suspended MapKit request must not leave the driving screen covered
         // by "Route wird neu berechnet" forever. The generation checks make

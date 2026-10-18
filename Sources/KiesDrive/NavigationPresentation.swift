@@ -1470,10 +1470,16 @@ enum NavigationDeviationPolicy {
 
     static func shouldAccumulate(distanceFromRoute: Double, previousDistance: Double?,
                                  horizontalAccuracy: Double, speedMetresPerSecond: Double,
-                                 rerouteAllowed: Bool = true) -> Bool {
+                                 rerouteAllowed: Bool = true,
+                                 wrongWay: Bool = false) -> Bool {
         guard rerouteAllowed,
-              speedMetresPerSecond >= 2.5,
-              isOutsideCorridor(distanceFromRoute: distanceFromRoute,
+              speedMetresPerSecond >= 2.5 else { return false }
+        // Remaining close to the polyline is not proof that the planned route
+        // is being followed: the driver may be travelling back along the same
+        // carriageway. Course evidence is deliberately produced by the strict
+        // policy below and still has to survive the normal multi-fix timer.
+        if wrongWay { return true }
+        guard isOutsideCorridor(distanceFromRoute: distanceFromRoute,
                                 horizontalAccuracy: horizontalAccuracy,
                                 speedMetresPerSecond: speedMetresPerSecond) else { return false }
         if let previousDistance, distanceFromRoute + 30 < previousDistance { return false }
@@ -1488,6 +1494,23 @@ enum NavigationDeviationPolicy {
                             speedMetresPerSecond: Double) -> Bool {
         consecutiveFixes >= requiredConsecutiveFixes &&
             elapsed >= confirmationDuration(speedMetresPerSecond: speedMetresPerSecond)
+    }
+}
+
+enum NavigationWrongWayPolicy {
+    /// Detect driving against the installed route while still sitting directly
+    /// on its geometry. A high angular threshold plus a meaningful speed keeps
+    /// bends, parking manoeuvres and uncertain Core Location headings out.
+    static func isOpposing(courseDifferenceDegrees: Double?,
+                           distanceFromRoute: CLLocationDistance,
+                           horizontalAccuracy: CLLocationAccuracy,
+                           speedMetresPerSecond: Double) -> Bool {
+        guard let difference = courseDifferenceDegrees, difference.isFinite,
+              difference >= 150,
+              distanceFromRoute.isFinite, distanceFromRoute >= 0,
+              horizontalAccuracy >= 0, horizontalAccuracy <= 35,
+              speedMetresPerSecond >= 5.5 else { return false }
+        return distanceFromRoute <= max(30, min(70, horizontalAccuracy * 2))
     }
 }
 
@@ -1523,6 +1546,14 @@ enum NavigationDeviationGeometryPolicy {
                   candidate.distance >= 0 else { return nil }
             return candidate.distance
         }.min()
+    }
+
+    static func nearestUsableMetric(_ candidates: [NavigationStepMetric])
+        -> NavigationStepMetric? {
+        candidates.filter {
+            $0.hasUsableGeometry && $0.distanceFromRoute.isFinite &&
+                $0.distanceFromRoute >= 0
+        }.min { $0.distanceFromRoute < $1.distanceFromRoute }
     }
 }
 
