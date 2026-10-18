@@ -170,6 +170,25 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(first, noisy)
     }
 
+    func testTollVariantsBindToTheirActualRouteGeometry() {
+        XCTAssertFalse(TollVariantRoutePolicy.usesComparisonRoute(
+            requestAvoidsTolls: false, mainRouteAvoidsTolls: false,
+            comparisonAvailable: true
+        ))
+        XCTAssertTrue(TollVariantRoutePolicy.usesComparisonRoute(
+            requestAvoidsTolls: true, mainRouteAvoidsTolls: false,
+            comparisonAvailable: true
+        ))
+        XCTAssertTrue(TollVariantRoutePolicy.usesComparisonRoute(
+            requestAvoidsTolls: false, mainRouteAvoidsTolls: true,
+            comparisonAvailable: true
+        ))
+        XCTAssertFalse(TollVariantRoutePolicy.usesComparisonRoute(
+            requestAvoidsTolls: true, mainRouteAvoidsTolls: true,
+            comparisonAvailable: false
+        ))
+    }
+
     func testTollComparisonPublishesOnlyCompleteVariantPair() {
         let standard = TollLookupBatchItem(
             avoidTolls: false, routeIdentity: "route|standard",

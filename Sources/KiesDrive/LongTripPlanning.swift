@@ -74,6 +74,14 @@ enum TollRouteIdentityPolicy {
     }
 }
 
+enum TollVariantRoutePolicy {
+    static func usesComparisonRoute(requestAvoidsTolls: Bool,
+                                    mainRouteAvoidsTolls: Bool,
+                                    comparisonAvailable: Bool) -> Bool {
+        comparisonAvailable && requestAvoidsTolls != mainRouteAvoidsTolls
+    }
+}
+
 struct TollLookupSnapshot: Equatable {
     let routeIdentity: String
     let origin: CLLocationCoordinate2D

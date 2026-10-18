@@ -1184,6 +1184,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     ) else { return }
                     self.comparisonRoute = comparison
                     self.buildLongTripPlan(settings: settings)
+                    if comparison != nil {
+                        await self.loadTollCost(from: start, settings: settings)
+                    }
                 }
             }
             Task { [weak self] in
@@ -1196,7 +1199,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.loadSpeedLimits()
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
-                await self.loadTollCost(from: start)
+                await self.loadTollCost(from: start, settings: settings)
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 self.buildLongTripPlan(settings: settings)
                 self.cacheForOffline(preservingProgress: true)
@@ -2615,7 +2618,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                      alreadyDrivenSinceBreak: drivingRestState.continuousDriving)
     }
 
-    private func loadTollCost(from start: CLLocationCoordinate2D) async {
+    private func loadTollCost(from start: CLLocationCoordinate2D,
+                              settings: DriveSettings) async {
         guard let destination else { return }
         let routeGeneration = routeCalculationGeneration
         let destinationName = destination.placemark.title ?? destination.name ?? destinationText
@@ -2626,13 +2630,6 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         } ?? []
         let via = openTollWaypoints.map(\.name)
         let destinationCoordinate = destination.placemark.coordinate
-        let routeAnchors = legs.flatMap { sample($0.polyline, maximum: 12) }
-        let baseRouteIdentity = TollRouteIdentityPolicy.identity(
-            destination: destinationCoordinate,
-            via: openTollWaypoints.map(\.coordinate),
-            distanceMetres: totalDistance,
-            routeAnchors: routeAnchors
-        )
         let generation = UUID()
         tollLoadGeneration = generation
         // Search evidence normally names towns, not raw coordinates. Resolve
@@ -2643,7 +2640,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         var results: [TollLookupBatchItem] = []
         var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
         for avoidTolls in [false, true] {
-            let routeIdentity = baseRouteIdentity + (avoidTolls ? "|avoid" : "|standard")
+            let usesComparison = TollVariantRoutePolicy.usesComparisonRoute(
+                requestAvoidsTolls: avoidTolls,
+                mainRouteAvoidsTolls: settings.avoidTolls,
+                comparisonAvailable: comparisonRoute != nil
+            )
+            let variantRoutes = usesComparison ? comparisonRoute.map { [$0] } ?? [] : legs
+            let variantDistance = variantRoutes.reduce(0) { $0 + $1.distance }
+            let variantAnchors = variantRoutes.flatMap { sample($0.polyline, maximum: 12) }
+            let routeIdentity = TollRouteIdentityPolicy.identity(
+                destination: destinationCoordinate,
+                via: openTollWaypoints.map(\.coordinate),
+                distanceMetres: variantDistance,
+                routeAnchors: variantAnchors
+            ) + (avoidTolls ? "|avoid" : "|standard")
             if let cached = TollLookupCachePolicy.reusable(
                 tollLookupSnapshots[avoidTolls], routeIdentity: routeIdentity, origin: start
             ) {
