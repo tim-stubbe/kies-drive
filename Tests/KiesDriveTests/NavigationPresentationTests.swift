@@ -815,6 +815,21 @@ final class NavigationPresentationTests: XCTestCase {
         ), [], "CarPlay must remove stale maneuver cards after a confirmed deviation")
     }
 
+    func testCarPlayListAllocationNeverExceedsLimitAndKeepsPriorityOrder() {
+        XCTAssertEqual(
+            CarPlayListPriorityPolicy.allocation(
+                groupCounts: [2, 4, 3, 5, 7, 3], maximum: 12
+            ),
+            [2, 4, 3, 3, 0, 0]
+        )
+        XCTAssertEqual(
+            CarPlayListPriorityPolicy.allocation(
+                groupCounts: [1, 0, 0, 0, 2, 3], maximum: 12
+            ),
+            [1, 0, 0, 0, 2, 3]
+        )
+    }
+
     func testCarPlayGuidanceKeepsExitAndRoadVisibleOnSmallDisplays() {
         let variants = CarPlayGuidancePresentationPolicy.variants(
             for: "Ausfahrt 69 rechts auf die A 9 Richtung München nehmen"

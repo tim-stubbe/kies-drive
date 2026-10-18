@@ -221,7 +221,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func showDestinationsAndStops() {
         let planner = RoutePlanner.shared
-        var items: [CPListItem] = [makeDestinationSearchItem()]
+        var coreItems: [CPListItem] = [makeDestinationSearchItem()]
+        var savedDestinationItems: [CPListItem] = []
+        var routeManagementItems: [CPListItem] = []
+        var nearbyFuelItems: [CPListItem] = []
         var tripActionItems: [CPListItem] = []
         var routeSearchItems: [CPListItem] = []
         let home = DriveSettings.shared.homeAddress.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -234,7 +237,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     completion()
                 }
             }
-            items.append(item)
+            coreItems.append(item)
         }
         for favorite in DriveFavoriteStore.load().prefix(4) {
             let item = CPListItem(text: favorite.name,
@@ -246,7 +249,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     completion()
                 }
             }
-            items.append(item)
+            savedDestinationItems.append(item)
         }
         for recent in RecentDestinationStore.load().prefix(3) {
             let item = CPListItem(text: recent.name,
@@ -258,7 +261,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     completion()
                 }
             }
-            items.append(item)
+            savedDestinationItems.append(item)
         }
         for stop in planner.removableRouteStops.prefix(3) {
             let item = CPListItem(text: stop.name, detailText: "Zwischenstopp entfernen",
@@ -276,7 +279,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     else { self?.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht entfernt werden.") }
                 }
             }
-            items.append(item)
+            routeManagementItems.append(item)
         }
         for station in planner.transientViaStations.prefix(2) {
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
@@ -295,9 +298,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     else { self?.showFailure(planner.errorMessage ?? "Der Tankstopp konnte nicht entfernt werden.") }
                 }
             }
-            items.append(item)
+            routeManagementItems.append(item)
         }
-        items.append(contentsOf: planner.stations.prefix(3).map { station in
+        nearbyFuelItems.append(contentsOf: planner.stations.prefix(3).map { station in
             let item = CPListItem(text: station.brand.isEmpty ? station.name : station.brand,
                                   detailText: String(format: "%.3f € · %.1f km", station.price, station.distanceKm))
             item.handler = { _, completion in
@@ -414,13 +417,27 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 routeSearchItems.append(item)
             }
         }
-        // CarPlay limits list length while driving. Always reserve the final
-        // slots for the live trip and route actions so favorites/history can
-        // never hide a planned break, fuel confirmation or along-route search.
-        let reservedCount = tripActionItems.count + routeSearchItems.count
-        items = Array(items.prefix(max(0, 12 - reservedCount))) + tripActionItems + routeSearchItems
+        // CarPlay lists must stay short and glanceable. Allocate the fixed
+        // twelve slots by driving importance rather than allowing favorites
+        // or nearby stations to hide live trip controls.
+        let groups = [
+            coreItems, tripActionItems, routeSearchItems,
+            routeManagementItems, savedDestinationItems, nearbyFuelItems,
+        ]
+        let allocation = CarPlayListPriorityPolicy.allocation(
+            groupCounts: groups.map(\.count)
+        )
+        let items = zip(groups, allocation).flatMap { group, count in
+            group.prefix(count)
+        }
         if items.isEmpty {
-            items = [CPListItem(text: "Noch keine Ziele", detailText: "Lege Zuhause oder ein Ziel auf dem iPhone fest.")]
+            let fallback = CPListItem(
+                text: "Noch keine Ziele",
+                detailText: "Lege Zuhause oder ein Ziel auf dem iPhone fest."
+            )
+            let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: [fallback])])
+            interfaceController?.pushTemplate(list, animated: true, completion: nil)
+            return
         }
         let list = CPListTemplate(title: "Ziele und Stopps", sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(list, animated: true, completion: nil)

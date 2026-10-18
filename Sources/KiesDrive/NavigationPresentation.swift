@@ -84,6 +84,17 @@ enum CarPlayAlertPresentationPolicy {
     }
 }
 
+enum CarPlayListPriorityPolicy {
+    static func allocation(groupCounts: [Int], maximum: Int = 12) -> [Int] {
+        var remaining = max(0, maximum)
+        return groupCounts.map { count in
+            let accepted = min(max(0, count), remaining)
+            remaining -= accepted
+            return accepted
+        }
+    }
+}
+
 enum CarPlayBreakReminderPresentationPolicy {
     static func titleVariants(for message: String) -> [String] {
         let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
