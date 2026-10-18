@@ -1780,6 +1780,36 @@ enum OfflineGuidanceResumePolicy {
     }
 }
 
+struct OfflineGuidanceResumeEstimate: Equatable {
+    let distance: CLLocationDistance
+    let travelTime: TimeInterval
+}
+
+enum OfflineGuidanceResumeEstimatePolicy {
+    /// A restored trip can resume far beyond the beginning of its cached
+    /// geometry. Until the first fresh GPS fix arrives, the driving screen
+    /// still needs an honest remaining distance and ETA instead of briefly
+    /// showing the totals for the entire original journey.
+    static func estimate(stepDistances: [CLLocationDistance], currentIndex: Int,
+                         routeDistance: CLLocationDistance,
+                         routeTravelTime: TimeInterval) -> OfflineGuidanceResumeEstimate {
+        let distances = stepDistances.map { value in
+            value.isFinite ? max(0, value) : 0
+        }
+        let totalStepDistance = distances.reduce(0, +)
+        guard totalStepDistance > 0, routeDistance.isFinite, routeDistance >= 0,
+              routeTravelTime.isFinite, routeTravelTime >= 0 else {
+            return .init(distance: max(0, routeDistance.isFinite ? routeDistance : 0),
+                         travelTime: max(0, routeTravelTime.isFinite ? routeTravelTime : 0))
+        }
+        let cursor = min(max(0, currentIndex), distances.count)
+        let remainingStepDistance = distances.dropFirst(cursor).reduce(0, +)
+        let fraction = min(1, max(0, remainingStepDistance / totalStepDistance))
+        return .init(distance: routeDistance * fraction,
+                     travelTime: routeTravelTime * fraction)
+    }
+}
+
 enum OfflineRouteProgressPolicy {
     static func progress(liveRouteDistance: CLLocationDistance,
                          cachedRouteDistance: CLLocationDistance,

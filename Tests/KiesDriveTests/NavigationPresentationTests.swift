@@ -1582,6 +1582,28 @@ final class NavigationPresentationTests: XCTestCase {
         ), 42)
     }
 
+    func testOfflineResumeEstimateStartsAtPersistedStepInsteadOfWholeTrip() {
+        let estimate = OfflineGuidanceResumeEstimatePolicy.estimate(
+            stepDistances: [10_000, 20_000, 30_000, 40_000],
+            currentIndex: 2,
+            routeDistance: 100_000,
+            routeTravelTime: 5_000
+        )
+
+        XCTAssertEqual(estimate.distance, 70_000, accuracy: 0.001)
+        XCTAssertEqual(estimate.travelTime, 3_500, accuracy: 0.001)
+    }
+
+    func testOfflineResumeEstimateAtEndDoesNotRestoreFullRouteTotals() {
+        let estimate = OfflineGuidanceResumeEstimatePolicy.estimate(
+            stepDistances: [1_000, 2_000], currentIndex: 2,
+            routeDistance: 3_000, routeTravelTime: 180
+        )
+
+        XCTAssertEqual(estimate.distance, 0)
+        XCTAssertEqual(estimate.travelTime, 0)
+    }
+
     func testOfflineGuidanceFindsNextManeuverAlongCachedGeometry() throws {
         let steps = [
             OfflineGuidanceStep(instruction: "", distance: 1_000, coordinates: [

@@ -1630,8 +1630,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         beginNavigationSession()
         isNavigating = true
         hasArrived = false
-        remainingDistanceMetres = cache.legs.reduce(0) { $0 + $1.distance }
-        remainingTravelTime = cache.legs.reduce(0) { $0 + $1.travelTime }
+        let resumeEstimate = OfflineGuidanceResumeEstimatePolicy.estimate(
+            stepDistances: cachedGuidanceSteps.map(\.distance),
+            currentIndex: navigationStepCursor,
+            routeDistance: cache.legs.reduce(0) { $0 + $1.distance },
+            routeTravelTime: cache.legs.reduce(0) { $0 + $1.travelTime }
+        )
+        remainingDistanceMetres = resumeEstimate.distance
+        remainingTravelTime = resumeEstimate.travelTime
         let remainingGuidance = cachedGuidanceSteps.dropFirst(navigationStepCursor).map {
             (instruction: $0.instruction, distance: $0.distance)
         }
