@@ -1645,6 +1645,25 @@ final class NavigationPresentationTests: XCTestCase {
         ), "Direct non-search stop additions remain supported")
     }
 
+    func testNamedRouteSearchPrefersRelevantBrandOverTinyUnrelatedDetour() {
+        let exact = RouteSearchPolicy.rankingScore(
+            detourMetres: 1_000, candidateProgress: 0.4, currentProgress: 0.2,
+            remainingRouteDistance: 100_000,
+            queryRelevance: DestinationSearchRankingPolicy.relevanceScore(
+                query: "McDonalds", name: "McDonald's", title: nil
+            )
+        )
+        let unrelated = RouteSearchPolicy.rankingScore(
+            detourMetres: 0, candidateProgress: 0.4, currentProgress: 0.2,
+            remainingRouteDistance: 100_000,
+            queryRelevance: DestinationSearchRankingPolicy.relevanceScore(
+                query: "McDonalds", name: "Burger Haus", title: nil
+            )
+        )
+
+        XCTAssertLessThan(exact, unrelated)
+    }
+
     func testFinalCueHasEnoughHighSpeedReactionTime() {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)

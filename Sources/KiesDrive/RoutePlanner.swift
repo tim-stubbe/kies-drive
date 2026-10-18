@@ -228,6 +228,7 @@ struct RouteSearchResult: Identifiable {
     let mapItem: MKMapItem
     let detourMetres: CLLocationDistance
     let detourIsEstimated: Bool
+    let queryRelevance: Double
     let routeProgress: Double
     let routeGeneration: UUID
 }
@@ -1360,6 +1361,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                         mapItem: candidate.item,
                         detourMetres: detour,
                         detourIsEstimated: driven == nil,
+                        queryRelevance: DestinationSearchRankingPolicy.relevanceScore(
+                            query: cleanQuery,
+                            name: candidate.item.name,
+                            title: candidate.item.placemark.title
+                        ),
                         routeProgress: candidate.progress,
                         routeGeneration: routeGeneration
                     ))
@@ -1419,13 +1425,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 detourMetres: $0.detourMetres,
                 candidateProgress: $0.routeProgress,
                 currentProgress: currentRouteProgress,
-                remainingRouteDistance: remainingRouteDistance
+                remainingRouteDistance: remainingRouteDistance,
+                queryRelevance: $0.queryRelevance
             )
             let rhs = RouteSearchPolicy.rankingScore(
                 detourMetres: $1.detourMetres,
                 candidateProgress: $1.routeProgress,
                 currentProgress: currentRouteProgress,
-                remainingRouteDistance: remainingRouteDistance
+                remainingRouteDistance: remainingRouteDistance,
+                queryRelevance: $1.queryRelevance
             )
             return lhs == rhs ? $0.detourMetres < $1.detourMetres : lhs < rhs
         }

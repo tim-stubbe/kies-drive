@@ -2068,16 +2068,22 @@ enum RouteSearchPolicy {
     static func rankingScore(detourMetres: CLLocationDistance,
                              candidateProgress: Double,
                              currentProgress: Double,
-                             remainingRouteDistance: CLLocationDistance) -> Double {
+                             remainingRouteDistance: CLLocationDistance,
+                             queryRelevance: Double = 0) -> Double {
         guard detourMetres.isFinite, detourMetres >= 0,
               candidateProgress.isFinite, currentProgress.isFinite,
-              remainingRouteDistance.isFinite, remainingRouteDistance >= 0 else {
+              remainingRouteDistance.isFinite, remainingRouteDistance >= 0,
+              queryRelevance.isFinite, queryRelevance >= 0 else {
             return .greatestFiniteMagnitude
         }
         let remainingFraction = max(0.000_001, 1 - min(1, max(0, currentProgress)))
         let progressAhead = max(0, candidateProgress - currentProgress)
         let distanceAhead = progressAhead / remainingFraction * remainingRouteDistance
-        return detourMetres * 3 + distanceAhead * 0.12
+        // MapKit category searches often produce result names unrelated to a
+        // generic query such as "Essen"; those all receive the same penalty
+        // and remain ranked by detour. A named brand or exact POI match,
+        // however, must beat a merely nearby weak match.
+        return detourMetres * 3 + distanceAhead * 0.12 + queryRelevance * 1_500
     }
 
     /// Without a successful driving route, straight-line proximity is only a
