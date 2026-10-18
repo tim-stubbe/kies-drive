@@ -1120,6 +1120,43 @@ enum ManeuverDiagnosticPolicy {
     }
 }
 
+/// Resolves the last maneuver when MapKit advances directly onto the final
+/// road. There is no following maneuver object to drive the normal transition
+/// path, but silently dropping the outstanding turn is just as unsafe as
+/// repeating it after a tunnel or background gap.
+enum NavigationFinalRoadTransitionPolicy {
+    enum Action: Equatable {
+        case none
+        case recoverNow
+        case closeAsDelivered
+        case closeAsMissed
+    }
+
+    static func action(previousKey: String?, delivered: Set<NavigationAnnouncementStage>,
+                       inFlight: Set<NavigationAnnouncementStage>,
+                       previousDistance: CLLocationDistance?,
+                       speedMetresPerSecond: Double,
+                       recoveredAfterLocationGap: Bool) -> Action {
+        guard let previousKey else { return .none }
+        let decisive = delivered.union(inFlight)
+        if ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: decisive) {
+            return .closeAsDelivered
+        }
+        if ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: previousKey,
+            nextKey: "final-road",
+            stages: delivered,
+            inFlightStages: inFlight,
+            previousDistance: previousDistance ?? .greatestFiniteMagnitude,
+            speedMetresPerSecond: speedMetresPerSecond,
+            recoveredAfterLocationGap: recoveredAfterLocationGap
+        ) {
+            return .recoverNow
+        }
+        return .closeAsMissed
+    }
+}
+
 /// Conservative acceptance rules for live navigation fixes. Core Location can
 /// briefly report cached or wildly displaced positions after tunnels, pauses
 /// and app resumes; those must not advance maneuvers or trigger rerouting.

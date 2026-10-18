@@ -1577,6 +1577,43 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A post-tunnel fix must not speak a turn that is already behind the car")
     }
 
+    func testFinalRoadRecoversLastTurnOnlyAtContinuousNearbyJunction() {
+        XCTAssertEqual(
+            NavigationFinalRoadTransitionPolicy.action(
+                previousKey: "last-turn", delivered: [], inFlight: [],
+                previousDistance: 24, speedMetresPerSecond: 14,
+                recoveredAfterLocationGap: false
+            ),
+            .recoverNow
+        )
+        XCTAssertEqual(
+            NavigationFinalRoadTransitionPolicy.action(
+                previousKey: "last-turn", delivered: [], inFlight: [],
+                previousDistance: 24, speedMetresPerSecond: 14,
+                recoveredAfterLocationGap: true
+            ),
+            .closeAsMissed,
+            "After a location gap the old turn may already be behind the driver"
+        )
+        XCTAssertEqual(
+            NavigationFinalRoadTransitionPolicy.action(
+                previousKey: "last-turn", delivered: [], inFlight: [.final],
+                previousDistance: 8, speedMetresPerSecond: 14,
+                recoveredAfterLocationGap: false
+            ),
+            .closeAsDelivered,
+            "An audible decisive cue must not be duplicated at the final road"
+        )
+        XCTAssertEqual(
+            NavigationFinalRoadTransitionPolicy.action(
+                previousKey: nil, delivered: [], inFlight: [],
+                previousDistance: nil, speedMetresPerSecond: 14,
+                recoveredAfterLocationGap: false
+            ),
+            .none
+        )
+    }
+
     func testOnlineAndOfflineManeuverSpeechShareDenseTurnWording() {
         XCTAssertEqual(
             NavigationManeuverSpeechPolicy.text(

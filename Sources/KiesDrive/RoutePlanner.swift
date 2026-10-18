@@ -2351,6 +2351,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     recoveredAfterLocationGap: recoveredLocationGap != nil
                 )
             }
+        } else if nextManeuverIdentity == "live:\(routeCalculationGeneration):final" {
+            resolveOutstandingManeuverOnFinalRoad(
+                guidanceSpeedMps: guidanceSpeed,
+                voiceGuidance: settings.voiceGuidance,
+                recoveredAfterLocationGap: recoveredLocationGap != nil
+            )
         }
         persistRouteLockProgress(at: location)
         markReachedWaypoints(at: location, settings: settings)
@@ -3342,6 +3348,54 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         diagnosticManeuverInstruction = instruction
         diagnosticManeuverDistance = distance
         return recovered
+    }
+
+    /// The final road has no later MapKit maneuver with which to trigger
+    /// `recordManeuverTransition`. Resolve the outstanding junction explicitly
+    /// so a sparse but continuous GPS batch cannot make the last turn silent.
+    private func resolveOutstandingManeuverOnFinalRoad(
+        guidanceSpeedMps: Double,
+        voiceGuidance: Bool,
+        recoveredAfterLocationGap: Bool
+    ) {
+        let previousKey = diagnosticManeuverKey
+        let inFlight = previousKey.map { pendingStages(for: $0) } ?? []
+        let action = NavigationFinalRoadTransitionPolicy.action(
+            previousKey: previousKey,
+            delivered: previousKey.map { announcedManeuverStages[$0] ?? [] } ?? [],
+            inFlight: inFlight,
+            previousDistance: diagnosticManeuverDistance,
+            speedMetresPerSecond: guidanceSpeedMps,
+            recoveredAfterLocationGap: recoveredAfterLocationGap
+        )
+        switch action {
+        case .none:
+            return
+        case .closeAsDelivered:
+            closeOutstandingManeuverDiagnostic(reason: .recoveryQueued)
+        case .closeAsMissed:
+            closeOutstandingManeuverDiagnostic(reason: .routeTransition)
+        case .recoverNow:
+            guard voiceGuidance, let previousKey,
+                  let instruction = diagnosticManeuverInstruction else {
+                closeOutstandingManeuverDiagnostic(reason: .routeTransition)
+                return
+            }
+            let queued = speak(
+                NavigationSpeechFormatter.spokenText(instruction, distance: 0),
+                priority: .critical,
+                maneuverClaim: .init(
+                    key: previousKey, stage: .now, instruction: instruction,
+                    distance: 0, issuedAt: Date()
+                )
+            )
+            // If a call, Siri or another decisive sentence still owns audio,
+            // retain the diagnostic. The completion callback or next GPS fix
+            // can retry while the vehicle is still at the junction.
+            if queued {
+                closeOutstandingManeuverDiagnostic(reason: .recoveryQueued)
+            }
+        }
     }
 
     private func closeOutstandingManeuverDiagnostic(
