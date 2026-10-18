@@ -2766,9 +2766,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let routeGeneration = routeCalculationGeneration
         let generation = UUID()
         stationLoadGeneration = generation
-        // A handful of evenly distributed requests is sufficient. The old
-        // 25-km radius at ten route points returned hundreds of duplicates.
-        let points = evenlySpaced(legs.flatMap { sample($0.polyline, maximum: 80) }, maximum: 6)
+        let allQueryCoordinates = legs.flatMap { sample($0.polyline, maximum: 80) }
+        let expectedProgress = isNavigating && totalDistance > 0 && remainingDistanceMetres > 0
+            ? min(1, max(0, 1 - remainingDistanceMetres / totalDistance)) : nil
+        let currentProgress = RouteSearchPolicy.currentProgress(
+            projected: expectedProgress,
+            persisted: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress,
+            navigationActive: isNavigating
+        )
+        let remainingQueryCoordinates = RouteSearchPolicy.remainingRouteCoordinates(
+            allQueryCoordinates, currentProgress: currentProgress
+        )
+        let remainingDistance = isNavigating && remainingDistanceMetres > 0
+            ? remainingDistanceMetres : totalDistance
+        // Short remaining routes use only two requests; continental journeys
+        // scale gradually but remain capped. This prevents server and map-pin
+        // floods without throwing away geographic coverage on holiday trips.
+        let points = evenlySpaced(
+            remainingQueryCoordinates,
+            maximum: FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: remainingDistance)
+        )
         var unique: [String: FuelStation] = [:]
         await withTaskGroup(of: [FuelStation].self) { group in
             for point in points { group.addTask { (try? await DriveAPI.stations(near: point, fuel: fuel, radiusKm: 8)) ?? [] } }
@@ -2785,7 +2802,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                                                 corridorDistance: Double)? in
             let point = CLLocation(latitude: station.lat, longitude: station.lon)
             guard let match = routePoints.enumerated().min(by: { $0.element.distance(from: point) < $1.element.distance(from: point) }),
-                  match.element.distance(from: point) < 4_000 else { return nil }
+                  match.element.distance(from: point) < 4_000,
+                  RouteSearchPolicy.isAhead(candidateProgress: routeProgress[match.offset],
+                                            currentProgress: currentProgress) else { return nil }
             return (station, routeProgress[match.offset], match.element.distance(from: point))
         }
         // Keep at most one strong candidate per route section. This gives the

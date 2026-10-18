@@ -59,6 +59,15 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testFuelStationQueriesScaleWithRemainingDistanceButStayBounded() {
+        XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 20_000), 2)
+        XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 400_000), 2)
+        XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 600_000), 3)
+        XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 2_000_000), 6)
+        XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: .infinity), 2)
+        XCTAssertEqual(FuelStationQueryPolicy.maximumSampleCount, 6)
+    }
+
     func testFuelPlannerContinuesAfterMandatoryDepartureRefuel() {
         let vehicle = VehicleProfile(
             baseConsumptionLPer100km: 10,

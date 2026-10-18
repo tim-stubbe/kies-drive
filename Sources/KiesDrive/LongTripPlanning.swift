@@ -313,6 +313,16 @@ enum FuelStationSelectionPolicy {
     }
 }
 
+enum FuelStationQueryPolicy {
+    static let maximumSampleCount = 6
+
+    static func sampleCount(remainingDistanceMetres: CLLocationDistance) -> Int {
+        guard remainingDistanceMetres.isFinite, remainingDistanceMetres > 0 else { return 2 }
+        let sections = Int(ceil(remainingDistanceMetres / 200_000))
+        return min(maximumSampleCount, max(2, sections))
+    }
+}
+
 enum RouteTravelTimeProgress {
     /// Maps a point's whole-route distance fraction to its expected-time
     /// fraction using the individual MapKit leg ETAs. It intentionally works
