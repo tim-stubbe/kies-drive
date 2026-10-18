@@ -611,6 +611,21 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.map(\.afterDriving), [30 * 60, 150 * 60, 270 * 60])
     }
 
+    func testRemainingStopProjectionCannotSnapToCompletedRouteLoop() throws {
+        let range = try XCTUnwrap(RemainingRoutePlanningPolicy.projectionRange(
+            distanceProgress: 0.60,
+            totalDistance: 400_000
+        ))
+
+        XCTAssertGreaterThan(range.lowerBound, 0.599)
+        XCTAssertFalse(range.contains(0.20))
+        XCTAssertTrue(range.contains(0.80))
+        XCTAssertNil(RemainingRoutePlanningPolicy.projectionRange(
+            distanceProgress: 0.5,
+            totalDistance: 0
+        ))
+    }
+
     func testBreakPlannerRequestsImmediateBreakAtContinuousDrivingLimit() {
         let breaks = BreakPlanner().plan(
             drivingTime: 60 * 60, candidates: [],

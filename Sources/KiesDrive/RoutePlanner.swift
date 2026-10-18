@@ -3473,8 +3473,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let routeCoordinates = routes.flatMap { sample($0.polyline, maximum: 160) }
         guard routeCoordinates.count > 1 else { return [] }
         let timeline = routes.map { (distance: $0.distance, travelTime: $0.expectedTravelTime) }
+        let projectionRange: ClosedRange<Double>? = {
+            guard isNavigating, totalDistance > 0, remainingDistanceMetres >= 0 else { return nil }
+            return RemainingRoutePlanningPolicy.projectionRange(
+                distanceProgress: 1 - remainingDistanceMetres / totalDistance,
+                totalDistance: totalDistance
+            )
+        }()
         let fuelCandidates: [BreakCandidate] = stations.compactMap { station -> BreakCandidate? in
-            guard let projection = RouteGeometryProgress.nearestProgress(of: station.coordinate, on: routeCoordinates),
+            guard let projection = RouteGeometryProgress.nearestProgress(
+                of: station.coordinate, on: routeCoordinates, progressRange: projectionRange
+            ),
                   projection.distance <= 4_000 else { return nil }
             return BreakCandidateFactory.fuelStation(
                 station, progress: projection.progress,
@@ -3486,7 +3495,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
         }
         let amenities = amenityBreakCandidates.compactMap { candidate -> BreakCandidate? in
-            guard let projection = RouteGeometryProgress.nearestProgress(of: candidate.coordinate, on: routeCoordinates),
+            guard let projection = RouteGeometryProgress.nearestProgress(
+                of: candidate.coordinate, on: routeCoordinates, progressRange: projectionRange
+            ),
                   projection.distance <= 4_000 else { return nil }
             return .init(id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
                          progress: projection.progress,
@@ -3509,11 +3520,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         breakDetourLoadGeneration = generation
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
         let candidates = breakCandidates(along: legs, useMeasuredDetours: false)
+        let projectionRange: ClosedRange<Double>? = {
+            guard isNavigating, totalDistance > 0, remainingDistanceMetres >= 0 else { return nil }
+            return RemainingRoutePlanningPolicy.projectionRange(
+                distanceProgress: 1 - remainingDistanceMetres / totalDistance,
+                totalDistance: totalDistance
+            )
+        }()
         var measurements: [String: CLLocationDistance] = [:]
         await withTaskGroup(of: (String, CLLocationDistance?).self) { group in
             for candidate in candidates {
                 guard let projection = RouteGeometryProgress.nearestProgress(
-                    of: candidate.coordinate, on: routeCoordinates
+                    of: candidate.coordinate, on: routeCoordinates,
+                    progressRange: projectionRange
                 ), let anchors = RouteSearchPolicy.detourAnchors(
                     routeCoordinates: routeCoordinates, progress: projection.progress
                 ) else { continue }

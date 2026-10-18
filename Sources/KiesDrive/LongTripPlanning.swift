@@ -990,6 +990,17 @@ struct DrivingFuelStateStore {
 }
 
 enum RemainingRoutePlanningPolicy {
+    static func projectionRange(distanceProgress: Double,
+                                totalDistance: CLLocationDistance,
+                                backwardToleranceMetres: CLLocationDistance = 250)
+        -> ClosedRange<Double>? {
+        guard distanceProgress.isFinite,
+              totalDistance.isFinite, totalDistance > 0 else { return nil }
+        let progress = min(1, max(0, distanceProgress))
+        let tolerance = min(0.005, max(0, backwardToleranceMetres) / totalDistance)
+        return max(0, progress - tolerance)...1
+    }
+
     static func rebasedCandidates(_ candidates: [BreakCandidate],
                                   distanceProgress: Double,
                                   timeProgress: Double) -> [BreakCandidate] {
