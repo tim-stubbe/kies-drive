@@ -1206,6 +1206,25 @@ enum NavigationFuelReminderSpeechDeliveryPolicy {
             }
         }
     }
+
+
+    static func pendingStage(pendingKey: String?, stopID: String)
+        -> NavigationFuelReminderPolicy.Stage? {
+        guard let pendingKey else { return nil }
+        return NavigationFuelReminderPolicy.Stage.allCases.first {
+            NavigationFuelReminderPolicy.key(stopID: stopID, stage: $0) == pendingKey
+        }
+    }
+
+    /// A deferred status announcement is rebuilt from the current nearest
+    /// stop and distance. This prevents a stale 30-km message, or a reminder
+    /// for a later stop, from being spoken after route planning has changed.
+    static func stageToRetry(pendingKey: String?, stopID: String,
+                             newlyDue: NavigationFuelReminderPolicy.Stage?)
+        -> NavigationFuelReminderPolicy.Stage? {
+        let pending = pendingStage(pendingKey: pendingKey, stopID: stopID)
+        return [pending, newlyDue].compactMap { $0 }.max { $0.rawValue < $1.rawValue }
+    }
 }
 
 enum DrivingFuelPolicy {

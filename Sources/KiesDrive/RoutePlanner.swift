@@ -2385,31 +2385,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return
         }
         let currentProgress = currentInstalledRouteProgress
-        if drivingFuelState.pendingSpokenReminderKey != nil,
-           !NavigationFuelReminderSpeechDeliveryPolicy.isRelevant(
-                pendingKey: drivingFuelState.pendingSpokenReminderKey,
-                stops: result.fuelStops, currentProgress: currentProgress
-           ) {
-            drivingFuelState.clearPendingSpeech()
-            drivingFuelStore.save(drivingFuelState)
-        }
-        if DriveSettings.shared.voiceGuidance,
-           let key = drivingFuelState.pendingSpokenReminderKey,
-           let text = drivingFuelState.pendingSpokenReminderText {
-            let inFlight = pendingFuelReminderSpeech.values.contains { $0.key == key } ||
-                activeFuelReminderSpeech.values.contains { $0.key == key }
-            if inFlight { return }
-            if speak(text, priority: .status, fuelReminderClaim: (key, text)) { return }
-        } else if drivingFuelState.pendingSpokenReminderKey != nil ||
-                    drivingFuelState.pendingSpokenReminderText != nil {
-            drivingFuelState.clearPendingSpeech()
-            drivingFuelStore.save(drivingFuelState)
-        }
         guard let stop = result.fuelStops
             .filter({ PlannedRouteStopVisibilityPolicy.isAhead(
                 $0.insertionRouteProgress, current: currentProgress
             ) })
             .min(by: { $0.insertionRouteProgress < $1.insertionRouteProgress }) else {
+            if drivingFuelState.pendingSpokenReminderKey != nil ||
+                drivingFuelState.pendingSpokenReminderText != nil {
+                drivingFuelState.clearPendingSpeech()
+                drivingFuelStore.save(drivingFuelState)
+            }
             fuelReminderText = nil
             return
         }
@@ -2418,33 +2403,68 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             installedRouteDistance: totalDistance
         )
         let reminderID = NavigationFuelReminderPolicy.reminderID(for: stop)
-        guard let stage = NavigationFuelReminderPolicy.stage(
+        let newlyDueStage = NavigationFuelReminderPolicy.stage(
             distanceMetres: distance,
             deliveredKeys: drivingFuelState.deliveredReminderKeys,
             stopID: reminderID
-        ) else { return }
-        drivingFuelState.deliveredReminderKeys.formUnion(
-            NavigationFuelReminderPolicy.keysThrough(stopID: reminderID, stage: stage)
         )
-        drivingFuelStore.save(drivingFuelState)
-        fuelReminderText = NavigationFuelReminderPolicy.text(
-            stage: stage, stationName: stop.candidate?.name
+        let stageToRetry = NavigationFuelReminderSpeechDeliveryPolicy.stageToRetry(
+            pendingKey: drivingFuelState.pendingSpokenReminderKey,
+            stopID: reminderID,
+            newlyDue: newlyDueStage
         )
-        if DriveSettings.shared.voiceGuidance, let fuelReminderText {
-            drivingFuelState.pendingSpokenReminderKey = NavigationFuelReminderPolicy.key(
-                stopID: reminderID, stage: stage
+
+        if let newlyDueStage {
+            drivingFuelState.deliveredReminderKeys.formUnion(
+                NavigationFuelReminderPolicy.keysThrough(
+                    stopID: reminderID, stage: newlyDueStage
+                )
             )
-            drivingFuelState.pendingSpokenReminderText = fuelReminderText
             drivingFuelStore.save(drivingFuelState)
-            _ = speak(
-                fuelReminderText, priority: .status,
-                fuelReminderClaim: (drivingFuelState.pendingSpokenReminderKey!, fuelReminderText)
+            fuelReminderText = NavigationFuelReminderPolicy.text(
+                stage: newlyDueStage, stationName: stop.candidate?.name
+            )
+            DriveDiagnosticStore.append(
+                .fuelReminderShown,
+                detail: "Tankhinweis · \(newlyDueStage) · \(fuelReminderText ?? "")"
             )
         }
-        DriveDiagnosticStore.append(
-            .fuelReminderShown,
-            detail: "Tankhinweis · \(stage) · \(fuelReminderText ?? "")"
+
+        guard DriveSettings.shared.voiceGuidance else {
+            if drivingFuelState.pendingSpokenReminderKey != nil ||
+                drivingFuelState.pendingSpokenReminderText != nil {
+                drivingFuelState.clearPendingSpeech()
+                drivingFuelStore.save(drivingFuelState)
+            }
+            return
+        }
+        guard let stageToRetry else {
+            // A pending reminder for a later/removed stop is intentionally not
+            // relevant to the currently nearest stop.
+            if drivingFuelState.pendingSpokenReminderKey != nil ||
+                drivingFuelState.pendingSpokenReminderText != nil {
+                drivingFuelState.clearPendingSpeech()
+                drivingFuelStore.save(drivingFuelState)
+            }
+            return
+        }
+        let key = NavigationFuelReminderPolicy.key(
+            stopID: reminderID, stage: stageToRetry
         )
+        let text = NavigationFuelReminderPolicy.text(
+            stage: stageToRetry, stationName: stop.candidate?.name
+        )
+        fuelReminderText = text
+        if drivingFuelState.pendingSpokenReminderKey != key ||
+            drivingFuelState.pendingSpokenReminderText != text {
+            drivingFuelState.pendingSpokenReminderKey = key
+            drivingFuelState.pendingSpokenReminderText = text
+            drivingFuelStore.save(drivingFuelState)
+        }
+        let inFlight = pendingFuelReminderSpeech.values.contains { $0.key == key } ||
+            activeFuelReminderSpeech.values.contains { $0.key == key }
+        guard !inFlight else { return }
+        _ = speak(text, priority: .status, fuelReminderClaim: (key, text))
     }
 
     @discardableResult

@@ -224,6 +224,23 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testDeferredFuelSpeechPromotesOnlyForCurrentNearestStop() {
+        let stopID = "station:fuel-a"
+        let planKey = NavigationFuelReminderPolicy.key(stopID: stopID, stage: .plan)
+        XCTAssertEqual(NavigationFuelReminderSpeechDeliveryPolicy.stageToRetry(
+            pendingKey: planKey, stopID: stopID, newlyDue: .soon
+        ), .soon)
+        XCTAssertEqual(NavigationFuelReminderSpeechDeliveryPolicy.stageToRetry(
+            pendingKey: planKey, stopID: stopID, newlyDue: .due
+        ), .due)
+        XCTAssertEqual(NavigationFuelReminderSpeechDeliveryPolicy.stageToRetry(
+            pendingKey: planKey, stopID: stopID, newlyDue: nil
+        ), .plan)
+        XCTAssertNil(NavigationFuelReminderSpeechDeliveryPolicy.stageToRetry(
+            pendingKey: planKey, stopID: "station:new-nearest", newlyDue: nil
+        ), "A later stop must not speak after a new nearer stop is planned")
+    }
+
     func testPendingBreakSpeechClearsOnlyAfterMatchingCompletion() {
         let plan = NavigationBreakReminderPolicy.Stage.plan.rawValue
         XCTAssertFalse(NavigationBreakReminderSpeechDeliveryPolicy.shouldClearPending(
