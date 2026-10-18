@@ -1446,12 +1446,20 @@ struct DriveContentView: View {
                 return (0..<polyline.pointCount).map { points[$0].coordinate }
             }
             : []
-        return OfflineMapCoveragePolicy.canUse(
+        guard OfflineMapCoveragePolicy.canUse(
             bounds: package.manifest.bounds,
             currentCoordinate: location.location?.coordinate,
             routeCoordinates: routeCoordinates,
             showsRouteOverview: isShowingRouteOverview
-        ) ? package : nil
+        ) else { return nil }
+        let requiredCoordinates = needsRouteCoverage
+            ? routeCoordinates
+            : [location.location?.coordinate].compactMap { $0 }
+        guard !requiredCoordinates.isEmpty,
+              offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package) else {
+            return nil
+        }
+        return package
     }
 
     private var mapBase: some View {

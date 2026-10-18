@@ -49,6 +49,12 @@ enum OfflineMapCameraPolicy {
 }
 
 enum OfflineTileCoordinatePolicy {
+    struct Tile: Hashable {
+        let z: Int
+        let x: Int
+        let y: Int
+    }
+
     static func isValid(z: Int, x: Int, y: Int) -> Bool {
         guard (0...22).contains(z), x >= 0, y >= 0 else { return false }
         let axisTileCount = 1 << z
@@ -62,6 +68,19 @@ enum OfflineTileCoordinatePolicy {
         let mercatorY = .pi * (1 - 2 * (Double(y) + 0.5) / tiles)
         let latitude = atan(sinh(mercatorY)) * 180 / .pi
         return .init(latitude: latitude, longitude: longitude)
+    }
+
+    static func tile(containing coordinate: CLLocationCoordinate2D, zoom: Int) -> Tile? {
+        guard (0...22).contains(zoom),
+              (-90...90).contains(coordinate.latitude),
+              (-180...180).contains(coordinate.longitude) else { return nil }
+        let latitude = min(85.05112878, max(-85.05112878, coordinate.latitude))
+        let count = Double(1 << zoom)
+        let x = Int(floor((coordinate.longitude + 180) / 360 * count))
+        let latitudeRadians = latitude * .pi / 180
+        let y = Int(floor((1 - asinh(tan(latitudeRadians)) / .pi) / 2 * count))
+        let tile = Tile(z: zoom, x: min((1 << zoom) - 1, x), y: min((1 << zoom) - 1, y))
+        return isValid(z: tile.z, x: tile.x, y: tile.y) ? tile : nil
     }
 }
 
@@ -212,6 +231,25 @@ final class OfflineMapPackageStore: ObservableObject {
             z: z, x: x, y: y, packageDirectory: package.directoryURL,
             manifest: package.manifest, fileManager: fileManager
         )
+    }
+
+
+    /// Bounds in the manifest are only metadata. Verify that the package also
+    /// contains the actual base tiles needed by the current camera before
+    /// replacing the online map. Missing higher zoom levels can still fall
+    /// through to MapKit, but a missing base tile means the package cannot
+    /// truthfully cover this location or route overview.
+    func hasBaseTiles(covering coordinates: [CLLocationCoordinate2D],
+                      package: InstalledOfflineMapPackage) -> Bool {
+        let requiredTiles = Set(coordinates.compactMap {
+            OfflineTileCoordinatePolicy.tile(
+                containing: $0, zoom: package.manifest.minimumZoom
+            )
+        })
+        guard requiredTiles.count > 0, requiredTiles.count <= coordinates.count else { return false }
+        return requiredTiles.allSatisfy {
+            tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) != nil
+        }
     }
 
     private static func readPackage(at url: URL, fileManager: FileManager) throws -> InstalledOfflineMapPackage {

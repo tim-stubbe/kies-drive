@@ -168,6 +168,34 @@ final class OfflineMapPackageTests: XCTestCase {
         let centre = OfflineTileCoordinatePolicy.center(z: 8, x: 136, y: 89)
         XCTAssertEqual(centre?.latitude ?? 0, 47.5, accuracy: 1)
         XCTAssertEqual(centre?.longitude ?? 0, 11.95, accuracy: 0.1)
+        XCTAssertEqual(
+            OfflineTileCoordinatePolicy.tile(
+                containing: .init(latitude: 47.5, longitude: 11.95), zoom: 8
+            ),
+            .init(z: 8, x: 136, y: 89)
+        )
+        XCTAssertNil(OfflineTileCoordinatePolicy.tile(
+            containing: .init(latitude: 95, longitude: 11.95), zoom: 8
+        ))
+    }
+
+    func testRuntimeCoverageRequiresRealBaseTiles() throws {
+        try writeManifest(id: "runtime-coverage")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let package = try store.install(from: source)
+
+        XCTAssertTrue(store.hasBaseTiles(
+            covering: [.init(latitude: 47.5, longitude: 11.95)], package: package
+        ))
+        XCTAssertFalse(store.hasBaseTiles(
+            covering: [
+                .init(latitude: 47.5, longitude: 11.95),
+                .init(latitude: 47.5, longitude: 13.5),
+            ],
+            package: package
+        ))
+        XCTAssertFalse(store.hasBaseTiles(covering: [], package: package))
     }
 
     func testTileResolverRejectsSymlinkEscapingInstalledPackage() throws {
