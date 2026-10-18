@@ -1564,7 +1564,9 @@ struct DriveContentView: View {
         }
         if !needsRouteCoverage, let coordinate = location.location?.coordinate {
             let lookahead = OfflineRouteLookaheadPolicy.coordinates(
-                from: coordinate, route: visibleRouteCoordinates
+                from: coordinate, route: visibleRouteCoordinates,
+                routeProgress: planner.isNavigating
+                    ? planner.currentInstalledRouteProgress : nil
             )
             if !offlineMaps.hasNavigationTiles(along: lookahead, package: package) {
                 return nil

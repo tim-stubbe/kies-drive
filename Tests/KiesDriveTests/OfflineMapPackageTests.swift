@@ -216,6 +216,54 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertEqual(lookahead[0].longitude, current.longitude)
     }
 
+    func testOfflineLookaheadUsesInstalledProgressAtRouteCrossing() {
+        // The route visits the same coordinate near its beginning and near its
+        // end. Spatial matching alone selects the first occurrence and checks
+        // tiles behind the car; installed progress must select the later arm.
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.00),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.01),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.02),
+            CLLocationCoordinate2D(latitude: 50.01, longitude: 8.02),
+            CLLocationCoordinate2D(latitude: 50.02, longitude: 8.02),
+            CLLocationCoordinate2D(latitude: 50.02, longitude: 8.01),
+            CLLocationCoordinate2D(latitude: 50.02, longitude: 8.00),
+            CLLocationCoordinate2D(latitude: 50.01, longitude: 8.00),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.00),
+            CLLocationCoordinate2D(latitude: 49.99, longitude: 8.00),
+        ]
+        let current = CLLocationCoordinate2D(latitude: 50, longitude: 8.00)
+
+        let unbound = OfflineRouteLookaheadPolicy.coordinates(
+            from: current, route: route, lookaheadMetres: 4_000, intervalMetres: 500
+        )
+        let bound = OfflineRouteLookaheadPolicy.coordinates(
+            from: current, route: route, routeProgress: 0.9,
+            lookaheadMetres: 4_000, intervalMetres: 500
+        )
+
+        XCTAssertTrue(unbound.dropFirst().contains { $0.longitude > 8.005 })
+        XCTAssertTrue(bound.dropFirst().allSatisfy { $0.longitude <= 8.000_001 })
+        XCTAssertTrue(bound.dropFirst().contains { $0.latitude < 50 })
+    }
+
+    func testOfflineLookaheadIgnoresInvalidProgress() {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.02),
+        ]
+        let current = route[0]
+        let invalid = OfflineRouteLookaheadPolicy.coordinates(
+            from: current, route: route, routeProgress: .nan
+        )
+        let baseline = OfflineRouteLookaheadPolicy.coordinates(from: current, route: route)
+        XCTAssertEqual(invalid.count, baseline.count)
+        for (lhs, rhs) in zip(invalid, baseline) {
+            XCTAssertEqual(lhs.latitude, rhs.latitude, accuracy: 0.000_001)
+            XCTAssertEqual(lhs.longitude, rhs.longitude, accuracy: 0.000_001)
+        }
+    }
+
     func testRuntimeCoverageRequiresRealBaseTiles() throws {
         try writeManifest(id: "runtime-coverage")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))

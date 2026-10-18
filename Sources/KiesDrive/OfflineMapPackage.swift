@@ -75,11 +75,42 @@ enum OfflineRouteLookaheadPolicy {
     /// would make local driving unnecessarily expensive.
     static func coordinates(from current: CLLocationCoordinate2D,
                             route: [CLLocationCoordinate2D],
+                            routeProgress: Double? = nil,
                             lookaheadMetres: CLLocationDistance = 8_000,
                             intervalMetres: CLLocationDistance = 2_000) -> [CLLocationCoordinate2D] {
         guard !route.isEmpty else { return [current] }
         let currentLocation = CLLocation(latitude: current.latitude, longitude: current.longitude)
-        let nearestIndex = route.indices.min {
+        var cumulative = Array(repeating: CLLocationDistance(0), count: route.count)
+        if route.count > 1 {
+            for index in route.indices.dropFirst() {
+                cumulative[index] = cumulative[index - 1] + CLLocation(
+                    latitude: route[index - 1].latitude,
+                    longitude: route[index - 1].longitude
+                ).distance(from: CLLocation(
+                    latitude: route[index].latitude,
+                    longitude: route[index].longitude
+                ))
+            }
+        }
+        let candidateIndices: [Int]
+        if let routeProgress, routeProgress.isFinite, (0...1).contains(routeProgress),
+           let totalDistance = cumulative.last, totalDistance > 0 {
+            let expectedDistance = totalDistance * routeProgress
+            // Live installed progress is the primary disambiguator at loops
+            // and crossings. Keep a modest backward allowance for GPS drift,
+            // while permitting enough forward range after sparse tunnel fixes.
+            let lowerBound = max(0, expectedDistance - max(1_000, lookaheadMetres / 2))
+            let upperBound = min(
+                totalDistance,
+                expectedDistance + max(20_000, lookaheadMetres * 2)
+            )
+            candidateIndices = route.indices.filter {
+                cumulative[$0] >= lowerBound && cumulative[$0] <= upperBound
+            }
+        } else {
+            candidateIndices = Array(route.indices)
+        }
+        let nearestIndex = candidateIndices.min {
             currentLocation.distance(from: CLLocation(latitude: route[$0].latitude, longitude: route[$0].longitude)) <
             currentLocation.distance(from: CLLocation(latitude: route[$1].latitude, longitude: route[$1].longitude))
         } ?? route.startIndex
