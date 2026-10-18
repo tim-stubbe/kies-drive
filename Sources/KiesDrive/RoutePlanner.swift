@@ -2,6 +2,11 @@ import Foundation
 import MapKit
 import AVFoundation
 
+private enum FuelStationLoadOutcome {
+    case batch([FuelStation])
+    case superseded
+}
+
 private extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }
@@ -4560,17 +4565,52 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             maximum: FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: remainingDistance)
         )
         var unique: [String: FuelStation] = [:]
-        await withTaskGroup(of: [FuelStation].self) { group in
-            for point in points { group.addTask { (try? await DriveAPI.stations(near: point, fuel: fuel, radiusKm: 8)) ?? [] } }
-            for await batch in group {
-                // A malformed or unexpectedly broad backend response must not
-                // turn a bounded route query back into hundreds of objects to
-                // sort and project on the main actor.
-                for station in batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample) {
-                    unique[station.id] = station
+        var loadWasSuperseded = false
+        await withTaskGroup(of: FuelStationLoadOutcome.self) { group in
+            for point in points {
+                group.addTask {
+                    .batch((try? await DriveAPI.stations(
+                        near: point, fuel: fuel, radiusKm: 8
+                    )) ?? [])
                 }
             }
+            if !points.isEmpty {
+                group.addTask { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                        guard !Task.isCancelled else { break }
+                        guard let self else { return .superseded }
+                        if !(await self.isCurrentStationLoad(
+                            routeGeneration: routeGeneration,
+                            loadGeneration: generation
+                        )) { return .superseded }
+                    }
+                    return .superseded
+                }
+            }
+            var remainingRequests = points.count
+            while remainingRequests > 0, let outcome = await group.next() {
+                switch outcome {
+                case .batch(let batch):
+                    remainingRequests -= 1
+                    // A malformed or unexpectedly broad backend response must
+                    // not turn a bounded route query back into hundreds of
+                    // objects to sort and project on the main actor.
+                    for station in batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample) {
+                        unique[station.id] = station
+                    }
+                case .superseded:
+                    loadWasSuperseded = true
+                    group.cancelAll()
+                    return
+                }
+            }
+            // End the generation watcher after all provider requests finish.
+            // If a newer route or fuel choice wins first, cancellation reaches
+            // the underlying URLSession requests instead of wasting bandwidth.
+            group.cancelAll()
         }
+        guard !loadWasSuperseded else { return }
         guard RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: stationLoadGeneration
@@ -4604,6 +4644,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }?.station
         }
+    }
+
+    private func isCurrentStationLoad(routeGeneration: UUID, loadGeneration: UUID) -> Bool {
+        RouteEnrichmentPublicationPolicy.isCurrent(
+            route: routeGeneration, currentRoute: routeCalculationGeneration,
+            request: loadGeneration, currentRequest: stationLoadGeneration
+        )
     }
 
     /// Fügt eine Tankstelle als Zwischenstopp ein (oder entfernt sie erneut,
