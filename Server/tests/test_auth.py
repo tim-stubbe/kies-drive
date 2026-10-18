@@ -478,6 +478,34 @@ def test_active_route_mcp_view_exposes_navigation_reliability():
     assert view["offline_guidance_active"] is False
 
 
+def test_heading_and_maneuver_views_are_human_readable_and_safety_aware():
+    assert main.heading_remote_view({"heading_degrees": 0}) == {
+        "degrees": 0.0, "direction": "Nord"
+    }
+    assert main.heading_remote_view({"heading_degrees": 91}) == {
+        "degrees": 91.0, "direction": "Ost"
+    }
+    assert main.heading_remote_view({"heading_degrees": 315}) == {
+        "degrees": 315.0, "direction": "Nordwest"
+    }
+    assert main.heading_remote_view({"heading_degrees": float("nan")}) is None
+
+    view = main.next_maneuver_remote_view({
+        "next_maneuver": None,
+        "navigation_active": True,
+        "on_route": False,
+        "rerouting": True,
+        "offline_guidance_active": False,
+    })
+    assert view == {
+        "next_maneuver": None,
+        "navigation_active": True,
+        "on_route": False,
+        "rerouting": True,
+        "offline_guidance_active": False,
+    }
+
+
 def test_password_reset_is_private_single_use_and_revokes_sessions(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "reset.db"))
     verification = {}

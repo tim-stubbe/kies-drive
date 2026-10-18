@@ -203,6 +203,27 @@ def active_route_remote_view(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def heading_remote_view(state: dict[str, Any]) -> dict[str, Any] | None:
+    value = state.get("heading_degrees")
+    if (not isinstance(value, (int, float)) or isinstance(value, bool)
+            or not math.isfinite(value)):
+        return None
+    degrees = float(value) % 360
+    labels = ("Nord", "Nordost", "Ost", "Südost", "Süd", "Südwest", "West", "Nordwest")
+    index = int((degrees + 22.5) // 45) % len(labels)
+    return {"degrees": degrees, "direction": labels[index]}
+
+
+def next_maneuver_remote_view(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "next_maneuver": state.get("next_maneuver"),
+        "navigation_active": state.get("navigation_active", False),
+        "on_route": state.get("on_route"),
+        "rerouting": state.get("rerouting", False),
+        "offline_guidance_active": state.get("offline_guidance_active", False),
+    }
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "service": "kies-drive"}
@@ -952,9 +973,15 @@ async def mcp(request: Request, authorization: str | None = Header(None)):
             elif isinstance(name, str) and name.startswith("get_"):
                 row = conn.execute("SELECT payload,updated_at FROM user_state WHERE user_id=?", (user["id"],)).fetchone()
                 state = decode_remote_state(row["payload"] if row else None)
-                keys = {"get_location":"location", "get_heading":"heading_degrees", "get_speed":"speed_kmh", "get_next_maneuver":"next_maneuver"}
-                value = active_route_remote_view(state) if name == "get_active_route" \
-                    else state.get(keys.get(name, ""))
+                keys = {"get_location": "location", "get_speed": "speed_kmh"}
+                if name == "get_active_route":
+                    value = active_route_remote_view(state)
+                elif name == "get_heading":
+                    value = heading_remote_view(state)
+                elif name == "get_next_maneuver":
+                    value = next_maneuver_remote_view(state)
+                else:
+                    value = state.get(keys.get(name, ""))
                 observed_at, age, live = remote_state_freshness(
                     state, row["updated_at"] if row else None
                 )
