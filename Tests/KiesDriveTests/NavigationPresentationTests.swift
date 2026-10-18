@@ -2926,6 +2926,37 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(summary.recommendation.contains("automatisch behoben"))
     }
 
+    func testDiagnosticSummaryReportsUnresolvedRouteStopFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .routeStopFailed,
+                detail: "Zwischenstopp nicht berechenbar · Autohof Spessart"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .attention)
+        XCTAssertEqual(summary.routeStopFailures, 1)
+        XCTAssertTrue(summary.recommendation.contains("Zwischenstopp"))
+    }
+
+    func testDiagnosticSummaryClearsRouteStopFailureAfterSuccessfulRetry() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .routeStopFailed,
+                detail: "Zwischenstopp nicht berechenbar · Autohof Spessart"
+            ),
+            DriveDiagnosticEvent(kind: .routeStopAdded, detail: "autohof spessart"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.routeStopFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
     func testDiagnosticSummaryClearsOfflineDepartureAfterRejoiningCache() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),

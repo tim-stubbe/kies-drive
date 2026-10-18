@@ -418,6 +418,7 @@ struct DriveDiagnosticSummary: Equatable {
     let missedFinalCues: Int
     let speechDeliveryFailures: Int
     let offlineRouteDepartures: Int
+    let routeStopFailures: Int
     let resolvedRouteIssues: Int
     let recommendation: String
 
@@ -473,6 +474,37 @@ struct DriveDiagnosticSummary: Equatable {
         }.count
     }
 
+    private static func normalizedRouteStopName(in event: DriveDiagnosticEvent) -> String? {
+        let raw: String
+        switch event.kind {
+        case .routeStopFailed:
+            raw = event.detail.components(separatedBy: "·").last ?? event.detail
+        case .routeStopAdded:
+            raw = event.detail
+        default:
+            return nil
+        }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func unresolvedRouteStopFailures(
+        in session: ArraySlice<DriveDiagnosticEvent>
+    ) -> Int {
+        let indexed = Array(session)
+        return indexed.indices.filter { index in
+            let failure = indexed[index]
+            guard failure.kind == .routeStopFailed else { return false }
+            guard let stop = normalizedRouteStopName(in: failure) else { return true }
+            return !indexed.indices.dropFirst(index + 1).contains { laterIndex in
+                let later = indexed[laterIndex]
+                return later.kind == .routeStopAdded &&
+                    normalizedRouteStopName(in: later) == stop
+            }
+        }.count
+    }
+
     static func latestSession(in events: [DriveDiagnosticEvent]) -> Self? {
         guard let latestStart = events.lastIndex(where: { $0.kind == .navigationStarted }) else { return nil }
         let sessionID = events[latestStart].sessionID
@@ -515,10 +547,13 @@ struct DriveDiagnosticSummary: Equatable {
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
         let totalSpeechFailures = session.filter { $0.kind == .speechDeliveryFailed }.count
         let speechFailures = unresolvedSpeechFailures(in: session)
+        let totalRouteStopFailures = session.filter { $0.kind == .routeStopFailed }.count
+        let routeStopFailures = unresolvedRouteStopFailures(in: session)
         let offlineDepartures = unresolvedOffline.filter { $0.kind == .offlineRouteDeparture }.count
         let resolved = max(0, totalFailures - failures) +
             max(0, totalOfflineDepartures - offlineDepartures) +
-            max(0, totalSpeechFailures - speechFailures)
+            max(0, totalSpeechFailures - speechFailures) +
+            max(0, totalRouteStopFailures - routeStopFailures)
         let reroutes = session.filter { $0.kind == .rerouteRequested }.count
         let quality: Quality
         let recommendation: String
@@ -533,9 +568,12 @@ struct DriveDiagnosticSummary: Equatable {
             } else {
                 recommendation = "Die letzte Neuberechnung ist noch fehlgeschlagen; die alte Route blieb aktiv."
             }
-        } else if rejectedBurst >= 3 || recoveredLocationGaps >= 3 || reroutes >= 3 {
+        } else if routeStopFailures > 0 || rejectedBurst >= 3 ||
+                    recoveredLocationGaps >= 3 || reroutes >= 3 {
             quality = .attention
-            if rejectedBurst >= 3 {
+            if routeStopFailures > 0 {
+                recommendation = "Mindestens ein gewünschter Zwischenstopp konnte nicht berechnet werden; Verbindung und Erreichbarkeit des Stopps prüfen."
+            } else if rejectedBurst >= 3 {
                 recommendation = "Mehrere GPS-Messungen waren unzuverlässig; freie Sicht zum Himmel verbessert die Führung."
             } else if recoveredLocationGaps >= 3 {
                 recommendation = "Die Standortübertragung war mehrfach unterbrochen; Hintergrundfreigabe und Energiesparmodus prüfen."
@@ -565,6 +603,7 @@ struct DriveDiagnosticSummary: Equatable {
                      fuelRemindersAnnounced: spokenFuel,
                      missedFinalCues: missed, speechDeliveryFailures: speechFailures,
                      offlineRouteDepartures: offlineDepartures,
+                     routeStopFailures: routeStopFailures,
                      resolvedRouteIssues: resolved, recommendation: recommendation)
     }
 }
