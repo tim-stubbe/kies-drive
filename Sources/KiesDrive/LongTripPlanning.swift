@@ -1424,7 +1424,6 @@ struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
     var earliestStopTolerance: TimeInterval = 20 * 60
-    var latestStopTolerance: TimeInterval = 10 * 60
 
     func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
               plannedFuelStops: [PlannedFuelStop] = [],
@@ -1449,7 +1448,11 @@ struct BreakPlanner {
             let idealProgress = min(0.95, max(0, idealDrivingTime / drivingTime))
             let earliestDrivingTime = max(0,
                                           idealDrivingTime - earliestStopTolerance)
-            let latestDrivingTime = min(drivingTime, idealDrivingTime + latestStopTolerance)
+            // A named amenity may move the stop slightly earlier, never past
+            // the configured continuous-driving limit. If no verified place
+            // exists before the boundary, retain the theoretical safe stop
+            // instead of presenting a late place as an optimal recommendation.
+            let latestDrivingTime = min(drivingTime, idealDrivingTime)
             let coordinatedFuelStop = remainingFuelStops
                 .filter {
                     let stopTime = ($0.candidate?.timeProgress ?? $0.routeProgress) * drivingTime

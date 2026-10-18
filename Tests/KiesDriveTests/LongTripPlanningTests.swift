@@ -1635,6 +1635,21 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
     }
 
+    func testBreakPlannerRejectsStopOnlyMinutesPastContinuousDrivingLimit() {
+        let fiveMinutesLate = BreakCandidate(
+            id: "slightly-late", name: "Raststätte nach dem Grenzwert",
+            coordinate: .init(), progress: (2 * 60 + 5) / (3 * 60),
+            detourMetres: 20, isOpen: true
+        )
+
+        let planned = BreakPlanner().plan(
+            drivingTime: 3 * 3600, candidates: [fiveMinutesLate]
+        ).first
+
+        XCTAssertNil(planned?.candidate)
+        XCTAssertEqual(planned?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
+    }
+
     func testBreakPlannerDoesNotChooseAnUnhelpfullyEarlyStop() {
         let tooEarly = BreakCandidate(id: "early", name: "Zu früh", coordinate: .init(),
                                       progress: 0.2, detourMetres: 20, isOpen: true)
@@ -1717,7 +1732,7 @@ final class LongTripPlanningTests: XCTestCase {
         let breaks = BreakPlanner().plan(drivingTime: drivingTime, candidates: candidates)
         let times = breaks.map(\.afterDriving)
         let legs = zip([0.0] + times, times + [drivingTime]).map { $1 - $0 }
-        XCTAssertTrue(legs.allSatisfy { $0 <= 2 * 3600 + 10 * 60 })
+        XCTAssertTrue(legs.allSatisfy { $0 <= 2 * 3600 })
         XCTAssertFalse(breaks.contains { $0.candidate?.id == "late" },
                        "A later stop must be measured from the actual early break")
     }
