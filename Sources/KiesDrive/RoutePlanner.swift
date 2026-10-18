@@ -2267,9 +2267,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                             speedMps: NavigationMotionPolicy.reliableSpeed(for: location))
         }
         let pauseJustCompleted = previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0
-        if pauseJustCompleted || (lastLongTripPlanRefreshAt.map({
-            evaluationDate.timeIntervalSince($0) >= 5 * 60
-        }) ?? true) {
+        let passedPlannedStop = LongTripPlanRefreshPolicy.hasPassedConcreteStop(
+            longTripPlan?.results.first,
+            currentInstalledProgress: currentInstalledRouteProgress
+        )
+        if pauseJustCompleted || passedPlannedStop ||
+            LongTripPlanRefreshPolicy.periodicRefreshIsDue(
+                lastRefresh: lastLongTripPlanRefreshAt, now: evaluationDate
+            ) {
             lastLongTripPlanRefreshAt = evaluationDate
             buildLongTripPlan(settings: settings)
         }

@@ -975,6 +975,53 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks[0].routeProgress, 0, accuracy: 0.001)
     }
 
+    func testLongTripPlanRefreshesImmediatelyAfterPassingConcreteStop() {
+        let candidate = BreakCandidate(
+            id: "rest-a", name: "Raststätte", coordinate: .init(),
+            progress: 0.4, installedRouteProgress: 0.64,
+            detourMetres: 200, isOpen: true
+        )
+        let result = RouteScenarioResult(
+            id: "route-150", routeTitle: "Route",
+            scenario: .target(150), distanceMetres: 300_000,
+            drivingTime: 10_000, totalTime: 11_200,
+            fuel: .init(litres: 20, cost: 36, averageConsumptionLPer100km: 6.7),
+            toll: .unknown(reason: "Test"),
+            breaks: [.init(
+                id: "break-1", candidate: candidate, afterDriving: 3_000,
+                duration: 1_200, routeProgress: 0.4, explanation: "Test"
+            )], fuelStops: [], unlimitedFraction: 0.5,
+            plannedStopDetourMetres: 200, additionalFuelStopTime: 0
+        )
+
+        XCTAssertFalse(LongTripPlanRefreshPolicy.hasPassedConcreteStop(
+            result, currentInstalledProgress: 0.63
+        ))
+        XCTAssertTrue(LongTripPlanRefreshPolicy.hasPassedConcreteStop(
+            result, currentInstalledProgress: 0.65
+        ))
+    }
+
+    func testUnverifiedImmediateBreakDoesNotCauseContinuousReplanning() {
+        let result = RouteScenarioResult(
+            id: "route-150", routeTitle: "Route",
+            scenario: .target(150), distanceMetres: 100_000,
+            drivingTime: 3_600, totalTime: 4_800,
+            fuel: .init(litres: 8, cost: 14, averageConsumptionLPer100km: 8),
+            toll: .unknown(reason: "Test"),
+            breaks: [.init(
+                id: "break-1", candidate: nil, afterDriving: 0,
+                duration: 1_200, routeProgress: 0, explanation: "Jetzt pausieren",
+                installedRouteProgress: 0.7
+            )], fuelStops: [], unlimitedFraction: 0,
+            plannedStopDetourMetres: 0, additionalFuelStopTime: 0
+        )
+
+        XCTAssertFalse(LongTripPlanRefreshPolicy.hasPassedConcreteStop(
+            result, currentInstalledProgress: 0.8
+        ))
+    }
+
     func testDrivingRestPolicyCountsMovementAndResetsAfterRealPause() {
         let tripID = UUID()
         let start = Date(timeIntervalSince1970: 10_000)

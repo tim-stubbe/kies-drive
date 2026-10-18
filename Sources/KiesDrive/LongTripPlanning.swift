@@ -1459,6 +1459,34 @@ struct BreakPlanner {
     }
 }
 
+enum LongTripPlanRefreshPolicy {
+    static let periodicInterval: TimeInterval = 5 * 60
+    static let passedStopProgressLead = 0.001
+
+    /// A named stop that is now behind the vehicle must be replaced
+    /// immediately. Theoretical "pause near here" markers are excluded: when
+    /// a break is already due they can intentionally sit at the current
+    /// progress and would otherwise force a rebuild on every GPS fix.
+    static func hasPassedConcreteStop(
+        _ result: RouteScenarioResult?,
+        currentInstalledProgress: Double,
+        minimumLead: Double = passedStopProgressLead
+    ) -> Bool {
+        guard let result, currentInstalledProgress.isFinite else { return false }
+        let threshold = min(1, max(0, currentInstalledProgress)) - max(0, minimumLead)
+        let concreteBreaks = result.breaks.filter { $0.candidate != nil }
+        let concreteFuelStops = result.fuelStops.filter { $0.candidate != nil }
+        return concreteBreaks.contains { $0.insertionRouteProgress < threshold } ||
+            concreteFuelStops.contains { $0.insertionRouteProgress < threshold }
+    }
+
+    static func periodicRefreshIsDue(lastRefresh: Date?, now: Date) -> Bool {
+        guard let lastRefresh else { return true }
+        let elapsed = now.timeIntervalSince(lastRefresh)
+        return elapsed < 0 || elapsed >= periodicInterval
+    }
+}
+
 struct RouteComparisonDelta: Equatable {
     let timeDifference: TimeInterval
     let distanceDifferenceMetres: Double
