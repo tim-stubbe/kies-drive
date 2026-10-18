@@ -507,6 +507,18 @@ final class NavigationPresentationTests: XCTestCase {
             horizontalAccuracy: 250, verticalAccuracy: 20, timestamp: Date()
         )))
     }
+
+    func testRemoteActiveRouteRemainsVisibleDuringOfflineGuidance() {
+        XCTAssertTrue(DriveRemoteRouteVisibilityPolicy.hasRoute(
+            liveLegCount: 0, offlineGuidanceActive: true
+        ))
+        XCTAssertTrue(DriveRemoteRouteVisibilityPolicy.hasRoute(
+            liveLegCount: 1, offlineGuidanceActive: false
+        ))
+        XCTAssertFalse(DriveRemoteRouteVisibilityPolicy.hasRoute(
+            liveLegCount: 0, offlineGuidanceActive: false
+        ))
+    }
     func testExitNumberAndDirectionAreExtracted() {
         let presentation = NavigationManeuverPresentation("Ausfahrt 69 rechts Richtung Neufahrn nehmen")
         XCTAssertEqual(presentation.exitLabel, "Ausfahrt 69")

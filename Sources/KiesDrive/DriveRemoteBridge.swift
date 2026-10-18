@@ -107,6 +107,12 @@ enum DriveRemoteSyncPolicy {
     }
 }
 
+enum DriveRemoteRouteVisibilityPolicy {
+    static func hasRoute(liveLegCount: Int, offlineGuidanceActive: Bool) -> Bool {
+        liveLegCount > 0 || offlineGuidanceActive
+    }
+}
+
 @MainActor
 final class DriveRemoteBridge {
     static let shared = DriveRemoteBridge()
@@ -140,16 +146,21 @@ final class DriveRemoteBridge {
         syncing = true
         defer { syncing = false; lastSync = Date() }
         let planner = RoutePlanner.shared
+        let hasRemoteRoute = DriveRemoteRouteVisibilityPolicy.hasRoute(
+            liveLegCount: planner.legs.count,
+            offlineGuidanceActive: planner.isUsingOfflineGuidance
+        )
         let state = DriveRemoteState(
             location: .init(latitude: location.coordinate.latitude,
                             longitude: location.coordinate.longitude,
                             accuracyMetres: location.horizontalAccuracy),
             headingDegrees: NavigationMotionPolicy.reliableCourse(for: location),
             speedKmh: NavigationMotionPolicy.reliableSpeed(for: location).map { $0 * 3.6 },
-            activeRoute: planner.legs.isEmpty ? nil : .init(
+            activeRoute: hasRemoteRoute ? .init(
                 destination: planner.destination?.name ?? planner.destinationText,
                 distanceMetres: planner.remainingDistanceMetres > 0 ? planner.remainingDistanceMetres : planner.totalDistance,
-                travelTimeSeconds: planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime),
+                travelTimeSeconds: planner.remainingTravelTime > 0 ? planner.remainingTravelTime : planner.totalTravelTime
+            ) : nil,
             nextManeuver: (planner.nextManeuverInstruction ?? planner.nextInstruction).map {
                 .init(instruction: $0, distanceMetres: planner.nextManeuverDistance)
             },

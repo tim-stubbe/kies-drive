@@ -451,6 +451,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteLock = nil
         routeLockStore.clearFinished()
         clearCompletedTripPlanningState()
+        clearCompletedRoutePresentation(preservingArrival: false)
     }
 
     private func clearCompletedTripPlanningState() {
@@ -459,6 +460,44 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         breakReminderText = nil
         drivingFuelState = DrivingFuelState()
         drivingFuelStore.clear()
+    }
+
+    private func clearCompletedRoutePresentation(preservingArrival: Bool) {
+        // Invalidate every slow provider before clearing its published state;
+        // otherwise a fuel/toll response finishing just after arrival can
+        // repaint a completed journey on the phone, CarPlay or MCP.
+        routeCalculationGeneration = UUID()
+        stationLoadGeneration = UUID()
+        breakCandidateLoadGeneration = UUID()
+        speedLimitLoadGeneration = UUID()
+        tollLoadGeneration = UUID()
+        routeSearchGeneration = UUID()
+        activeRouteSearches.forEach { $0.cancel() }
+        activeRouteSearches = []
+        activeAmenitySearches.forEach { $0.cancel() }
+        activeAmenitySearches = []
+        legs = []
+        liveRouteDestinationCoordinate = nil
+        alternatives = []
+        comparisonRoute = nil
+        stations = []
+        viaStations = []
+        amenityBreakCandidates = []
+        measuredBreakDetours = [:]
+        speedLimitPoints = []
+        speedLimits = []
+        routeSearchResults = []
+        isSearchingAlongRoute = false
+        longTripPlan = nil
+        clearOfflineCache()
+        remainingDistanceMetres = 0
+        remainingTravelTime = 0
+        if !preservingArrival {
+            nextManeuverInstruction = nil
+            nextManeuverDistance = nil
+            upcomingManeuverInstructions = []
+            hasArrived = false
+        }
     }
 
     private func persistActiveTrip() {
@@ -2041,6 +2080,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteLock = nil
         routeLockStore.clearFinished()
         clearCompletedTripPlanningState()
+        clearCompletedRoutePresentation(preservingArrival: true)
         DriveDiagnosticStore.append(.arrivalReached, detail: destination?.name ?? destinationText)
         return true
     }
