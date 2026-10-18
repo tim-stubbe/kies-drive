@@ -171,6 +171,8 @@ struct DriveContentView: View {
                 if isSimulatorLocationDeniedPreview ||
                     NavigationLocationAuthorizationPolicy.requiresSystemSettings(location.authorization) {
                     locationPermissionCard
+                } else if planner.isNavigating && location.authorization == .authorizedWhenInUse {
+                    backgroundLocationPermissionCard
                 }
                 Spacer()
             }
@@ -278,6 +280,38 @@ struct DriveContentView: View {
                     .font(.subheadline.bold())
                     .foregroundStyle(Color.kiesIvory)
                     .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(Color.kiesForest,
+                                in: Capsule(style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .foregroundStyle(Color.kiesForest)
+        .background(Color.kiesIvory.opacity(0.97),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .environment(\.colorScheme, .light)
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private var backgroundLocationPermissionCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.iphone.fill")
+                .font(.title2).foregroundStyle(Color.kiesBrass)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Navigation im Hintergrund erlauben").font(.subheadline.bold())
+                Text("Wähle für Kies Drive „Immer“, damit GPS und Ansagen bei gesperrtem Display und CarPlay weiterlaufen.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            } label: {
+                Text("Einstellungen")
+                    .font(.caption.bold())
+                    .foregroundStyle(Color.kiesIvory)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 11)
                     .background(Color.kiesForest,
                                 in: Capsule(style: .continuous))

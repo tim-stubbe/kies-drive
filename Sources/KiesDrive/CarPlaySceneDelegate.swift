@@ -29,6 +29,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var carPlaySearchGeneration = UUID()
     private var activeCarPlaySearches: [MKLocalSearch] = []
     private var hasShownLocationAccessAlert = false
+    private var hasShownBackgroundLocationAlert = false
     private var routeRestoreInProgress = false
     private var hasShownRouteRestoreAlert = false
     private var cancellables: Set<AnyCancellable> = []
@@ -106,6 +107,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeCarPlaySearches = []
         carPlaySearchResults = [:]
         hasShownLocationAccessAlert = false
+        hasShownBackgroundLocationAlert = false
         routeRestoreInProgress = false
         hasShownRouteRestoreAlert = false
         lastCameraUpdateAt = nil
@@ -203,6 +205,25 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 self.hasShownLocationAccessAlert = true
                 self.showFailure(
                     "Standortzugriff fehlt. Bitte aktiviere ihn in den iPhone-Einstellungen für Kies Drive."
+                )
+            }
+            .store(in: &cancellables)
+
+        Publishers.CombineLatest(
+            LocationService.shared.$authorization.removeDuplicates(),
+            planner.$isNavigating.removeDuplicates()
+        )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] authorization, isNavigating in
+                guard let self,
+                      NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+                        navigationActive: isNavigating,
+                        hasWhenInUseAuthorization: authorization == .authorizedWhenInUse
+                      ),
+                      !self.hasShownBackgroundLocationAlert else { return }
+                self.hasShownBackgroundLocationAlert = true
+                self.showFailure(
+                    "Für Navigation bei gesperrtem iPhone benötigt Kies Drive den Standortzugriff „Immer“. Bitte aktiviere ihn in den iPhone-Einstellungen."
                 )
             }
             .store(in: &cancellables)
