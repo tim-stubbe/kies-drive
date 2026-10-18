@@ -1450,6 +1450,29 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollEvidenceSourceMustAppearInReturnedSearchResults() {
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://example.test/tolls#price",
+            corroboratingSourceURLs: ["https://EXAMPLE.test/tolls"]
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Invented provider", sourceURL: "https://invented.test/tolls",
+            corroboratingSourceURLs: ["https://example.test/tolls"]
+        ))
+        XCTAssertTrue(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free",
+            corroboratingSourceURLs: ["https://example.test/toll-free#result"]
+        ))
+        XCTAssertFalse(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Invented provider",
+            sourceURL: "https://invented.test/toll-free",
+            corroboratingSourceURLs: []
+        ))
+    }
+
     func testShortTripDoesNotAddBreak() {
         XCTAssertTrue(BreakPlanner().plan(drivingTime: 90 * 60, candidates: []).isEmpty)
     }

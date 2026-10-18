@@ -276,12 +276,14 @@ enum DriveAPI {
         let result = try JSONDecoder().decode(TollSearchResponse.self, from: payload)
         if let evidence = TollEvidenceValidator.validate(
             status: result.status, amount: result.amount, currency: result.currency,
-            source: result.source, sourceURL: result.sourceURL
+            source: result.source, sourceURL: result.sourceURL,
+            corroboratingSourceURLs: result.sources.map(\.url)
         ) {
             return .known(amount: Decimal(evidence.amount), currency: evidence.currency, source: evidence.source)
         }
         if TollEvidenceValidator.validatesNoToll(
-            status: result.status, source: result.source, sourceURL: result.sourceURL
+            status: result.status, source: result.source, sourceURL: result.sourceURL,
+            corroboratingSourceURLs: result.sources.map(\.url)
         ) {
             return .noToll(source: result.source)
         }
@@ -423,7 +425,8 @@ enum TollEvidenceValidator {
     struct Evidence: Equatable { let amount: Double; let currency: String; let source: String }
 
     static func validate(status: String, amount: Double?, currency: String,
-                         source: String, sourceURL: String?) -> Evidence? {
+                         source: String, sourceURL: String?,
+                         corroboratingSourceURLs: [String]? = nil) -> Evidence? {
         let normalizedCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
         guard status == "known", let amount, amount.isFinite, amount > 0, amount <= 5_000,
@@ -431,16 +434,37 @@ enum TollEvidenceValidator {
               normalizedCurrency.unicodeScalars.allSatisfy(CharacterSet.letters.contains),
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
-              url.host != nil else { return nil }
+              url.host != nil,
+              sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs) else { return nil }
         return Evidence(amount: amount, currency: normalizedCurrency, source: source)
     }
 
 
-    static func validatesNoToll(status: String, source: String, sourceURL: String?) -> Bool {
+    static func validatesNoToll(status: String, source: String, sourceURL: String?,
+                                corroboratingSourceURLs: [String]? = nil) -> Bool {
         guard status == "no_toll",
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL),
-              url.scheme?.lowercased() == "https", url.host != nil else { return false }
+              url.scheme?.lowercased() == "https", url.host != nil,
+              sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs) else { return false }
         return true
+    }
+
+    private static func sourceIsCorroborated(_ sourceURL: String,
+                                             by candidates: [String]?) -> Bool {
+        guard let candidates else { return true }
+        guard let authoritative = normalizedURL(sourceURL) else { return false }
+        return candidates.contains { normalizedURL($0) == authoritative }
+    }
+
+    private static func normalizedURL(_ value: String) -> String? {
+        guard var components = URLComponents(string: value),
+              components.scheme?.lowercased() == "https",
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        components.scheme = "https"
+        components.host = host
+        components.fragment = nil
+        if components.path.isEmpty { components.path = "/" }
+        return components.url?.absoluteString
     }
 }
