@@ -122,6 +122,11 @@ def healthz():
     return {"ok": True, "service": "kies-drive"}
 
 
+def configured_searxng_url() -> str | None:
+    value = os.getenv("SEARXNG_URL", "").strip().rstrip("/")
+    return value if value.startswith(("http://", "https://")) else None
+
+
 @app.get("/readyz")
 def readyz(response: Response):
     """Report production onboarding readiness without exposing any secret."""
@@ -132,6 +137,7 @@ def readyz(response: Response):
             os.getenv("SMTP_HOST", "").strip()
             and os.getenv("SMTP_FROM", "").strip()
         ),
+        "toll_research": configured_searxng_url() is not None,
     }
     ready = all(checks.values())
     if not ready:
@@ -605,8 +611,8 @@ def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
 @app.post("/api/navigation/toll-search")
 async def toll_search(payload: TollSearchRequest, authorization: str | None = Header(None)):
     current_user(authorization)
-    searxng_url = os.getenv("SEARXNG_URL", "").strip().rstrip("/")
-    if not searxng_url.startswith(("http://", "https://")):
+    searxng_url = configured_searxng_url()
+    if searxng_url is None:
         raise HTTPException(503, "SearXNG ist im Kies-Drive-Container noch nicht eingerichtet.")
     origin = payload.origin.strip()[:180]
     destination = payload.destination.strip()[:180]

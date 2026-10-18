@@ -1,0 +1,19 @@
+use_default_settings: true
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  # Required by SearXNG even though this private API has no browser sessions.
+  # It is deliberately scoped to the unexposed sidecar; authentication stays
+  # in Kies Drive and no security decision relies on this value.
+  secret_key: "kies-drive-private-search-sidecar-2026"
+  # This service is reachable only on the private Compose network. Kies Drive
+  # performs its own authenticated rate-limited request handling.
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json

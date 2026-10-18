@@ -14,6 +14,7 @@ def test_production_readiness_discloses_no_secrets(monkeypatch):
     monkeypatch.delenv("KIES_DRIVE_PUBLIC_URL", raising=False)
     monkeypatch.delenv("SMTP_HOST", raising=False)
     monkeypatch.delenv("SMTP_FROM", raising=False)
+    monkeypatch.delenv("SEARXNG_URL", raising=False)
     client = TestClient(main.app)
 
     missing = client.get("/readyz")
@@ -21,16 +22,25 @@ def test_production_readiness_discloses_no_secrets(monkeypatch):
     assert missing.json()["checks"] == {
         "public_https": False,
         "email_delivery": False,
+        "toll_research": False,
     }
 
     monkeypatch.setenv("KIES_DRIVE_PUBLIC_URL", "https://drive.example.test")
     monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("SMTP_FROM", "Kies Drive <drive@example.test>")
+    monkeypatch.setenv("SEARXNG_URL", "http://searxng:8080/")
     monkeypatch.setenv("SMTP_PASSWORD", "must-never-be-returned")
     ready = client.get("/readyz")
     assert ready.status_code == 200
     assert ready.json()["ok"] is True
     assert "must-never-be-returned" not in ready.text
+
+
+def test_searxng_configuration_accepts_only_http_urls(monkeypatch):
+    monkeypatch.setenv("SEARXNG_URL", "http://searxng:8080/")
+    assert main.configured_searxng_url() == "http://searxng:8080"
+    monkeypatch.setenv("SEARXNG_URL", "searxng:8080")
+    assert main.configured_searxng_url() is None
 
 
 def test_account_responses_are_not_cached_or_embedded(tmp_path, monkeypatch):

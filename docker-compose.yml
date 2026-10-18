@@ -17,7 +17,9 @@ services:
       # moved too. Account login and the direct SearXNG toll search need no token.
       KIES_DEVICE_TOKEN: ${KIES_DEVICE_TOKEN:-}
       KIES_VERIFY_TLS: ${KIES_VERIFY_TLS:-true}
-      SEARXNG_URL: ${SEARXNG_URL:-}
+      # Uses the private sidecar by default. An existing TrueNAS SearXNG can
+      # still be selected by setting SEARXNG_URL explicitly.
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       KIES_DRIVE_PUBLIC_URL: ${KIES_DRIVE_PUBLIC_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -29,3 +31,16 @@ services:
       CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID:-}
     volumes:
       - ./data:/data
+    depends_on:
+      - searxng
+
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: kies-drive-searxng
+    restart: unless-stopped
+    # No host port: toll research is available only to Kies Drive on the
+    # private Compose network and cannot become an unauthenticated search API.
+    expose:
+      - "8080"
+    volumes:
+      - ./Server/searxng/settings.yml:/etc/searxng/settings.yml:ro
