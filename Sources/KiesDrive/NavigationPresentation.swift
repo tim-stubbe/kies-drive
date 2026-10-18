@@ -462,6 +462,10 @@ enum NavigationSpeechClaimTimeoutPolicy {
 }
 
 enum NavigationSpeechInterruptionPolicy {
+    static func hasActiveWork(isSpeaking: Bool, hasQueuedUtterance: Bool) -> Bool {
+        isSpeaking || hasQueuedUtterance
+    }
+
     static func shouldInterrupt(active: NavigationSpeechPriority,
                                 incoming: NavigationSpeechPriority) -> Bool {
         incoming.rawValue >= active.rawValue

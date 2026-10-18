@@ -2185,7 +2185,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                        maneuverClaim: ManeuverSpeechClaim? = nil,
                        maneuverClaims: [ManeuverSpeechClaim] = []) -> Bool {
         guard !text.isEmpty else { return false }
-        if synthesizer.isSpeaking, let activeSpeechPriority,
+        let hasActiveSpeechWork = NavigationSpeechInterruptionPolicy.hasActiveWork(
+            isSpeaking: synthesizer.isSpeaking,
+            hasQueuedUtterance: activeUtterance != nil
+        )
+        if hasActiveSpeechWork, let activeSpeechPriority,
            !NavigationSpeechInterruptionPolicy.shouldInterrupt(
                active: activeSpeechPriority, incoming: priority
            ) {
@@ -2196,7 +2200,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         try? audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try? audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         #endif
-        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+        if hasActiveSpeechWork { synthesizer.stopSpeaking(at: .immediate) }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.preferredGermanVoice()
         utterance.rate = 0.48

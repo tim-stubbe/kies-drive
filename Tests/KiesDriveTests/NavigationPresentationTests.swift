@@ -709,6 +709,15 @@ final class NavigationPresentationTests: XCTestCase {
     func testSpeechPriorityProtectsImmediateManeuverFromStatusMessage() {
         XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.early), .maneuver)
         XCTAssertEqual(NavigationSpeechPriority.forAnnouncementStage(.now), .critical)
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.hasActiveWork(
+            isSpeaking: false, hasQueuedUtterance: true
+        ), "An utterance queued before playback must already own the speech slot")
+        XCTAssertTrue(NavigationSpeechInterruptionPolicy.hasActiveWork(
+            isSpeaking: true, hasQueuedUtterance: false
+        ))
+        XCTAssertFalse(NavigationSpeechInterruptionPolicy.hasActiveWork(
+            isSpeaking: false, hasQueuedUtterance: false
+        ))
         XCTAssertFalse(NavigationSpeechInterruptionPolicy.shouldInterrupt(
             active: .critical, incoming: .status
         ))
