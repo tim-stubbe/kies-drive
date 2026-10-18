@@ -71,7 +71,7 @@ private final class LocalXYZTileOverlay: MKTileOverlay {
             guard let url = OfflineTileFilePolicy.tileURL(
                 z: path.z, x: path.x, y: path.y,
                 packageDirectory: package.directoryURL, manifest: package.manifest
-            ), let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            ), let data = OfflineTileFilePolicy.validatedPNGData(at: url) else {
                 result(nil, nil)
                 return
             }

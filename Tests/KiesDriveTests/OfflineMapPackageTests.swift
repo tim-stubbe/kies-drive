@@ -265,6 +265,27 @@ final class OfflineMapPackageTests: XCTestCase {
                        "A short expiry keeps fallback responsive to damaged packages")
     }
 
+    func testRuntimeCoverageCacheExpiresAndDetectsCorruptTile() throws {
+        try writeManifest(id: "runtime-corruption")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        var checkTime = Date(timeIntervalSince1970: 1_000)
+        let store = OfflineMapPackageStore(
+            rootURL: root, defaults: defaults, now: { checkTime }
+        )
+        let package = try store.install(from: source)
+        let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+
+        XCTAssertTrue(store.hasBaseTiles(covering: [coordinate], package: package))
+        let installedTile = try XCTUnwrap(store.tileURL(z: 8, x: 136, y: 89, package: package))
+        try Data(repeating: 0x41, count: 64).write(to: installedTile)
+        XCTAssertTrue(store.hasBaseTiles(covering: [coordinate], package: package),
+                      "Rapid UI refreshes should reuse the recent disk check")
+
+        checkTime.addTimeInterval(3)
+        XCTAssertFalse(store.hasBaseTiles(covering: [coordinate], package: package),
+                       "A damaged tile must make the app fall back to the online map")
+    }
+
     func testRuntimeCoverageCacheRechecksDiskAfterClockRollback() throws {
         try writeManifest(id: "runtime-clock-rollback")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))

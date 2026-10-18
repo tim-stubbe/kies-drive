@@ -117,6 +117,8 @@ enum OfflineTileCoordinatePolicy {
 }
 
 enum OfflineTileFilePolicy {
+    private static let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+
     static func tileURL(z: Int, x: Int, y: Int,
                         packageDirectory: URL, manifest: OfflineMapManifest,
                         fileManager: FileManager = .default) -> URL? {
@@ -136,6 +138,33 @@ enum OfflineTileFilePolicy {
               ), values.isRegularFile == true, values.isSymbolicLink != true,
               fileManager.fileExists(atPath: candidate.path) else { return nil }
         return candidate
+    }
+
+    /// Cheap runtime integrity check used by coverage decisions. Installed
+    /// packages are decoded completely during import, but their files can
+    /// still be removed or damaged later by storage cleanup or file-system
+    /// errors. Reading only the PNG signature keeps frequent driving-camera
+    /// checks inexpensive while ensuring corrupt tiles never advertise local
+    /// coverage or obscure the working online map.
+    static func hasValidPNGHeader(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: pngSignature.count) else { return false }
+        return header == pngSignature
+    }
+
+    /// Renderer-side validation remains off the main actor and verifies the
+    /// complete image. Returning nil lets MapKit reveal its online basemap.
+    static func validatedPNGData(at url: URL) -> Data? {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              let fileSize = values.fileSize,
+              fileSize > pngSignature.count, fileSize <= 5_000_000,
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              data.prefix(pngSignature.count) == pngSignature,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) == 1,
+              CGImageSourceCreateImageAtIndex(source, 0, nil) != nil else { return nil }
+        return data
     }
 }
 
@@ -329,7 +358,10 @@ final class OfflineMapPackageStore: ObservableObject {
             }
         }
         let result = orderedTiles.allSatisfy {
-            tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) != nil
+            guard let url = tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) else {
+                return false
+            }
+            return OfflineTileFilePolicy.hasValidPNGHeader(at: url)
         }
         tileCoverageCache[key] = .init(result: result, checkedAt: checkTime)
         return result
