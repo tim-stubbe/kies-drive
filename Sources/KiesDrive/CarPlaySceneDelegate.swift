@@ -10,6 +10,11 @@ import UIKit
 final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate,
                                   CPSearchTemplateDelegate {
     private enum CameraMode { case follow, overview, free }
+    private enum OneShotSearchOutcome {
+        case results([MKMapItem])
+        case failed
+        case timedOut
+    }
     private var interfaceController: CPInterfaceController?
     private var carWindow: CPWindow?
     private var mapView: MKMapView?
@@ -593,11 +598,41 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = address
         request.region = .init(center: start, latitudinalMeters: 500_000, longitudinalMeters: 500_000)
-        guard let item = try? await MKLocalSearch(request: request).start().mapItems.first else {
+        let outcome = await boundedOneShotSearch(request)
+        guard case .results(let items) = outcome, let item = items.first else {
+            if case .timedOut = outcome {
+                showFailure("Die Zuhause-Suche dauert zu lange. Bitte versuche es erneut.")
+                return
+            }
             showFailure("Die Zuhause-Adresse konnte nicht gefunden werden.")
             return
         }
         await navigate(to: item, from: start)
+    }
+
+    private func boundedOneShotSearch(_ request: MKLocalSearch.Request) async
+        -> OneShotSearchOutcome {
+        let search = MKLocalSearch(request: request)
+        return await withTaskGroup(of: OneShotSearchOutcome.self) { group in
+            group.addTask {
+                do { return .results(try await search.start().mapItems) }
+                catch { return .failed }
+            }
+            group.addTask {
+                do {
+                    try await Task.sleep(
+                        nanoseconds: NavigationSearchTimeoutPolicy.timeoutNanoseconds
+                    )
+                    return .timedOut
+                } catch {
+                    return .failed
+                }
+            }
+            let first = await group.next() ?? .failed
+            group.cancelAll()
+            search.cancel()
+            return first
+        }
     }
 
     private func navigate(to recent: RecentDestination) async {
