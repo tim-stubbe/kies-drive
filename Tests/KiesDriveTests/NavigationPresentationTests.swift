@@ -1479,6 +1479,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches, 8)
     }
 
+    func testDirectionsDeadlinePrecedesRerouteWatchdog() {
+        XCTAssertLessThan(
+            NavigationDirectionsTimeoutPolicy.routeCalculation,
+            NavigationRerouteWatchdogPolicy.timeout
+        )
+        XCTAssertLessThan(
+            NavigationDirectionsTimeoutPolicy.detourCalculation,
+            NavigationDirectionsTimeoutPolicy.routeCalculation
+        )
+        XCTAssertEqual(
+            NavigationDirectionsTimeoutPolicy.nanoseconds(for: 8),
+            8_000_000_000
+        )
+    }
+
     func testRouteSearchRejectsExcessiveOrInvalidDrivingDetours() {
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(4_500))
         XCTAssertTrue(RouteSearchPolicy.acceptsDetour(20_000))

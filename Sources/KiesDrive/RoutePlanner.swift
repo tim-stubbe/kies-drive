@@ -781,10 +781,39 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         request.destination = destination
         request.transportType = .automobile
         request.requestsAlternateRoutes = false
-        guard let route = try await MKDirections(request: request).calculate().routes.first else {
+        guard let route = try await calculateDirections(
+            request, timeout: NavigationDirectionsTimeoutPolicy.detourCalculation
+        ).first else {
             throw DriveAPIError.invalidData
         }
         return route.distance
+    }
+
+    /// Cancels the underlying MapKit object, not just the awaiting Swift task.
+    /// That distinction matters in weak coverage: otherwise a timed-out
+    /// request can keep radio/network work alive and delay later reroutes.
+    private nonisolated static func calculateDirections(
+        _ request: MKDirections.Request, timeout: TimeInterval
+    ) async throws -> [MKRoute] {
+        let directions = MKDirections(request: request)
+        return try await withThrowingTaskGroup(of: [MKRoute].self) { group in
+            group.addTask { try await directions.calculate().routes }
+            group.addTask {
+                try await Task.sleep(
+                    nanoseconds: NavigationDirectionsTimeoutPolicy.nanoseconds(for: timeout)
+                )
+                directions.cancel()
+                throw NavigationDirectionsTimeoutError()
+            }
+            defer {
+                group.cancelAll()
+                directions.cancel()
+            }
+            guard let first = try await group.next() else {
+                throw DriveAPIError.invalidData
+            }
+            return first
+        }
     }
 
     @discardableResult
@@ -2285,7 +2314,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         request.requestsAlternateRoutes = alternates
         request.tollPreference = (avoidTollsOverride ?? lockedOptions?.avoidTolls ?? settings.avoidTolls) ? .avoid : .any
         request.highwayPreference = (lockedOptions?.avoidHighways ?? settings.avoidHighways) ? .avoid : .any
-        let routes = try await MKDirections(request: request).calculate().routes
+        let routes = try await Self.calculateDirections(
+            request, timeout: NavigationDirectionsTimeoutPolicy.routeCalculation
+        )
         guard let lock = routeLockStore.activeLock,
               let corridor = lock.corridorPoints, !corridor.isEmpty else { return routes }
         return routes.filter { routeInsideLockedCorridor($0, points: corridor,

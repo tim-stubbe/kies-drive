@@ -970,6 +970,19 @@ enum NavigationRerouteWatchdogPolicy {
     }
 }
 
+enum NavigationDirectionsTimeoutPolicy {
+    static let routeCalculation: TimeInterval = 18
+    static let detourCalculation: TimeInterval = 8
+
+    static func nanoseconds(for timeout: TimeInterval) -> UInt64 {
+        UInt64(max(0, timeout) * 1_000_000_000)
+    }
+}
+
+struct NavigationDirectionsTimeoutError: LocalizedError {
+    var errorDescription: String? { "Zeitüberschreitung bei der Routenberechnung." }
+}
+
 enum OfflineRouteRecoveryPolicy {
     static let retryInterval: TimeInterval = 90
 
