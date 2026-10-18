@@ -1219,6 +1219,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             isSearchingAlongRoute = false
             return
         }
+        // Results belong to the exact query that produced them. Leaving the
+        // previous list visible while MapKit searches lets a fast tap add an
+        // old petrol station after the user has already asked for a restaurant
+        // (the route generation can legitimately still be identical). Clear
+        // synchronously; the new request publishes its own complete list only
+        // after both POI and detour validation finish.
+        routeSearchResults = []
         isSearchingAlongRoute = true
         let routeGeneration = routeCalculationGeneration
         routeSearchQuery = cleanQuery
