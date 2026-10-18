@@ -303,7 +303,13 @@ final class LongTripPlanningTests: XCTestCase {
         )
         let result = RouteComparison(fuelModel: .init(), breakPlanner: .init())
             .compare(routes: [route], scenarios: [.target(200)], vehicle: .init()).results[0]
-        let expected = 6 * 3600 - (300_000 / (130 / 3.6)) + (300_000 / (200 / 3.6))
+        let freeFlow = 300_000 / (100 / 3.6) + 300_000 / (130 / 3.6)
+        let trafficFactor = 6 * 3600 / freeFlow
+        let baselineUnlimited = 300_000 / (130 / 3.6) * trafficFactor
+        let limited = 6 * 3600 - baselineUnlimited
+        let attainableTarget = 130 + (200 - 130) / (trafficFactor * trafficFactor)
+        let congestionDelay = baselineUnlimited - 300_000 / (130 / 3.6)
+        let expected = limited + 300_000 / (attainableTarget / 3.6) + congestionDelay
         XCTAssertEqual(result.drivingTime, expected, accuracy: 1)
     }
 
@@ -328,8 +334,16 @@ final class LongTripPlanningTests: XCTestCase {
             typicalUnlimitedSpeedKmh: 130,
             targetSpeedKmh: 200
         )
-        let baselineUnlimitedTime = 300_000 / (130 / 3.6)
+        let freeFlow = 300_000 / (100 / 3.6) + 300_000 / (130 / 3.6)
+        let trafficFactor = 8 * 3600 / freeFlow
+        let baselineUnlimitedTime = 300_000 / (130 / 3.6) * trafficFactor
         XCTAssertEqual(timing.limitedTime, 8 * 3600 - baselineUnlimitedTime, accuracy: 1)
+        XCTAssertGreaterThan(timing.trafficFactor, 1)
+        XCTAssertGreaterThan(
+            timing.adjustedUnlimitedTime,
+            300_000 / (200 / 3.6),
+            "Traffic must also constrain the nominally unrestricted section"
+        )
     }
 
     func testBreakPlannerPrefersOpenLowDetourStopNearWindow() {

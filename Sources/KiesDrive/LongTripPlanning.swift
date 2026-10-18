@@ -178,6 +178,7 @@ enum SpeedScenarioPolicy {
         let unlimitedDistance: Double
         let limitedTime: TimeInterval
         let adjustedUnlimitedTime: TimeInterval
+        let trafficFactor: Double
 
         var totalTime: TimeInterval { limitedTime + adjustedUnlimitedTime }
     }
@@ -232,14 +233,30 @@ enum SpeedScenarioPolicy {
         // 130 km/h. MapKit traffic can only increase this reserved time.
         let minimumLimitedTime = limitedDistance / (130 / 3.6)
         let eta = max(0, mapKitExpectedTravelTime)
-        let baselineUnlimitedTime = min(theoreticalUnlimitedTime,
-                                        max(0, eta - minimumLimitedTime))
+        let estimatedLimitedFreeFlowTime = limitedDistance / (100 / 3.6)
+        let estimatedFreeFlowTime = estimatedLimitedFreeFlowTime + theoreticalUnlimitedTime
+        let trafficFactor = estimatedFreeFlowTime > 0
+            ? min(2.5, max(1, eta / estimatedFreeFlowTime)) : 1
+        let baselineUnlimitedTime = min(
+            theoreticalUnlimitedTime * trafficFactor,
+            max(0, eta - minimumLimitedTime)
+        )
         let limitedTime = max(minimumLimitedTime, eta - baselineUnlimitedTime)
-        let adjustedUnlimitedTime = unlimitedDistance / (targetSpeed / 3.6)
+        let congestionDelay = max(0, baselineUnlimitedTime - theoreticalUnlimitedTime)
+        let attainableTargetSpeed: Double
+        if targetSpeed > baselineSpeed {
+            attainableTargetSpeed = baselineSpeed +
+                (targetSpeed - baselineSpeed) / (trafficFactor * trafficFactor)
+        } else {
+            attainableTargetSpeed = targetSpeed
+        }
+        let adjustedUnlimitedTime = unlimitedDistance / (attainableTargetSpeed / 3.6) +
+            congestionDelay
         return .init(limitedDistance: limitedDistance,
                      unlimitedDistance: unlimitedDistance,
                      limitedTime: limitedTime,
-                     adjustedUnlimitedTime: adjustedUnlimitedTime)
+                     adjustedUnlimitedTime: adjustedUnlimitedTime,
+                     trafficFactor: trafficFactor)
     }
 }
 
@@ -1021,9 +1038,11 @@ struct RouteComparison {
         // the selected target speed applies to the whole route.
         let drivingTime = timing.totalTime
         let limitedAverageSpeed = timing.limitedDistance / max(1, timing.limitedTime) * 3.6
+        let unlimitedAverageSpeed = timing.unlimitedDistance /
+            max(1, timing.adjustedUnlimitedTime) * 3.6
         let routeFuel = fuelModel.estimate(segments: [
             (timing.limitedDistance, limitedAverageSpeed),
-            (timing.unlimitedDistance, target)
+            (timing.unlimitedDistance, unlimitedAverageSpeed)
         ], profile: vehicle)
         let fuelStops = fuelStopPlanner.plan(distanceMetres: route.distanceMetres,
                                              consumptionLPer100km: routeFuel.averageConsumptionLPer100km,
