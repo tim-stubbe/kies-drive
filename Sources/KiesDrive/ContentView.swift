@@ -1020,7 +1020,8 @@ struct DriveContentView: View {
                 ? [previewInstruction, "Links halten", "Geradeaus"]
                 : planner.upcomingManeuverInstructions,
             guidanceReliable: isSimulatorNavigationPreview || planner.isManeuverGuidanceReliable,
-            recalculating: planner.isRecalculating
+            recalculating: planner.isRecalculating,
+            matchingPosition: planner.isMatchingOfflinePosition
         )
         let maneuver = NavigationManeuverPresentation(display.instruction)
         let followingInstruction = display.upcomingInstructions.dropFirst().first
@@ -1117,7 +1118,8 @@ struct DriveContentView: View {
             distance: planner.nextManeuverDistance,
             upcomingInstructions: planner.upcomingManeuverInstructions,
             guidanceReliable: isSimulatorNavigationPreview || planner.isManeuverGuidanceReliable,
-            recalculating: planner.isRecalculating
+            recalculating: planner.isRecalculating,
+            matchingPosition: planner.isMatchingOfflinePosition
         )
         let maneuver = NavigationManeuverPresentation(display.instruction)
         return HStack(spacing: 14) {

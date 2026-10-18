@@ -835,6 +835,7 @@ enum CarPlayGuidancePresentationPolicy {
 
 enum CarPlayRouteRecoveryPresentationState: Equatable {
     case normal
+    case matchingPosition
     case searching
     case unavailable
 }
@@ -844,7 +845,9 @@ enum CarPlayRouteRecoveryPresentationPolicy {
     /// departure. CarPlay still needs an explicit, non-directional explanation
     /// so an empty dashboard does not look like guidance silently stopped.
     static func state(recalculating: Bool,
-                      guidanceReliable: Bool) -> CarPlayRouteRecoveryPresentationState {
+                      guidanceReliable: Bool,
+                      matchingPosition: Bool = false) -> CarPlayRouteRecoveryPresentationState {
+        if matchingPosition { return .matchingPosition }
         if recalculating { return .searching }
         return guidanceReliable ? .normal : .unavailable
     }
@@ -853,6 +856,8 @@ enum CarPlayRouteRecoveryPresentationPolicy {
         switch state {
         case .normal:
             return []
+        case .matchingPosition:
+            return ["Position wird bestimmt", "Gespeicherte Route wird abgeglichen"]
         case .searching:
             return ["Neue Route wird gesucht", "Route wird neu berechnet"]
         case .unavailable:
@@ -1781,7 +1786,14 @@ enum NavigationInstructionDisplayPolicy {
                         distance: CLLocationDistance?,
                         upcomingInstructions: [String],
                         guidanceReliable: Bool,
-                        recalculating: Bool) -> NavigationInstructionDisplay {
+                        recalculating: Bool,
+                        matchingPosition: Bool = false) -> NavigationInstructionDisplay {
+        if matchingPosition {
+            return .init(
+                instruction: "Position wird bestimmt", distance: nil,
+                upcomingInstructions: [], guidanceUnavailable: true
+            )
+        }
         guard guidanceReliable else {
             return .init(
                 instruction: recalculating ? "Neue Route wird gesucht" : "Route verlassen – sicher weiterfahren",

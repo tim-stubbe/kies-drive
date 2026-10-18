@@ -985,7 +985,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     ) {
         let state = CarPlayRouteRecoveryPresentationPolicy.state(
             recalculating: recalculating,
-            guidanceReliable: guidanceReliable
+            guidanceReliable: guidanceReliable,
+            matchingPosition: RoutePlanner.shared.isMatchingOfflinePosition
         )
         guard state != routeRecoveryPresentationState else { return }
         routeRecoveryPresentationState = state
@@ -996,7 +997,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             titleVariants: titles,
             subtitleVariants: nil,
             image: UIImage(systemName: state == .searching
-                           ? "arrow.triangle.2.circlepath" : "exclamationmark.triangle.fill"),
+                           ? "arrow.triangle.2.circlepath"
+                           : state == .matchingPosition
+                           ? "location.magnifyingglass" : "exclamationmark.triangle.fill"),
             primaryAction: acknowledge,
             secondaryAction: nil,
             duration: 8

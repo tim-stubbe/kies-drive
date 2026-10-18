@@ -377,12 +377,18 @@ final class NavigationPresentationTests: XCTestCase {
             recalculating: false, guidanceReliable: true
         ), .normal)
         XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
+            recalculating: false, guidanceReliable: false, matchingPosition: true
+        ), .matchingPosition)
+        XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
             recalculating: true, guidanceReliable: false
         ), .searching)
         XCTAssertEqual(CarPlayRouteRecoveryPresentationPolicy.state(
             recalculating: false, guidanceReliable: false
         ), .unavailable)
         XCTAssertTrue(CarPlayRouteRecoveryPresentationPolicy.titleVariants(for: .normal).isEmpty)
+        XCTAssertTrue(CarPlayRouteRecoveryPresentationPolicy.titleVariants(
+            for: .matchingPosition
+        ).first?.contains("Position") == true)
         XCTAssertTrue(CarPlayRouteRecoveryPresentationPolicy.titleVariants(
             for: .searching
         ).first?.contains("gesucht") == true)
@@ -798,6 +804,15 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testConfirmedDeviationHidesStaleTurnCard() {
+        let matching = NavigationInstructionDisplayPolicy.display(
+            instruction: "Alte Abfahrt", distance: 50,
+            upcomingInstructions: ["Alte Abfahrt"],
+            guidanceReliable: false, recalculating: false, matchingPosition: true
+        )
+        XCTAssertEqual(matching.instruction, "Position wird bestimmt")
+        XCTAssertNil(matching.distance)
+        XCTAssertTrue(matching.upcomingInstructions.isEmpty)
+
         let searching = NavigationInstructionDisplayPolicy.display(
             instruction: "Rechts abbiegen", distance: 80,
             upcomingInstructions: ["Rechts abbiegen", "Links abbiegen"],

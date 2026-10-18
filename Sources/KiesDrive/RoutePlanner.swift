@@ -306,6 +306,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published private(set) var usageStatistics = DriveUsageStatisticsStore.load()
     @Published private(set) var isUsingOfflineGuidance = false
     @Published private(set) var isManeuverGuidanceReliable = true
+    var isMatchingOfflinePosition: Bool {
+        isUsingOfflineGuidance && offlineNeedsInitialPositionMatch
+    }
     private var comparisonRoute: MKRoute?
     private var researchedStandardToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
     private var researchedAvoidingToll: TollCost = .unknown(reason: "Mautfreie Route wird geprüft.")
@@ -2445,6 +2448,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         offlineNeedsInitialPositionMatch = true
         lastOfflineRecoveryAttempt = Date()
         beginNavigationSession()
+        // The persisted cursor is only an estimate until a fresh GPS fix
+        // proves which cached road segment the car is actually on.
+        isManeuverGuidanceReliable = false
         isNavigating = true
         hasArrived = false
         let resumeEstimate = OfflineGuidanceResumeEstimatePolicy.estimate(
@@ -2562,6 +2568,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 speedMetresPerSecond: reliableSpeed
            ) {
             offlineNeedsInitialPositionMatch = false
+            isManeuverGuidanceReliable = true
         }
         let isDeparting = NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: progress.distanceFromRoute,
