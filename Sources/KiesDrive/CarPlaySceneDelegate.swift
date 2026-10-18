@@ -28,7 +28,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var lastCameraUpdateAt: Date?
     private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
     private var carPlaySearchGeneration = UUID()
-    private var activeCarPlaySearch: MKLocalSearch?
+    private var activeCarPlaySearches: [MKLocalSearch] = []
     private var hasShownLocationAccessAlert = false
     private var routeRestoreInProgress = false
     private var hasShownRouteRestoreAlert = false
@@ -96,8 +96,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         activeTrip = nil
         activeTripDestination = nil
         cancellables.removeAll()
-        activeCarPlaySearch?.cancel()
-        activeCarPlaySearch = nil
+        activeCarPlaySearches.forEach { $0.cancel() }
+        activeCarPlaySearches = []
         carPlaySearchResults = [:]
         hasShownLocationAccessAlert = false
         routeRestoreInProgress = false
@@ -512,35 +512,49 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.count >= 2 else {
             carPlaySearchGeneration = UUID()
-            activeCarPlaySearch?.cancel()
-            activeCarPlaySearch = nil
+            activeCarPlaySearches.forEach { $0.cancel() }
+            activeCarPlaySearches = []
             carPlaySearchResults = [:]
             finish([])
             return
         }
         let generation = UUID()
         carPlaySearchGeneration = generation
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
+        var requests: [MKLocalSearch.Request] = []
         if let coordinate = LocationService.shared.location?.coordinate {
-            request.region = .init(center: coordinate, latitudinalMeters: 300_000,
-                                   longitudinalMeters: 300_000)
+            let local = MKLocalSearch.Request()
+            local.naturalLanguageQuery = query
+            local.region = .init(center: coordinate, latitudinalMeters: 300_000,
+                                 longitudinalMeters: 300_000)
+            requests.append(local)
         }
-        activeCarPlaySearch?.cancel()
-        let search = MKLocalSearch(request: request)
-        activeCarPlaySearch = search
+        let global = MKLocalSearch.Request()
+        global.naturalLanguageQuery = query
+        requests.append(global)
+        activeCarPlaySearches.forEach { $0.cancel() }
+        let searches = requests.map { MKLocalSearch(request: $0) }
+        activeCarPlaySearches = searches
         let timeout = Task { [weak self] in
             try? await Task.sleep(nanoseconds: NavigationSearchTimeoutPolicy.timeoutNanoseconds)
             guard !Task.isCancelled else { return }
-            search.cancel()
+            searches.forEach { $0.cancel() }
             if generation == self?.carPlaySearchGeneration {
-                self?.activeCarPlaySearch = nil
+                self?.activeCarPlaySearches = []
                 self?.carPlaySearchResults = [:]
             }
             finish([])
         }
         Task { [weak self] in
-            let response = try? await search.start()
+            let mapItems = await withTaskGroup(
+                of: [MKMapItem].self, returning: [MKMapItem].self
+            ) { group in
+                for search in searches {
+                    group.addTask { (try? await search.start().mapItems) ?? [] }
+                }
+                var combined: [MKMapItem] = []
+                for await items in group { combined.append(contentsOf: items) }
+                return combined
+            }
             timeout.cancel()
             guard !completionGate.didComplete else { return }
             guard let self else {
@@ -554,10 +568,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 finish([])
                 return
             }
-            self.activeCarPlaySearch = nil
+            self.activeCarPlaySearches = []
             var mapped: [ObjectIdentifier: MKMapItem] = [:]
             let origin = LocationService.shared.location
-            let ordered = (response?.mapItems ?? []).sorted { lhs, rhs in
+            let ordered = mapItems.sorted { lhs, rhs in
                 let lhsRelevance = DestinationSearchRankingPolicy.relevanceScore(
                     query: query, name: lhs.name, title: lhs.placemark.title
                 )
