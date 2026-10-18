@@ -287,6 +287,15 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testServiceReadinessDecodesIndividualProductionChecks() throws {
+        let payload = Data(#"{"ok":false,"checks":{"public_https":true,"email_delivery":true,"toll_research":false}}"#.utf8)
+        let readiness = try JSONDecoder().decode(DriveServiceReadiness.self, from: payload)
+        XCTAssertFalse(readiness.ok)
+        XCTAssertTrue(readiness.checks.publicHTTPS)
+        XCTAssertTrue(readiness.checks.emailDelivery)
+        XCTAssertFalse(readiness.checks.tollResearch)
+    }
+
     func testManagedServerURLRejectsUnsafeOrUnexpandedConfiguration() {
         XCTAssertEqual(DriveSettings.configuredBaseURL(info: [
             DriveSettings.serverURLInfoKey: "http://drive.example.test"

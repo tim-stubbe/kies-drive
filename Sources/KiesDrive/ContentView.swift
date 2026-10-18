@@ -1902,7 +1902,8 @@ struct DriveSettingsView: View {
     @State private var fuelLevelWasConfirmed = false
 
     fileprivate enum ConnectionStatus {
-        case idle, testing, success, failed(String)
+        case idle, testing, success(DriveServiceReadiness), degraded(DriveServiceReadiness)
+        case failed(String)
     }
 
     private var germanNavigationVoices: [AVSpeechSynthesisVoice] {
@@ -1912,6 +1913,19 @@ struct DriveSettingsView: View {
                 if $0.quality != $1.quality { return $0.quality.rawValue > $1.quality.rawValue }
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
+    }
+
+    @ViewBuilder
+    private func readinessRows(_ readiness: DriveServiceReadiness) -> some View {
+        readinessRow("Öffentliche HTTPS-Adresse", ready: readiness.checks.publicHTTPS)
+        readinessRow("Bestätigungs-E-Mails", ready: readiness.checks.emailDelivery)
+        readinessRow("Mautrecherche über SearXNG", ready: readiness.checks.tollResearch)
+    }
+
+    private func readinessRow(_ title: String, ready: Bool) -> some View {
+        Label(title, systemImage: ready ? "checkmark.circle.fill" : "xmark.circle.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(ready ? Color.green : Color.red)
     }
 
     var body: some View {
@@ -1928,8 +1942,10 @@ struct DriveSettingsView: View {
                         connectionStatus = .testing
                         Task {
                             do {
+                                async let readiness = DriveAPI.serviceReadiness()
                                 try await DriveAPI.testConnection()
-                                connectionStatus = .success
+                                let result = try await readiness
+                                connectionStatus = result.ok ? .success(result) : .degraded(result)
                             } catch {
                                 connectionStatus = .failed(error.localizedDescription)
                             }
@@ -1968,9 +1984,15 @@ struct DriveSettingsView: View {
                         EmptyView()
                     case .testing:
                         ProgressView()
-                    case .success:
+                    case .success(let readiness):
                         Label("Kies-Drive-Server und Anmeldung funktionieren.", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
+                        readinessRows(readiness)
+                    case .degraded(let readiness):
+                        Label("Kies Drive ist erreichbar, aber nicht vollständig produktionsbereit.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        readinessRows(readiness)
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)

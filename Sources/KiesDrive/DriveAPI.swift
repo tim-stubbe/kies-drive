@@ -125,6 +125,23 @@ enum DriveAPIError: LocalizedError {
     }
 }
 
+struct DriveServiceReadiness: Decodable, Equatable {
+    struct Checks: Decodable, Equatable {
+        let publicHTTPS: Bool
+        let emailDelivery: Bool
+        let tollResearch: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case publicHTTPS = "public_https"
+            case emailDelivery = "email_delivery"
+            case tollResearch = "toll_research"
+        }
+    }
+
+    let ok: Bool
+    let checks: Checks
+}
+
 @MainActor
 enum DriveAPI {
     private static func request(path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
@@ -321,6 +338,19 @@ enum DriveAPI {
     /// standalone service and the signed-in account session.
     static func testConnection() async throws {
         _ = try await remoteCommands()
+    }
+
+    /// `/readyz` deliberately returns 503 when one production dependency is
+    /// degraded. Decode that body instead of turning it into a generic network
+    /// error so the settings can identify the failing service precisely.
+    static func serviceReadiness() async throws -> DriveServiceReadiness {
+        let readinessRequest = try authRequest(path: "/readyz", method: "GET")
+        let (payload, response) = try await KiesHTTP.session.data(for: readinessRequest)
+        guard let http = response as? HTTPURLResponse,
+              http.statusCode == 200 || http.statusCode == 503 else {
+            throw DriveAPIError.invalidData
+        }
+        return try JSONDecoder().decode(DriveServiceReadiness.self, from: payload)
     }
 
     static func completeRemoteCommand(_ id: Int, ok: Bool, message: String?) async throws {
