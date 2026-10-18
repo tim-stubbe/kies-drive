@@ -1215,6 +1215,18 @@ enum RouteSearchPolicy {
         return 0
     }
 
+    /// Estimates progress on the currently installed route geometry. This is
+    /// deliberately separate from the persistent trip-corridor progress: a
+    /// reroute starts its new `legs` at the current vehicle position (0%),
+    /// while the original holiday corridor may already be 80% complete.
+    static func installedRouteProgress(totalDistance: CLLocationDistance,
+                                       remainingDistance: CLLocationDistance,
+                                       navigationActive: Bool) -> Double? {
+        guard navigationActive, totalDistance.isFinite, totalDistance > 0,
+              remainingDistance.isFinite, remainingDistance >= 0 else { return nil }
+        return min(1, max(0, 1 - remainingDistance / totalDistance))
+    }
+
     /// Keeps a tiny tolerance for GPS jitter around the current route point,
     /// but never sends the driver materially backwards for an added stop.
     static func isAhead(candidateIndex: Int, currentIndex: Int, routePointCount: Int) -> Bool {

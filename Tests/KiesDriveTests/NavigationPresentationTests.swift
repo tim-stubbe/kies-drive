@@ -1543,6 +1543,36 @@ final class NavigationPresentationTests: XCTestCase {
         ), 1)
     }
 
+    func testRouteSearchUsesProgressOfInstalledRerouteBeforeOriginalTripProgress() {
+        let installed = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: 200_000,
+            remainingDistance: 200_000,
+            navigationActive: true
+        )
+
+        XCTAssertEqual(installed, 0)
+        XCTAssertEqual(RouteSearchPolicy.currentProgress(
+            projected: installed,
+            persisted: 0.8,
+            navigationActive: true
+        ), 0, "A fresh route from the current position must be searched from its beginning")
+    }
+
+    func testInstalledRouteProgressTracksCurrentGeometryAndRejectsInvalidState() {
+        XCTAssertEqual(RouteSearchPolicy.installedRouteProgress(
+            totalDistance: 200_000, remainingDistance: 50_000, navigationActive: true
+        ) ?? -1, 0.75, accuracy: 0.001)
+        XCTAssertEqual(RouteSearchPolicy.installedRouteProgress(
+            totalDistance: 200_000, remainingDistance: 0, navigationActive: true
+        ), 1)
+        XCTAssertNil(RouteSearchPolicy.installedRouteProgress(
+            totalDistance: 200_000, remainingDistance: 50_000, navigationActive: false
+        ))
+        XCTAssertNil(RouteSearchPolicy.installedRouteProgress(
+            totalDistance: 0, remainingDistance: 0, navigationActive: true
+        ))
+    }
+
     func testRouteSearchAheadCheckUsesDistanceProgress() {
         XCTAssertTrue(RouteSearchPolicy.isAhead(candidateProgress: 0.49, currentProgress: 0.50))
         XCTAssertFalse(RouteSearchPolicy.isAhead(candidateProgress: 0.40, currentProgress: 0.50))

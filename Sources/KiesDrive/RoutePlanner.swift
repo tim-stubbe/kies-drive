@@ -681,8 +681,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                   ), projection.distance <= 5_000 else { return nil }
             return projection.progress
         }()
+        let installedRouteProgress = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: totalDistance,
+            remainingDistance: remainingDistanceMetres,
+            navigationActive: isNavigating
+        )
         let currentRouteProgress = RouteSearchPolicy.currentProgress(
-            projected: projectedRouteProgress,
+            projected: projectedRouteProgress ?? installedRouteProgress,
             persisted: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress,
             navigationActive: isNavigating
         )
@@ -2853,8 +2858,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let generation = UUID()
         stationLoadGeneration = generation
         let allQueryCoordinates = legs.flatMap { sample($0.polyline, maximum: 80) }
-        let expectedProgress = isNavigating && totalDistance > 0 && remainingDistanceMetres > 0
-            ? min(1, max(0, 1 - remainingDistanceMetres / totalDistance)) : nil
+        let expectedProgress = RouteSearchPolicy.installedRouteProgress(
+            totalDistance: totalDistance,
+            remainingDistance: remainingDistanceMetres,
+            navigationActive: isNavigating
+        )
         let currentProgress = RouteSearchPolicy.currentProgress(
             projected: expectedProgress,
             persisted: activeRouteLock?.lastRouteProgress ?? routeLockStore.activeLock?.lastRouteProgress,
