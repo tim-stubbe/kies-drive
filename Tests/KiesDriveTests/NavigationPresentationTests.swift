@@ -4016,6 +4016,30 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A stop selected after driving well past it must not route the car backwards")
     }
 
+    func testRouteSearchActionabilityTracksMovementAndRouteReplacement() {
+        let generation = UUID()
+        XCTAssertTrue(RouteSearchSelectionPolicy.isActionable(
+            resultRouteGeneration: generation, currentRouteGeneration: generation,
+            candidateProgress: 0.55, currentProgress: 0.50,
+            totalRouteDistance: 400_000, navigationActive: true
+        ))
+        XCTAssertFalse(RouteSearchSelectionPolicy.isActionable(
+            resultRouteGeneration: generation, currentRouteGeneration: generation,
+            candidateProgress: 0.55, currentProgress: 0.62,
+            totalRouteDistance: 400_000, navigationActive: true
+        ), "An open list must hide a stop once the car has passed it")
+        XCTAssertFalse(RouteSearchSelectionPolicy.isActionable(
+            resultRouteGeneration: generation, currentRouteGeneration: UUID(),
+            candidateProgress: 0.80, currentProgress: 0.20,
+            totalRouteDistance: 400_000, navigationActive: true
+        ), "A reroute invalidates progress measured on the old geometry")
+        XCTAssertTrue(RouteSearchSelectionPolicy.isActionable(
+            resultRouteGeneration: generation, currentRouteGeneration: generation,
+            candidateProgress: 0.10, currentProgress: 0.90,
+            totalRouteDistance: 400_000, navigationActive: false
+        ), "A stationary route preview has no moving cursor")
+    }
+
     func testRouteSearchSelectionDoesNotMoveBackAtRepeatedJunction() {
         let reconciled = RouteSearchPolicy.installedProgress(
             projected: 0.42,

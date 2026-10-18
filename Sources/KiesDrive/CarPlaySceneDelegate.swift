@@ -707,7 +707,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     return
                 }
                 var mapped: [ObjectIdentifier: RouteSearchResult] = [:]
-                let items = RoutePlanner.shared.routeSearchResults.prefix(8).map { result in
+                let items = RoutePlanner.shared.actionableRouteSearchResults.prefix(8).map { result in
                     let name = result.mapItem.name ?? "Zwischenstopp"
                     let item = CPListItem(
                         text: name,
@@ -945,7 +945,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func showSearchResults(title: String) {
         let planner = RoutePlanner.shared
-        let items = planner.routeSearchResults.prefix(10).map { result in
+        let items = planner.actionableRouteSearchResults.prefix(10).map { result in
             let mapItem = result.mapItem
             let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
                 .compactMap { $0 }.joined(separator: ", ")

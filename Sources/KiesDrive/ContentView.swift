@@ -383,12 +383,12 @@ struct DriveContentView: View {
                 ProgressView("Echten Fahrweg prüfen …")
                     .font(.caption).tint(Color.kiesForest)
             }
-            if let message = planner.routeSearchMessage, !planner.isSearchingAlongRoute {
+            if let message = planner.actionableRouteSearchMessage, !planner.isSearchingAlongRoute {
                 Label(message, systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            ForEach(planner.routeSearchResults.prefix(4)) { result in
+            ForEach(planner.actionableRouteSearchResults.prefix(4)) { result in
                 let item = result.mapItem
                 HStack(spacing: 11) {
                     Image(systemName: "mappin.circle.fill").foregroundStyle(Color.kiesBrass)
@@ -1325,12 +1325,12 @@ struct DriveContentView: View {
                         Button("Suchen") { Task { await planner.searchAlongRoute(planner.routeSearchQuery) } }
                     }
                     if planner.isSearchingAlongRoute { ProgressView("Echten Fahrweg prüfen …") }
-                    if let message = planner.routeSearchMessage, !planner.isSearchingAlongRoute {
+                    if let message = planner.actionableRouteSearchMessage, !planner.isSearchingAlongRoute {
                         Label(message, systemImage: "info.circle")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(planner.routeSearchResults) { result in
+                    ForEach(planner.actionableRouteSearchResults) { result in
                         let item = result.mapItem
                         HStack {
                             VStack(alignment: .leading) {

@@ -233,6 +233,20 @@ enum RouteSearchSelectionPolicy {
     static func accepts(resultRouteGeneration: UUID?, currentRouteGeneration: UUID) -> Bool {
         resultRouteGeneration.map { $0 == currentRouteGeneration } ?? true
     }
+
+    static func isActionable(resultRouteGeneration: UUID?, currentRouteGeneration: UUID,
+                             candidateProgress: Double, currentProgress: Double,
+                             totalRouteDistance: CLLocationDistance,
+                             navigationActive: Bool) -> Bool {
+        guard accepts(resultRouteGeneration: resultRouteGeneration,
+                      currentRouteGeneration: currentRouteGeneration) else { return false }
+        guard navigationActive else { return true }
+        return RouteSearchPolicy.isAhead(
+            candidateProgress: candidateProgress,
+            currentProgress: currentProgress,
+            totalRouteDistance: totalRouteDistance
+        )
+    }
 }
 
 enum PlannedStopSelectionPolicy {

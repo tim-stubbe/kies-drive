@@ -899,6 +899,30 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
     }
 
+    /// A search list may remain open while the car moves or a replacement
+    /// route commits. Keep every presentation surface on the same forward-only
+    /// truth instead of waiting for a tap to reject a now-stale result.
+    var actionableRouteSearchResults: [RouteSearchResult] {
+        let currentProgress = currentInstalledRouteProgress
+        return routeSearchResults.filter {
+            RouteSearchSelectionPolicy.isActionable(
+                resultRouteGeneration: $0.routeGeneration,
+                currentRouteGeneration: routeCalculationGeneration,
+                candidateProgress: $0.routeProgress,
+                currentProgress: currentProgress,
+                totalRouteDistance: totalDistance,
+                navigationActive: isNavigating
+            )
+        }
+    }
+
+    var actionableRouteSearchMessage: String? {
+        if !routeSearchResults.isEmpty, actionableRouteSearchResults.isEmpty {
+            return "Die gefundenen Orte liegen inzwischen hinter dir. Bitte erneut suchen."
+        }
+        return routeSearchMessage
+    }
+
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position
     /// wird neu gerechnet; dadurch setzt MapKit am passenden aktuellen
     /// Routenabschnitt an, waehrend Pflichtpunkte und Segmentregeln erhalten bleiben.
