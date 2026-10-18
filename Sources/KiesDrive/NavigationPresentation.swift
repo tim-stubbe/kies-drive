@@ -258,17 +258,28 @@ enum PlannedStopSelectionPolicy {
         id: String,
         coordinate: CLLocationCoordinate2D,
         currentlySelected: Bool,
-        available: [FuelStation]
+        available: [FuelStation],
+        candidateProgress: Double? = nil,
+        currentProgress: Double = 0,
+        totalRouteDistance: CLLocationDistance = 0,
+        navigationActive: Bool = false
     ) -> Bool {
         if currentlySelected { return true }
         let selectedLocation = CLLocation(latitude: coordinate.latitude,
                                           longitude: coordinate.longitude)
-        return available.contains { station in
+        guard available.contains(where: { station in
             guard station.id == id else { return false }
             return selectedLocation.distance(from: CLLocation(
                 latitude: station.lat, longitude: station.lon
             )) <= 30
-        }
+        }) else { return false }
+        guard navigationActive else { return true }
+        guard let candidateProgress else { return false }
+        return RouteSearchPolicy.isAhead(
+            candidateProgress: candidateProgress,
+            currentProgress: currentProgress,
+            totalRouteDistance: totalRouteDistance
+        )
     }
 
     /// Planned breaks are value snapshots. Requiring the value to still exist

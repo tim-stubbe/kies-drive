@@ -357,7 +357,7 @@ struct DriveContentView: View {
                 routeSearchCard
                 routeOverviewCard
                 if let plan = planner.longTripPlan { longTripCards(plan) }
-                if !planner.stations.isEmpty { routeFuelCard }
+                if !visibleFuelStations.isEmpty { routeFuelCard }
                 if !planner.legs.isEmpty { routeStepsCard }
             }
             .padding(16)
@@ -573,7 +573,7 @@ struct DriveContentView: View {
                 Label("Offline verfügbar · Preise zuletzt gespeichert", systemImage: "clock.arrow.circlepath")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            ForEach(planner.stations.prefix(5)) { station in
+            ForEach(visibleFuelStations.prefix(5)) { station in
                 Button { selectedStation = station } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -1176,6 +1176,11 @@ struct DriveContentView: View {
     private func stationDetailSheet(_ station: FuelStation) -> some View {
         let isVia = planner.isRouteStopSelected(id: station.id)
         let isUpdating = stationRouteUpdateID == station.id
+        let isActionable = hasSimulatorPlannedRoutePreview || isVia || visibleFuelStations.contains { visible in
+            visible.id == station.id && CLLocation(
+                latitude: visible.lat, longitude: visible.lon
+            ).distance(from: CLLocation(latitude: station.lat, longitude: station.lon)) <= 30
+        }
         return NavigationStack {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .top) {
@@ -1208,6 +1213,12 @@ struct DriveContentView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                if !isActionable {
+                    Label("Diese Tankstelle liegt inzwischen hinter dir. Bitte wähle einen neuen Stopp.",
+                          systemImage: "arrow.uturn.backward.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
                 Button {
                     #if targetEnvironment(simulator)
                     if hasSimulatorPlannedRoutePreview {
@@ -1236,7 +1247,8 @@ struct DriveContentView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent).tint(Color.kiesForest).controlSize(.large)
-                .disabled((planner.route == nil && !hasSimulatorPlannedRoutePreview) || isUpdating)
+                .disabled((planner.route == nil && !hasSimulatorPlannedRoutePreview) ||
+                          !isActionable || isUpdating)
                 Spacer()
             }
             .padding(22).background(Color.kiesIvory.ignoresSafeArea())
@@ -1454,7 +1466,7 @@ struct DriveContentView: View {
                 if planner.route != nil && planner.stations.isEmpty && !planner.isLoading {
                     Text("Keine geöffneten Tankstellen mit Preis in Routennähe gefunden.").foregroundStyle(.secondary)
                 }
-                ForEach(planner.stations) { station in
+                ForEach(visibleFuelStations) { station in
                     let isVia = planner.isRouteStopSelected(id: station.id)
                     HStack {
                         Button { selectedStation = station; position = .region(.init(center: station.coordinate, latitudinalMeters: 8_000, longitudinalMeters: 8_000)) } label: {
@@ -1655,7 +1667,7 @@ struct DriveContentView: View {
                 }
             }
             if !isShowingRouteOverview {
-                ForEach(Array(planner.stations.prefix(showsNavigationUI ? 12 : 24))) { station in
+                ForEach(Array(visibleFuelStations.prefix(showsNavigationUI ? 12 : 24))) { station in
                     Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
                         Button { selectedStation = station } label: {
                             VStack(spacing: 2) {
@@ -1808,6 +1820,10 @@ struct DriveContentView: View {
             CLLocationCoordinate2D(latitude: 50.027, longitude: 8.402),
         ]
         return MKPolyline(coordinates: &coordinates, count: coordinates.count)
+    }
+
+    private var visibleFuelStations: [FuelStation] {
+        planner.actionableStations(from: location.location?.coordinate)
     }
 
     private var simulatorPlannedRoutePolyline: MKPolyline {

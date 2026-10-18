@@ -923,6 +923,25 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         return routeSearchMessage
     }
 
+    func actionableStations(from coordinate: CLLocationCoordinate2D?) -> [FuelStation] {
+        guard isNavigating else { return stations }
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
+        let currentProgress = coordinate.map { currentInstalledRouteProgress(from: $0) }
+            ?? currentInstalledRouteProgress
+        return stations.filter { station in
+            let selected = isRouteStopSelected(id: station.id)
+            let progress = RouteGeometryProgress.nearestProgress(
+                of: station.coordinate, on: routeCoordinates
+            )?.progress
+            return PlannedStopSelectionPolicy.acceptsFuelStation(
+                id: station.id, coordinate: station.coordinate,
+                currentlySelected: selected, available: stations,
+                candidateProgress: progress, currentProgress: currentProgress,
+                totalRouteDistance: totalDistance, navigationActive: true
+            )
+        }
+    }
+
     /// Einmaliger Wiederanlauf nach App-Start. Erst mit einer echten Position
     /// wird neu gerechnet; dadurch setzt MapKit am passenden aktuellen
     /// Routenabschnitt an, waehrend Pflichtpunkte und Segmentregeln erhalten bleiben.
@@ -5130,9 +5149,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             transientStationIDs: viaStations.map(\.id),
             lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
         )
+        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
+        let candidateProgress = RouteGeometryProgress.nearestProgress(
+            of: station.coordinate, on: routeCoordinates
+        )?.progress
         guard PlannedStopSelectionPolicy.acceptsFuelStation(
             id: station.id, coordinate: station.coordinate,
-            currentlySelected: wasSelected, available: stations
+            currentlySelected: wasSelected, available: stations,
+            candidateProgress: candidateProgress,
+            currentProgress: currentInstalledRouteProgress(from: start),
+            totalRouteDistance: totalDistance,
+            navigationActive: isNavigating
         ) else {
             errorMessage = "Diese Tankstelle gehört nicht mehr zur aktuellen Route. Bitte neu auswählen."
             return false
@@ -5142,8 +5169,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             knownProgress = nil
         } else {
             guard mayInsertRouteStop(at: station.coordinate) else { return false }
-            knownProgress = breakCandidates(along: legs)
-                .first(where: { $0.id == station.id })?.progress
+            knownProgress = candidateProgress
             if isNavigating {
                 guard let knownProgress, RouteSearchPolicy.isAhead(
                     candidateProgress: knownProgress,

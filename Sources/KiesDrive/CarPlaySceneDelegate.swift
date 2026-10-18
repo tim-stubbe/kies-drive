@@ -444,7 +444,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             routeManagementItems.append(item)
         }
-        nearbyFuelItems.append(contentsOf: planner.stations.prefix(3).map { station in
+        nearbyFuelItems.append(contentsOf: planner.actionableStations(
+            from: LocationService.shared.location?.coordinate
+        ).prefix(3).map { station in
             let selected = planner.isRouteStopSelected(id: station.id)
             let price = FuelStationPricePresentationPolicy.compact(
                 price: station.price, cached: planner.stationPricesAreCached

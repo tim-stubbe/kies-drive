@@ -2261,6 +2261,24 @@ final class NavigationPresentationTests: XCTestCase {
             id: old.id, coordinate: old.coordinate,
             currentlySelected: true, available: []
         ), "A locked stop must remain removable after provider results refresh")
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: old.id, coordinate: old.coordinate,
+            currentlySelected: false, available: [old],
+            candidateProgress: 0.40, currentProgress: 0.55,
+            totalRouteDistance: 400_000, navigationActive: true
+        ), "A visible provider result becomes unsafe after the car passes it")
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: old.id, coordinate: old.coordinate,
+            currentlySelected: false, available: [old],
+            candidateProgress: 0.60, currentProgress: 0.55,
+            totalRouteDistance: 400_000, navigationActive: true
+        ))
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsFuelStation(
+            id: old.id, coordinate: old.coordinate,
+            currentlySelected: true, available: [],
+            candidateProgress: 0.10, currentProgress: 0.90,
+            totalRouteDistance: 400_000, navigationActive: true
+        ), "An already locked stop stays removable even after it is passed")
     }
 
     func testNamedRouteSearchPrefersRelevantBrandOverTinyUnrelatedDetour() {
