@@ -225,6 +225,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var lastAutomaticRestoreAttempt: Date?
     private var lastRouteProgressPersistedAt: Date?
     private var lastOfflineProgressPersistedAt: Date?
+    private var lastUsageSessionPersistedAt: Date?
+    private var lastDrivingStatePersistedAt: Date?
     private var lastLongTripPlanRefreshAt: Date?
     /// A waypoint is only persisted after the replacement route has been
     /// committed. Keeping the in-flight identity here prevents every GPS fix
@@ -1419,13 +1421,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 drivingRestState, tripID: tripID, at: location.timestamp,
                 speedMetresPerSecond: currentSpeed
             )
-            drivingRestStore.save(drivingRestState)
             drivingFuelState = DrivingFuelPolicy.updated(
                 drivingFuelState, tripID: tripID,
                 initialFuelFraction: settings.departureFuelPercent / 100,
                 location: location
             )
-            drivingFuelStore.save(drivingFuelState)
+            if NavigationPersistenceCheckpointPolicy.shouldPersist(
+                last: lastDrivingStatePersistedAt, now: location.timestamp
+            ) {
+                drivingRestStore.save(drivingRestState)
+                drivingFuelStore.save(drivingFuelState)
+                lastDrivingStatePersistedAt = location.timestamp
+            }
         }
         if detectArrival(at: location, settings: settings) { return }
         updateBreakReminder(settings: settings)
@@ -2458,6 +2465,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             usageSessionStore.save(usageSessionState)
         }
         usageSessionLastLocation = nil
+        lastUsageSessionPersistedAt = nil
+        lastDrivingStatePersistedAt = nil
     }
 
     private func updateUsageSession(at location: CLLocation) {
@@ -2466,7 +2475,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) {
             usageSessionState.distanceMetres += segment.distanceMetres
             usageSessionState.movingTime += segment.movingTime
-            usageSessionStore.save(usageSessionState)
+            if NavigationPersistenceCheckpointPolicy.shouldPersist(
+                last: lastUsageSessionPersistedAt, now: location.timestamp
+            ) {
+                usageSessionStore.save(usageSessionState)
+                lastUsageSessionPersistedAt = location.timestamp
+            }
         }
         usageSessionLastLocation = location
     }
@@ -2480,6 +2494,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         usageSessionState = .init()
         usageSessionStore.clear()
         usageSessionLastLocation = nil
+        lastUsageSessionPersistedAt = nil
     }
 
     private func finishReplacedUsageTripIfNeeded(previousTripID: UUID?, nextTripID: UUID?) {

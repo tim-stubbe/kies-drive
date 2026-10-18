@@ -1328,6 +1328,22 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testNavigationPersistenceUsesShortCrashSafeCheckpoints() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: nil, now: start
+        ))
+        XCTAssertFalse(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: start, now: start.addingTimeInterval(29.9)
+        ))
+        XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: start, now: start.addingTimeInterval(30)
+        ))
+        XCTAssertTrue(NavigationPersistenceCheckpointPolicy.shouldPersist(
+            last: start, now: start.addingTimeInterval(-1)
+        ), "Clock rollback must start a fresh checkpoint window")
+    }
+
     func testStepSelectionAdvancesSequentiallyAtJunction() {
         let metrics = [
             NavigationStepMetric(distanceFromRoute: 5, remainingOnStep: 4),

@@ -636,6 +636,20 @@ enum NavigationLocationDiagnosticPolicy {
     }
 }
 
+/// Live navigation state changes on every accepted GPS fix, but encoding and
+/// writing several UserDefaults payloads at that same cadence can stall map
+/// rendering on long drives. A short checkpoint interval retains useful crash
+/// recovery without turning every location callback into synchronous I/O.
+enum NavigationPersistenceCheckpointPolicy {
+    static let interval: TimeInterval = 30
+
+    static func shouldPersist(last: Date?, now: Date) -> Bool {
+        guard let last else { return true }
+        let elapsed = now.timeIntervalSince(last)
+        return elapsed < 0 || elapsed >= interval
+    }
+}
+
 /// Core Location may batch several fixes after a tunnel, a locked display or
 /// a short background interval. Guidance must consume those fixes in temporal
 /// order; using only the last value can jump across a junction and lose both
