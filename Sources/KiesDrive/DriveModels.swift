@@ -753,12 +753,22 @@ enum DriveDiagnosticReport {
             redacted = event.detail.hasPrefix("Offline")
                 ? "Offline-Navigation gestartet · Ziel ausgeblendet"
                 : "Navigation gestartet · Ziel ausgeblendet"
+        case .navigationStopped:
+            redacted = "Navigation pausiert · Ziel ausgeblendet"
         case .arrivalReached:
             redacted = "Ziel erreicht · Ziel ausgeblendet"
         case .routeStopAdded:
             redacted = "Zwischenstopp hinzugefügt · Name ausgeblendet"
         case .routeStopFailed:
             redacted = "Zwischenstopp nicht berechenbar · Name ausgeblendet"
+        case .breakReminderShown, .breakReminderAnnounced:
+            redacted = redactedReminderDetail(
+                event.detail, label: "Pausenerinnerung"
+            )
+        case .fuelReminderShown, .fuelReminderAnnounced:
+            redacted = redactedReminderDetail(
+                event.detail, label: "Tankhinweis"
+            )
         case .maneuverAnnounced, .maneuverFinalCueMissed, .speechDeliveryFailed:
             redacted = redactedManeuverDetail(event.detail)
         default:
@@ -768,6 +778,12 @@ enum DriveDiagnosticReport {
     }
 
     private static func redactedManeuverDetail(_ detail: String) -> String {
+        if detail.localizedCaseInsensitiveContains("Pausenerinnerung") {
+            return redactedReminderDetail(detail, label: "Pausenerinnerung")
+        }
+        if detail.localizedCaseInsensitiveContains("Tankhinweis") {
+            return redactedReminderDetail(detail, label: "Tankhinweis")
+        }
         let identity = DriveDiagnosticDetail.maneuverIdentity(in: detail)
             .map { "Manöver-ID \(DriveDiagnosticDetail.fingerprint($0))" }
         let parts = DriveDiagnosticDetail.removingManeuverIdentity(from: detail)
@@ -780,6 +796,22 @@ enum DriveDiagnosticReport {
         }
         safe.append("Fahranweisung ausgeblendet")
         if let identity { safe.insert(identity, at: 0) }
+        return safe.joined(separator: " · ")
+    }
+
+    /// Reminder text may contain the selected rest area or fuel-station name.
+    /// Keep only operational state useful for debugging delivery, never the
+    /// place chosen by the driver or planner.
+    private static func redactedReminderDetail(_ detail: String, label: String) -> String {
+        let safeWords: Set<String> = ["plan", "soon", "due", "gesprochen"]
+        let parts = DriveDiagnosticDetail.removingManeuverIdentity(from: detail)
+            .split(separator: "·")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var safe = parts.filter {
+            safeWords.contains($0.lowercased()) || $0.hasPrefix("GPS ") ||
+                $0 == "GPS-Genauigkeit unbekannt" || $0.hasSuffix("km/h")
+        }
+        safe.insert("\(label) · Ort ausgeblendet", at: 0)
         return safe.joined(separator: " · ")
     }
 }

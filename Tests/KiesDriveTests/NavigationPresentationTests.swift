@@ -3708,6 +3708,38 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(report.contains("48 km/h"))
     }
 
+    func testSharedDiagnosticReportRedactsPausedDestinationAndReminderPlaces() {
+        let events = [
+            DriveDiagnosticEvent(
+                kind: .navigationStopped, detail: "Private Wohnadresse Hochheim"
+            ),
+            DriveDiagnosticEvent(
+                kind: .breakReminderShown,
+                detail: "Pausenerinnerung · soon · Pause bei Autohof Spessart einplanen"
+            ),
+            DriveDiagnosticEvent(
+                kind: .fuelReminderAnnounced,
+                detail: "Tankhinweis · gesprochen · Bei JET Bodenheim tanken"
+            ),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "Tankhinweis · Bei Shell Nierstein tanken · GPS ±9 m · 80 km/h"
+            ),
+        ]
+
+        let report = DriveDiagnosticReport.text(events: events, appVersion: "Test")
+
+        XCTAssertFalse(report.contains("Private Wohnadresse Hochheim"))
+        XCTAssertFalse(report.contains("Autohof Spessart"))
+        XCTAssertFalse(report.contains("JET Bodenheim"))
+        XCTAssertFalse(report.contains("Shell Nierstein"))
+        XCTAssertTrue(report.contains("Navigation pausiert · Ziel ausgeblendet"))
+        XCTAssertTrue(report.contains("Pausenerinnerung · Ort ausgeblendet · soon"))
+        XCTAssertTrue(report.contains("Tankhinweis · Ort ausgeblendet · gesprochen"))
+        XCTAssertTrue(report.contains("GPS ±9 m"))
+        XCTAssertTrue(report.contains("80 km/h"))
+    }
+
     func testDiagnosticSummaryClearsTransientRouteFailureAfterSuccessfulRecovery() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
