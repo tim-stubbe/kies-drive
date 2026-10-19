@@ -5402,6 +5402,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 of: station.coordinate, on: routeCoordinates, progressRange: projectionRange
             ),
                   projection.distance <= 4_000 else { return nil }
+            if useMeasuredDetours, let measured = measuredBreakDetours[station.id],
+               !BreakCandidateDetourPolicy.acceptsMeasured(measured) { return nil }
             return BreakCandidateFactory.fuelStation(
                 station, progress: projection.progress,
                 timeProgress: RouteTravelTimeProgress.value(
@@ -5416,6 +5418,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 of: candidate.coordinate, on: routeCoordinates, progressRange: projectionRange
             ),
                   projection.distance <= 4_000 else { return nil }
+            if useMeasuredDetours, let measured = measuredBreakDetours[candidate.id],
+               !BreakCandidateDetourPolicy.acceptsMeasured(measured) { return nil }
             return .init(id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
                          progress: projection.progress,
                          timeProgress: RouteTravelTimeProgress.value(
@@ -5485,7 +5489,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 switch outcome {
                 case .measurement(let id, let distance):
                     remainingMeasurements -= 1
-                    if let distance, distance <= 20_000 { measurements[id] = distance }
+                    // Retain a successful oversized measurement as negative
+                    // evidence. Dropping it would make `breakCandidates` use
+                    // the optimistic air-line estimate again and could send
+                    // the driver tens of kilometres off route.
+                    if let distance, distance.isFinite, distance >= 0 {
+                        measurements[id] = distance
+                    }
                 case .superseded:
                     loadWasSuperseded = true
                     group.cancelAll()

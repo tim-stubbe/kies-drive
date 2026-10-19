@@ -453,6 +453,13 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(result[0].detourIsEstimated)
     }
 
+    func testMeasuredLargeBreakDetourIsRejectedInsteadOfEstimatedAgain() {
+        XCTAssertTrue(BreakCandidateDetourPolicy.acceptsMeasured(20_000))
+        XCTAssertFalse(BreakCandidateDetourPolicy.acceptsMeasured(20_001))
+        XCTAssertFalse(BreakCandidateDetourPolicy.acceptsMeasured(.infinity))
+        XCTAssertFalse(BreakCandidateDetourPolicy.acceptsMeasured(-1))
+    }
+
     func testFuelStationSelectionIsStableAcrossOpeningPriceAndRouteDistance() {
         func station(_ id: String, open: Bool?, price: Double) -> FuelStation {
             FuelStation(id: id, name: id, brand: id, street: "", place: "",

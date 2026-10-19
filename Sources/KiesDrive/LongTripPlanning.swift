@@ -512,6 +512,17 @@ enum BreakCandidateValidationPolicy {
     }
 }
 
+enum BreakCandidateDetourPolicy {
+    /// A stop that adds more than twenty kilometres of real driving is not a
+    /// useful route amenity. Most importantly, a successfully measured large
+    /// detour must never fall back to its much smaller air-line estimate.
+    static let maximumAcceptedMetres: CLLocationDistance = 20_000
+
+    static func acceptsMeasured(_ distance: CLLocationDistance) -> Bool {
+        distance.isFinite && distance >= 0 && distance <= maximumAcceptedMetres
+    }
+}
+
 enum BreakCandidateSelectionPolicy {
     /// Long routes can contain hundreds of nearby places. Keep one useful
     /// candidate per route section so the UI stays small and only a bounded
