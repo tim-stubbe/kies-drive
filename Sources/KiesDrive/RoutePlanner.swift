@@ -2156,6 +2156,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             rerouteGeneration = UUID()
             isRecalculating = false
         }
+        let calculationStartedAt = Date()
         let calculationGeneration = UUID()
         routeCalculationGeneration = calculationGeneration
         destinationSearchGeneration = UUID()
@@ -2282,7 +2283,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             guard calculationGeneration == routeCalculationGeneration,
                   constraintSnapshot == RouteCalculationConstraintSnapshot(
-                    routeLockStore.activeLock
+                      routeLockStore.activeLock
                   ),
                   NavigationAsyncWorkPolicy.mayCommitCalculation(
                     navigationActive: isNavigating,
@@ -2291,6 +2292,31 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     work: navigationWork,
                     currentWork: rerouteGeneration
                   ) else { return false }
+            let latePassed = RouteCalculationLateWaypointPolicy.newlyPassed(
+                lock: routeLockStore.activeLock,
+                initiallyPassed: newlyPassed,
+                latestLocation: isNavigating ? lastAcceptedNavigationLocation : nil,
+                calculationStartedAt: calculationStartedAt
+            )
+            if !latePassed.isEmpty,
+               let latestLocation = lastAcceptedNavigationLocation {
+                let allPassed = newlyPassed.union(latePassed)
+                routeLockStore.update { current in
+                    current.visitedWaypointIDs = RouteWaypointProgressPolicy.merging(
+                        existing: current.visitedWaypointIDs, newlyPassed: allPassed
+                    )
+                }
+                activeRouteLock = routeLockStore.activeLock
+                viaStations.removeAll { allPassed.contains($0.id) }
+                // The just-computed geometry still contains the now-passed
+                // point. Never publish it even briefly; immediately rebuild
+                // from the freshest accepted fix and updated constraint set.
+                return await calculate(
+                    from: latestLocation.coordinate, settings: settings,
+                    showLoading: showLoading, navigationSession: navigationSession,
+                    navigationWork: navigationWork
+                )
+            }
             // Commit route and trip progress together. A superseded request
             // therefore cannot flash an old route or permanently skip a
             // mandatory waypoint merely because it finished later.

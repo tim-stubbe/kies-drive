@@ -985,6 +985,78 @@ final class RoutePersistenceTests: XCTestCase {
         )
     }
 
+    func testLateRouteCalculationDetectsPassedDriveThroughConstraint() {
+        let started = Date(timeIntervalSince1970: 10_000)
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
+            destination: .init(latitude: 5, longitude: 0),
+            waypoints: [
+                .init(id: "pass", name: "Passstraße",
+                      coordinate: .init(latitude: 1, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .routeConstraint),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: (0...5).map { .init(latitude: Double($0), longitude: 0) },
+            visitedWaypointIDs: [], status: .active, createdAt: started, updatedAt: started
+        )
+        let latest = CLLocation(
+            coordinate: .init(latitude: 2.1, longitude: 0), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 20,
+            timestamp: started.addingTimeInterval(5)
+        )
+
+        XCTAssertEqual(
+            RouteCalculationLateWaypointPolicy.newlyPassed(
+                lock: lock, initiallyPassed: [], latestLocation: latest,
+                calculationStartedAt: started
+            ),
+            ["pass"]
+        )
+        XCTAssertTrue(RouteCalculationLateWaypointPolicy.newlyPassed(
+            lock: lock, initiallyPassed: ["pass"], latestLocation: latest,
+            calculationStartedAt: started
+        ).isEmpty)
+    }
+
+    func testLateRouteCalculationNeverSkipsRealStopOrUsesOldFix() {
+        let started = Date(timeIntervalSince1970: 10_000)
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
+            destination: .init(latitude: 5, longitude: 0),
+            waypoints: [
+                .init(id: "food", name: "Restaurant",
+                      coordinate: .init(latitude: 1, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .userStop),
+                .init(id: "pass", name: "Passstraße",
+                      coordinate: .init(latitude: 2, longitude: 0), required: true,
+                      optionsAfter: nil, kind: .routeConstraint),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: (0...5).map { .init(latitude: Double($0), longitude: 0) },
+            visitedWaypointIDs: [], status: .active, createdAt: started, updatedAt: started
+        )
+        func location(at date: Date) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: 3.1, longitude: 0), altitude: 0,
+                horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 20,
+                timestamp: date
+            )
+        }
+
+        XCTAssertTrue(RouteCalculationLateWaypointPolicy.newlyPassed(
+            lock: lock, initiallyPassed: [],
+            latestLocation: location(at: started.addingTimeInterval(5)),
+            calculationStartedAt: started
+        ).isEmpty, "A real stop is an ordering boundary and must remain mandatory")
+        XCTAssertTrue(RouteCalculationLateWaypointPolicy.newlyPassed(
+            lock: lock, initiallyPassed: [],
+            latestLocation: location(at: started.addingTimeInterval(-1)),
+            calculationStartedAt: started
+        ).isEmpty, "A fix older than the calculation cannot invalidate its geometry")
+    }
+
     func testSparseCorridorAcceptsRoadBetweenStoredAnchors() {
         let corridor = [
             DriveCoordinate(latitude: 50, longitude: 8),

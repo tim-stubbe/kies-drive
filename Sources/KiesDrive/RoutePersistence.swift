@@ -46,6 +46,25 @@ enum RouteWaypointVisitPolicy {
     }
 }
 
+enum RouteCalculationLateWaypointPolicy {
+    /// A multi-leg MapKit calculation can take long enough for the car to pass
+    /// a drive-through constraint in the meantime. Detect only location fixes
+    /// received after the request began; `passedWaypointIDs` deliberately
+    /// stops at real fuel/food/user stops, so those can never be skipped.
+    static func newlyPassed(
+        lock: ActiveRouteLock?, initiallyPassed: Set<String>,
+        latestLocation: CLLocation?, calculationStartedAt: Date
+    ) -> Set<String> {
+        guard let lock, let latestLocation,
+              latestLocation.timestamp >= calculationStartedAt else { return [] }
+        let passed = Set(lock.passedWaypointIDs(at: .init(
+            latitude: latestLocation.coordinate.latitude,
+            longitude: latestLocation.coordinate.longitude
+        )))
+        return passed.subtracting(initiallyPassed)
+    }
+}
+
 enum RouteCorridorPolicy {
     /// Accepts a reroute when almost all of its sampled geometry remains near
     /// the persisted corridor polyline. Measuring against line segments is
