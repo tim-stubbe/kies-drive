@@ -420,6 +420,29 @@ final class OfflineMapPackageTests: XCTestCase {
                        "A damaged tile must make the app fall back to the online map")
     }
 
+    func testRuntimeCoverageRejectsTruncatedTileWithValidPNGHeader() throws {
+        try writeManifest(id: "runtime-truncated")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        var checkTime = Date(timeIntervalSince1970: 1_000)
+        let store = OfflineMapPackageStore(
+            rootURL: root, defaults: defaults, now: { checkTime }
+        )
+        let package = try store.install(from: source)
+        let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+        XCTAssertTrue(store.hasBaseTiles(covering: [coordinate], package: package))
+
+        let installedTile = try XCTUnwrap(store.tileURL(
+            z: 8, x: 136, y: 89, package: package
+        ))
+        var truncated = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        truncated.append(Data(repeating: 0, count: 24))
+        try truncated.write(to: installedTile)
+        checkTime.addTimeInterval(3)
+
+        XCTAssertFalse(store.hasBaseTiles(covering: [coordinate], package: package),
+                       "A PNG signature alone must not advertise usable offline coverage")
+    }
+
     func testRuntimeCoverageCacheRechecksDiskAfterClockRollback() throws {
         try writeManifest(id: "runtime-clock-rollback")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))

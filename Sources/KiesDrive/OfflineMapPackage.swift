@@ -497,11 +497,19 @@ final class OfflineMapPackageStore: ObservableObject {
                 return cached.result
             }
         }
+        let verifiesCompleteImages = orderedTiles.count <= 100
         let result = orderedTiles.allSatisfy {
             guard let url = tileURL(z: $0.z, x: $0.x, y: $0.y, package: package) else {
                 return false
             }
-            return OfflineTileFilePolicy.hasValidPNGHeader(at: url)
+            // The moving camera and short look-ahead use at most a few dozen
+            // tiles, so fully decode them and reject truncation beyond a valid
+            // PNG signature. Whole-route preflights can span thousands of
+            // immutable installed tiles and retain the inexpensive header
+            // check; the renderer still fully validates every tile it reads.
+            return verifiesCompleteImages
+                ? OfflineTileFilePolicy.validatedPNGData(at: url) != nil
+                : OfflineTileFilePolicy.hasValidPNGHeader(at: url)
         }
         tileCoverageCache[key] = .init(result: result, checkedAt: checkTime)
         return result
