@@ -189,6 +189,22 @@ enum TollDestinationLabelPolicy {
     }
 }
 
+enum TollOriginFallbackPolicy {
+    /// Reverse geocoding normally sends only locality/region/country. If that
+    /// service times out, SearXNG still needs a useful route origin but never a
+    /// street-level coordinate. Two decimals are roughly a kilometre in Europe.
+    static func label(for coordinate: CLLocationCoordinate2D) -> String? {
+        guard coordinate.latitude.isFinite, coordinate.longitude.isFinite,
+              (-90...90).contains(coordinate.latitude),
+              (-180...180).contains(coordinate.longitude) else { return nil }
+        return String(
+            format: "Umgebung %.2f, %.2f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            coordinate.latitude, coordinate.longitude
+        )
+    }
+}
+
 struct TollLookupSnapshot: Equatable {
     let routeIdentity: String
     let origin: CLLocationCoordinate2D

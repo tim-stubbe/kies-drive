@@ -5037,8 +5037,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // Search evidence normally names towns, not raw coordinates. Resolve
         // only the coarse locality/region/country so the provider can verify
         // both endpoints without sending the user's street address.
-        let origin = await tollOriginLabel(for: start)
-            ?? String(format: "%.4f, %.4f", start.latitude, start.longitude)
+        guard let origin = await tollOriginLabel(for: start)
+            ?? TollOriginFallbackPolicy.label(for: start) else { return }
         // Reverse geocoding may take a couple of seconds. A reroute or newly
         // selected destination during that wait owns a different toll lookup;
         // do not send obsolete SearXNG requests that compete with it.

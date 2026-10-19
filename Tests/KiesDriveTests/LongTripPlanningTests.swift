@@ -695,6 +695,18 @@ final class LongTripPlanningTests: XCTestCase {
         ), "Split, Kroatien")
     }
 
+    func testTollOriginFallbackNeverLeaksStreetLevelCoordinates() throws {
+        let label = try XCTUnwrap(TollOriginFallbackPolicy.label(
+            for: .init(latitude: 50.012345, longitude: 8.678901)
+        ))
+        XCTAssertEqual(label, "Umgebung 50.01, 8.68")
+        XCTAssertFalse(label.contains("50.0123"))
+        XCTAssertFalse(label.contains("8.6789"))
+        XCTAssertNil(TollOriginFallbackPolicy.label(
+            for: .init(latitude: .nan, longitude: 8)
+        ))
+    }
+
     func testTollComparisonPublishesOnlyCompleteVariantPair() {
         let standard = TollLookupBatchItem(
             avoidTolls: false, routeIdentity: "route|standard",
