@@ -1007,6 +1007,34 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(Set(breaks.compactMap { $0.candidate?.id }).count, 1, "A stop must not be suggested twice")
     }
 
+    func testBreakPlannerKeepsExistingSafeStopAcrossSmallETARefresh() {
+        let candidates = [
+            BreakCandidate(id: "existing", name: "Existing", coordinate: .init(latitude: 0, longitude: 0), progress: 0.48, detourMetres: 700, isOpen: true),
+            BreakCandidate(id: "new", name: "New", coordinate: .init(latitude: 0, longitude: 0), progress: 0.50, detourMetres: 500, isOpen: true),
+        ]
+
+        let breaks = BreakPlanner().plan(
+            drivingTime: 4 * 3600, candidates: candidates,
+            preferredCandidateIDs: ["existing"]
+        )
+
+        XCTAssertEqual(breaks.first?.candidate?.id, "existing")
+    }
+
+    func testBreakPlannerDropsExistingStopOutsideSafeWindow() {
+        let candidates = [
+            BreakCandidate(id: "existing", name: "Existing", coordinate: .init(latitude: 0, longitude: 0), progress: 0.65, detourMetres: 100, isOpen: true),
+            BreakCandidate(id: "safe", name: "Safe", coordinate: .init(latitude: 0, longitude: 0), progress: 0.49, detourMetres: 500, isOpen: true),
+        ]
+
+        let breaks = BreakPlanner().plan(
+            drivingTime: 4 * 3600, candidates: candidates,
+            preferredCandidateIDs: ["existing"]
+        )
+
+        XCTAssertEqual(breaks.first?.candidate?.id, "safe")
+    }
+
     func testOpeningStatusIsUsedOnlyForNearTermArrival() {
         XCTAssertFalse(PlannedStopOpeningStatusPolicy.mayUse(
             isOpen: false, secondsUntilArrival: 20 * 60
@@ -2311,6 +2339,25 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(stops.count, 1)
         XCTAssertEqual(stops.first?.candidate?.id, "station")
         XCTAssertLessThan(stops.first?.afterDistanceMetres ?? .infinity, 400_000)
+    }
+
+    func testFuelPlannerKeepsExistingSafeStationAcrossRefresh() {
+        let candidates = [
+            BreakCandidate(id: "existing", name: "Existing", coordinate: .init(),
+                           progress: 0.48, detourMetres: 500, isOpen: true, supportsFuel: true),
+            BreakCandidate(id: "new", name: "New", coordinate: .init(),
+                           progress: 0.50, detourMetres: 100, isOpen: true, supportsFuel: true),
+        ]
+        let vehicle = VehicleProfile(baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+                                     tankCapacityLitres: 50, usableTankFraction: 0.8)
+
+        let stops = FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: candidates,
+            preferredCandidateIDs: ["existing"]
+        )
+
+        XCTAssertEqual(stops.first?.candidate?.id, "existing")
     }
 
     func testFuelPlannerTreatsDistantClosedStatusAsStale() {

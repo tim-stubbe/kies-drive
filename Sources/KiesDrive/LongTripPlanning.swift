@@ -870,7 +870,8 @@ struct FuelStopPlanner {
     /// theoretical last kilometre of the tank.
     func plan(distanceMetres: Double, consumptionLPer100km: Double,
               vehicle: VehicleProfile, candidates: [BreakCandidate],
-              routeTravelTime: TimeInterval? = nil) -> [PlannedFuelStop] {
+              routeTravelTime: TimeInterval? = nil,
+              preferredCandidateIDs: Set<String> = []) -> [PlannedFuelStop] {
         guard distanceMetres.isFinite, distanceMetres > 0,
               consumptionLPer100km.isFinite, consumptionLPer100km > 0,
               vehicle.tankCapacityLitres.isFinite, vehicle.tankCapacityLitres > 0,
@@ -927,6 +928,9 @@ struct FuelStopPlanner {
             let window = ahead.filter { abs($0.progress - idealProgress) <= 0.14 }
             let pool = window.isEmpty ? ahead : window
             let best = pool.min {
+                let lhsPreferred = preferredCandidateIDs.contains($0.id)
+                let rhsPreferred = preferredCandidateIDs.contains($1.id)
+                if lhsPreferred != rhsPreferred { return lhsPreferred }
                 let lhsLeg = distanceReturningFromPreviousStop +
                     $0.progress * distanceMetres - lastStopDistance +
                     FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $0.detourMetres)
@@ -1647,7 +1651,8 @@ struct BreakPlanner {
 
     func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
               plannedFuelStops: [PlannedFuelStop] = [],
-              alreadyDrivenSinceBreak: TimeInterval = 0) -> [PlannedBreak] {
+              alreadyDrivenSinceBreak: TimeInterval = 0,
+              preferredCandidateIDs: Set<String> = []) -> [PlannedBreak] {
         let elapsed = min(maximumContinuousDriving, max(0, alreadyDrivenSinceBreak))
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
         var remaining = candidates.compactMap { candidate -> BreakCandidate? in
@@ -1741,7 +1746,10 @@ struct BreakPlanner {
                 best = coordinatedFuelStop.candidate
             } else {
                 best = candidatesInWindow.min {
-                    score(
+                    let lhsPreferred = preferredCandidateIDs.contains($0.id)
+                    let rhsPreferred = preferredCandidateIDs.contains($1.id)
+                    if lhsPreferred != rhsPreferred { return lhsPreferred }
+                    return score(
                         $0, idealDrivingTime: idealDrivingTime,
                         drivingTime: drivingTime,
                         accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
@@ -2040,11 +2048,14 @@ struct RouteComparison {
     var fuelStopPlanner = FuelStopPlanner()
 
     func compare(routes: [RoutePlanningInput], scenarios: [SpeedScenario], vehicle: VehicleProfile,
-                 alreadyDrivenSinceBreak: TimeInterval = 0, now: Date = Date()) -> LongTripPlan {
+                 alreadyDrivenSinceBreak: TimeInterval = 0,
+                 preferredStopCandidateIDs: Set<String> = [],
+                 now: Date = Date()) -> LongTripPlan {
         let results = routes.flatMap { route in
             scenarios.map { scenario in
                 result(route: route, scenario: scenario, vehicle: vehicle,
-                       alreadyDrivenSinceBreak: alreadyDrivenSinceBreak)
+                       alreadyDrivenSinceBreak: alreadyDrivenSinceBreak,
+                       preferredStopCandidateIDs: preferredStopCandidateIDs)
             }
         }
         var note = "ETA basiert auf MapKit-Verkehrsdaten. Das Zieltempo verändert nur den geeigneten Anteil ohne bekanntes Limit; Pausen kommen anschließend hinzu."
@@ -2059,7 +2070,8 @@ struct RouteComparison {
     }
 
     private func result(route: RoutePlanningInput, scenario: SpeedScenario, vehicle: VehicleProfile,
-                        alreadyDrivenSinceBreak: TimeInterval) -> RouteScenarioResult {
+                        alreadyDrivenSinceBreak: TimeInterval,
+                        preferredStopCandidateIDs: Set<String>) -> RouteScenarioResult {
         let fraction = min(1, max(0, route.unlimitedMotorwayFraction))
         let target = min(max(80, scenario.targetSpeedKmh), 220)
         let timing = SpeedScenarioPolicy.timing(
@@ -2083,7 +2095,8 @@ struct RouteComparison {
             distanceMetres: route.distanceMetres,
             consumptionLPer100km: routeFuel.averageConsumptionLPer100km,
             vehicle: vehicle, candidates: route.breakCandidates,
-            routeTravelTime: drivingTime
+            routeTravelTime: drivingTime,
+            preferredCandidateIDs: preferredStopCandidateIDs
         ).map { installedFuelStop($0, routeStartProgress: route.installedRouteStartProgress) }
         // Prefer one useful stop over a rest break and a fuel stop a few
         // minutes apart. The normal pause window still applies, so a distant
@@ -2091,7 +2104,8 @@ struct RouteComparison {
         let breaks = breakPlanner.plan(
             drivingTime: drivingTime, candidates: route.breakCandidates,
             plannedFuelStops: fuelStops,
-            alreadyDrivenSinceBreak: alreadyDrivenSinceBreak
+            alreadyDrivenSinceBreak: alreadyDrivenSinceBreak,
+            preferredCandidateIDs: preferredStopCandidateIDs
         ).map { installedBreak($0, routeStartProgress: route.installedRouteStartProgress) }
         let selectedCandidates = (breaks.compactMap(\.candidate) + fuelStops.compactMap(\.candidate))
             .reduce(into: [String: BreakCandidate]()) { candidates, candidate in

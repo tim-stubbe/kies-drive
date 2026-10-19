@@ -4917,9 +4917,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let scenarios = SpeedScenarioPolicy.scenarios(
             configuredSpeed: settings.targetSpeedKmh
         )
+        // A periodic traffic refresh should update times, not make a valid
+        // named pause or fuel stop jump between neighbouring services. The
+        // planners honour this preference only while the place remains on the
+        // route, ahead, usable and inside the same safety window.
+        let preferredStopCandidateIDs = Set(
+            (longTripPlan?.results.first?.breaks.compactMap { $0.candidate?.id } ?? []) +
+            (longTripPlan?.results.first?.fuelStops.compactMap { $0.candidate?.id } ?? [])
+        )
         longTripPlan = RouteComparison(fuelModel: .init(), breakPlanner: .init())
             .compare(routes: inputs, scenarios: scenarios, vehicle: profile,
-                     alreadyDrivenSinceBreak: drivingRestState.continuousDriving)
+                     alreadyDrivenSinceBreak: drivingRestState.continuousDriving,
+                     preferredStopCandidateIDs: preferredStopCandidateIDs)
     }
 
     private func maximumRouteSeparation(primary: [MKRoute],
