@@ -1952,7 +1952,11 @@ enum NavigationStepSelectionPolicy {
         // a microscopically closer later crossing, so loops and cloverleafs do
         // not skip required sections. Normal live updates keep the tight
         // forward window below.
-        if allowsFullRecovery, metrics[current].distanceFromRoute > 250 {
+        let currentCourseIsPlausible = NavigationCourseMatchingPolicy.isPlausible(
+            metrics[current].courseDifferenceDegrees
+        )
+        if allowsFullRecovery,
+           metrics[current].distanceFromRoute > 250 || !currentCourseIsPlausible {
             if let earliestPlausible = metrics.indices.dropFirst(current).first(where: {
                 recoveryCandidateIsSafe($0) &&
                     metrics[$0].distanceFromRoute <= max(45, radius * 1.5) &&

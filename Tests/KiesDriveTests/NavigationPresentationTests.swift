@@ -3747,6 +3747,27 @@ final class NavigationPresentationTests: XCTestCase {
         ), 42)
     }
 
+    func testInitialOfflineRecoveryEscapesNearbyWrongDirectionOverlap() {
+        let metrics = [
+            NavigationStepMetric(
+                distanceFromRoute: 2, remainingOnStep: 900,
+                courseDifferenceDegrees: 175
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: 8, remainingOnStep: 700,
+                courseDifferenceDegrees: 4
+            ),
+        ]
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12,
+            allowsFullRecovery: true
+        ), 1, "A restored out-and-back route must follow the matching carriageway direction")
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: metrics, transitionRadius: 12
+        ), 0, "Continuous guidance must not jump forward from one contradictory course fix")
+    }
+
     func testFullRecoveryCanResumeBeyondGeometryFreeManeuver() {
         let metrics = [
             NavigationStepMetric(
