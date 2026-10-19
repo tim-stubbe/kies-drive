@@ -1209,10 +1209,61 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             maneuver.notificationInstructionVariants = variants
             let presentation = NavigationManeuverPresentation(instruction)
             maneuver.symbolImage = UIImage(systemName: presentation.direction.symbolName)
+            if #available(iOS 17.4, *) {
+                maneuver.maneuverType = carPlayManeuverType(
+                    CarPlayManeuverSemanticPolicy.semantic(for: presentation)
+                )
+                if let exit = presentation.highwayExitLabel {
+                    maneuver.highwayExitLabel = exit
+                }
+                if let road = presentation.roadLabel {
+                    maneuver.roadFollowingManeuverVariants = [road]
+                }
+            }
             if index == 0, let estimates = maneuverTravelEstimates() {
                 maneuver.initialTravelEstimates = estimates
             }
             return maneuver
+        }
+    }
+
+    @available(iOS 17.4, *)
+    private func carPlayManeuverType(_ semantic: CarPlayManeuverSemantic) -> CPManeuverType {
+        switch semantic {
+        case .followRoad: return .followRoad
+        case .straight: return .straightAhead
+        case .slightRight: return .slightRightTurn
+        case .right: return .rightTurn
+        case .sharpRight: return .sharpRightTurn
+        case .slightLeft: return .slightLeftTurn
+        case .left: return .leftTurn
+        case .sharpLeft: return .sharpLeftTurn
+        case .uTurn: return .uTurn
+        case .highwayOffRampLeft: return .highwayOffRampLeft
+        case .highwayOffRampRight: return .highwayOffRampRight
+        case .roundabout(let exit):
+            switch exit {
+            case 1: return .roundaboutExit1
+            case 2: return .roundaboutExit2
+            case 3: return .roundaboutExit3
+            case 4: return .roundaboutExit4
+            case 5: return .roundaboutExit5
+            case 6: return .roundaboutExit6
+            case 7: return .roundaboutExit7
+            case 8: return .roundaboutExit8
+            case 9: return .roundaboutExit9
+            case 10: return .roundaboutExit10
+            case 11: return .roundaboutExit11
+            case 12: return .roundaboutExit12
+            case 13: return .roundaboutExit13
+            case 14: return .roundaboutExit14
+            case 15: return .roundaboutExit15
+            case 16: return .roundaboutExit16
+            case 17: return .roundaboutExit17
+            case 18: return .roundaboutExit18
+            case 19: return .roundaboutExit19
+            default: return .enterRoundabout
+            }
         }
     }
 

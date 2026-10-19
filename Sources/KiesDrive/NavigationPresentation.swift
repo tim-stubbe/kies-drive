@@ -544,6 +544,15 @@ struct NavigationManeuverPresentation: Equatable {
     let destinationLabel: String?
     let direction: Direction
 
+    var highwayExitLabel: String? {
+        direction == .roundabout ? nil : exitLabel
+    }
+
+    var roundaboutExitNumber: Int? {
+        guard direction == .roundabout, let exitLabel else { return nil }
+        return Int(exitLabel.prefix { $0.isNumber })
+    }
+
     init(_ instruction: String) {
         self.instruction = instruction.isEmpty ? "Route folgen" : instruction
         let lower = instruction.lowercased()
@@ -582,8 +591,15 @@ struct NavigationManeuverPresentation: Equatable {
     }
 
     private static func firstDirection(in text: String) -> Direction {
-        if text.contains("ausfahrt links") || text.contains("exit left") { return .left }
-        if text.contains("ausfahrt rechts") || text.contains("exit right") { return .right }
+        let exitSidePattern = #"(?:ausfahrt|exit|anschlussstelle)\s+(?:[0-9]+(?:\s*[-a-z])?\s+)?(links|rechts|left|right)\b"#
+        if let regex = try? NSRegularExpression(pattern: exitSidePattern),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text) {
+            switch text[range] {
+            case "links", "left": return .left
+            default: return .right
+            }
+        }
         let candidates: [(String, Direction, Int)] = [
             ("scharf rechts", .sharpRight, 3), ("sharp right", .sharpRight, 3),
             ("leicht rechts", .slightRight, 2), ("rechts halten", .slightRight, 2),
@@ -662,6 +678,38 @@ struct NavigationManeuverPresentation: Equatable {
             return "\(number). Ausfahrt"
         }
         return nil
+    }
+}
+
+enum CarPlayManeuverSemantic: Equatable {
+    case followRoad, straight, slightRight, right, sharpRight
+    case slightLeft, left, sharpLeft, uTurn
+    case highwayOffRampLeft, highwayOffRampRight
+    case roundabout(exit: Int?)
+}
+
+enum CarPlayManeuverSemanticPolicy {
+    static func semantic(for presentation: NavigationManeuverPresentation)
+        -> CarPlayManeuverSemantic {
+        if presentation.highwayExitLabel != nil {
+            switch presentation.direction {
+            case .left, .slightLeft, .sharpLeft: return .highwayOffRampLeft
+            default: return .highwayOffRampRight
+            }
+        }
+        switch presentation.direction {
+        case .straight:
+            return presentation.instruction.localizedCaseInsensitiveContains("folgen")
+                ? .followRoad : .straight
+        case .slightRight: return .slightRight
+        case .right: return .right
+        case .sharpRight: return .sharpRight
+        case .slightLeft: return .slightLeft
+        case .left: return .left
+        case .sharpLeft: return .sharpLeft
+        case .uTurn: return .uTurn
+        case .roundabout: return .roundabout(exit: presentation.roundaboutExitNumber)
+        }
     }
 }
 

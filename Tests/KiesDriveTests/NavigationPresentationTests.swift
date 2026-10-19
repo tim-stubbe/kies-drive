@@ -1330,6 +1330,35 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.destinationLabel, "Neufahrn")
     }
 
+    func testCarPlayManeuverSemanticUsesNativeExitAndRoundaboutTypes() {
+        let motorway = NavigationManeuverPresentation(
+            "Ausfahrt 69 rechts auf die A 9 Richtung München nehmen"
+        )
+        XCTAssertEqual(motorway.highwayExitLabel, "Ausfahrt 69")
+        XCTAssertEqual(
+            CarPlayManeuverSemanticPolicy.semantic(for: motorway),
+            .highwayOffRampRight
+        )
+
+        let leftExit = NavigationManeuverPresentation(
+            "Ausfahrt 12 links Richtung Wiesbaden nehmen"
+        )
+        XCTAssertEqual(
+            CarPlayManeuverSemanticPolicy.semantic(for: leftExit),
+            .highwayOffRampLeft
+        )
+
+        let roundabout = NavigationManeuverPresentation(
+            "Im Kreisverkehr die zweite Ausfahrt Richtung Mainz nehmen"
+        )
+        XCTAssertNil(roundabout.highwayExitLabel)
+        XCTAssertEqual(roundabout.roundaboutExitNumber, 2)
+        XCTAssertEqual(
+            CarPlayManeuverSemanticPolicy.semantic(for: roundabout),
+            .roundabout(exit: 2)
+        )
+    }
+
     func testMotorwayJunctionVariantsProduceCompactExitLabels() {
         XCTAssertEqual(
             NavigationManeuverPresentation(
