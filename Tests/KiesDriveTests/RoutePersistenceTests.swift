@@ -1036,4 +1036,21 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertTrue(OfflineRouteConstraintIdentityPolicy.matches(identity, lock: progressed))
         XCTAssertFalse(OfflineRouteConstraintIdentityPolicy.matches(nil, lock: original))
     }
+
+    func testRouteLockRejectsInvalidPersistedWaypointProgress() {
+        var lock = ActiveRouteLock.hochheimViaWurzenpass()
+        XCTAssertTrue(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.waypoints[0].insertionRouteProgress = .nan
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.waypoints[0].insertionRouteProgress = -0.01
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.waypoints[0].insertionRouteProgress = 1.01
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.waypoints[0].insertionRouteProgress = 0.5
+        XCTAssertTrue(ActiveRouteLockValidationPolicy.isValid(lock))
+    }
 }

@@ -308,6 +308,11 @@ enum ActiveRouteLockValidationPolicy {
         guard waypointIDs.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
               Set(waypointIDs).count == waypointIDs.count,
               lock.waypoints.allSatisfy({ isValid($0.coordinate) }),
+              lock.waypoints.allSatisfy({ waypoint in
+                  waypoint.insertionRouteProgress.map {
+                      $0.isFinite && (0...1).contains($0)
+                  } ?? true
+              }),
               lock.corridorPoints?.allSatisfy(isValid) ?? true
         else { return false }
         return true
