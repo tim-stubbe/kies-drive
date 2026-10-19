@@ -4,6 +4,21 @@ import CoreLocation
 
 @MainActor
 final class RoutePersistenceTests: XCTestCase {
+    func testTransientFuelStationBecomesRemovablePersistentFuelStop() {
+        let station = FuelStation(
+            id: "fuel-1", name: "Autohof", brand: "Kies Fuel",
+            street: "", place: "", lat: 50.1, lon: 8.2,
+            price: 1.8, open: true, distanceKm: 1
+        )
+
+        let waypoint = RouteStopWaypointFactory.fuelStation(station)
+
+        XCTAssertEqual(waypoint.id, station.id)
+        XCTAssertEqual(waypoint.kind, .fuelStop)
+        XCTAssertTrue(waypoint.isRemovableComfortStop)
+        XCTAssertFalse(waypoint.mayAutoCompleteWhenPassed)
+    }
+
     func testRestoreCommitRequiresSameActiveTripConstraints() {
         let now = Date(timeIntervalSince1970: 1_000)
         let original = ActiveRouteLock(

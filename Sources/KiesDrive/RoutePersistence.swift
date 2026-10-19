@@ -203,6 +203,21 @@ enum RouteStopSelectionPolicy {
     }
 }
 
+enum RouteStopWaypointFactory {
+    /// Transient fuel stations promoted while a preview becomes a persistent
+    /// trip must never inherit the legacy `nil` kind. That legacy value means
+    /// a mandatory route constraint and may be auto-completed after passing;
+    /// a real fuel stop must remain visitable and removable across restarts.
+    static func fuelStation(_ station: FuelStation) -> LockedWaypoint {
+        LockedWaypoint(
+            id: station.id,
+            name: station.brand.isEmpty ? station.name : station.brand,
+            coordinate: .init(latitude: station.lat, longitude: station.lon),
+            required: true, optionsAfter: nil, kind: .fuelStop
+        )
+    }
+}
+
 struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     enum Status: String, Codable, Sendable { case active, completed, cancelled }
 

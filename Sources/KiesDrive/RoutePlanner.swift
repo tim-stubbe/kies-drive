@@ -822,11 +822,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if let existing, existing.isActive {
             waypoints = existing.waypoints
         } else {
-            waypoints = viaStations.map {
-                LockedWaypoint(id: $0.id, name: $0.brand.isEmpty ? $0.name : $0.brand,
-                               coordinate: .init(latitude: $0.lat, longitude: $0.lon),
-                               required: true, optionsAfter: nil)
-            }
+            waypoints = viaStations.map(RouteStopWaypointFactory.fuelStation)
         }
         let lock = ActiveRouteLock(
             id: existing?.id ?? UUID(), title: existing?.title ?? (destination.name ?? destinationText),
@@ -5765,8 +5761,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             activeRouteLock = routeLockStore.activeLock
         } else {
-            viaStations.append(station)
             if routeLockStore.activeLock == nil { persistActiveTrip() }
+            guard routeLockStore.activeLock != nil else {
+                errorMessage = "Tankstopp konnte nicht dauerhaft gespeichert werden."
+                return false
+            }
+            viaStations.append(station)
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate, knownProgress: knownProgress,
@@ -5854,13 +5854,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     routeStopMutationSnapshot = nil
                 }
             }
+            if routeLockStore.activeLock == nil { persistActiveTrip() }
+            guard routeLockStore.activeLock != nil else {
+                errorMessage = "Pausenstopp konnte nicht dauerhaft gespeichert werden."
+                return false
+            }
             viaStations.append(station)
             let progressByID = Dictionary(uniqueKeysWithValues: breakCandidates(along: legs)
                 .map { ($0.id, $0.progress) })
             viaStations.sort { lhs, rhs in
                 (progressByID[lhs.id] ?? 1) < (progressByID[rhs.id] ?? 1)
             }
-            if routeLockStore.activeLock == nil { persistActiveTrip() }
             insertLockedWaypoint(
                 id: station.id, name: station.brand.isEmpty ? station.name : station.brand,
                 coordinate: station.coordinate,
