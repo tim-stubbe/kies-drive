@@ -319,6 +319,15 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     recalculating: recalculating,
                     guidanceReliable: guidanceReliable
                 )
+                // The installed route's speed limit becomes invalid at this
+                // state transition, before another GPS fix necessarily
+                // arrives. Re-evaluate immediately so CarPlay cannot retain a
+                // sign from the road that was just left.
+                if let location = LocationService.shared.location {
+                    self?.updateSpeedLimitBadge(for: location)
+                } else {
+                    self?.speedLimitBadgeView?.update(.hidden)
+                }
             }
             .store(in: &cancellables)
 
