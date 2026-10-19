@@ -306,7 +306,8 @@ enum DriveAPI {
         if let evidence = TollEvidenceValidator.validate(
             status: result.status, amount: result.amount, currency: result.currency,
             source: result.source, sourceURL: result.sourceURL,
-            corroboratingSourceURLs: result.sources.map(\.url)
+            corroboratingSourceURLs: result.sources.map(\.url),
+            corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" }
         ) {
             return .known(
                 amount: Decimal(evidence.amount), currency: evidence.currency,
@@ -315,7 +316,8 @@ enum DriveAPI {
         }
         if TollEvidenceValidator.validatesNoToll(
             status: result.status, source: result.source, sourceURL: result.sourceURL,
-            corroboratingSourceURLs: result.sources.map(\.url)
+            corroboratingSourceURLs: result.sources.map(\.url),
+            corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" }
         ) {
             return .noToll(source: result.source, sourceURL: result.sourceURL)
         }
@@ -471,7 +473,8 @@ enum TollEvidenceValidator {
 
     static func validate(status: String, amount: Double?, currency: String,
                          source: String, sourceURL: String?,
-                         corroboratingSourceURLs: [String]? = nil) -> Evidence? {
+                         corroboratingSourceURLs: [String]? = nil,
+                         corroboratingSourceTexts: [String]? = nil) -> Evidence? {
         let normalizedCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
         guard status == "known", let amount, amount.isFinite, amount > 0, amount <= 5_000,
@@ -479,19 +482,56 @@ enum TollEvidenceValidator {
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
               url.host != nil,
-              sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs) else { return nil }
+              sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs),
+              textCorroboratesAmount(
+                amount, currency: normalizedCurrency,
+                texts: corroboratingSourceTexts
+              ) else { return nil }
         return Evidence(amount: amount, currency: normalizedCurrency, source: source)
     }
 
 
     static func validatesNoToll(status: String, source: String, sourceURL: String?,
-                                corroboratingSourceURLs: [String]? = nil) -> Bool {
+                                corroboratingSourceURLs: [String]? = nil,
+                                corroboratingSourceTexts: [String]? = nil) -> Bool {
         guard status == "no_toll",
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL),
               url.scheme?.lowercased() == "https", url.host != nil,
-              sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs) else { return false }
+              sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs),
+              textCorroboratesNoToll(corroboratingSourceTexts) else { return false }
         return true
+    }
+
+    private static func textCorroboratesAmount(
+        _ amount: Double, currency: String, texts: [String]?
+    ) -> Bool {
+        guard let texts else { return true }
+        let joined = texts.joined(separator: " ").folding(
+            options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+        )
+        let fixed = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), amount)
+        var amountTokens: Set<String> = [fixed, fixed.replacingOccurrences(of: ".", with: ",")]
+        if amount.rounded() == amount { amountTokens.insert(String(Int(amount))) }
+        let currencyTokens: [String]
+        switch currency {
+        case "EUR": currencyTokens = ["eur", "€", "euro"]
+        case "CHF": currencyTokens = ["chf", "franken"]
+        case "USD": currencyTokens = ["usd", "$", "dollar"]
+        case "GBP": currencyTokens = ["gbp", "£", "pfund", "pound"]
+        default: currencyTokens = [currency.lowercased()]
+        }
+        return amountTokens.contains(where: joined.contains) &&
+            currencyTokens.contains(where: joined.contains)
+    }
+
+    private static func textCorroboratesNoToll(_ texts: [String]?) -> Bool {
+        guard let texts else { return true }
+        let joined = texts.joined(separator: " ").folding(
+            options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+        )
+        return ["mautfrei", "keine maut", "ohne maut", "toll-free", "no toll"]
+            .contains(where: joined.contains)
     }
 
     private static func sourceIsCorroborated(_ sourceURL: String,

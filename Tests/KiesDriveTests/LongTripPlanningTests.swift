@@ -2054,6 +2054,42 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollEvidenceTextMustContainClaimedAmountAndCurrency() {
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://example.test/tolls",
+            corroboratingSourceURLs: ["https://example.test/tolls"],
+            corroboratingSourceTexts: ["Gesamtmaut für Pkw: 27,40 Euro"]
+        ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://example.test/tolls",
+            corroboratingSourceURLs: ["https://example.test/tolls"],
+            corroboratingSourceTexts: ["Vignette ab 9,90 EUR erhältlich"]
+        ), "A model-generated total absent from the source text must remain unknown")
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://example.test/tolls",
+            corroboratingSourceURLs: ["https://example.test/tolls"],
+            corroboratingSourceTexts: ["Gesamtpreis 27,40 CHF"]
+        ), "A matching number in another currency is not evidence")
+    }
+
+    func testNoTollEvidenceRequiresExplicitSourceWording() {
+        XCTAssertTrue(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free",
+            corroboratingSourceURLs: ["https://example.test/toll-free"],
+            corroboratingSourceTexts: ["Diese Strecke ist für Pkw mautfrei."]
+        ))
+        XCTAssertFalse(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free",
+            corroboratingSourceURLs: ["https://example.test/toll-free"],
+            corroboratingSourceTexts: ["Aktuelle Informationen zur Autobahn"]
+        ))
+    }
+
     func testTollEvidenceCorroborationIgnoresTrackingButNotAnotherPage() {
         XCTAssertNotNil(TollEvidenceValidator.validate(
             status: "known", amount: 27.4, currency: "EUR",
