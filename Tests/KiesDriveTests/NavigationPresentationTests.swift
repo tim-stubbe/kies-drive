@@ -90,6 +90,24 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(CarPlayBreakReminderPresentationPolicy.titleVariants(for: "  "), [])
     }
 
+    func testCarPlayStopReminderUsesOneSemanticAlert() {
+        let combined = "Bei Autohof Spessart Pause machen und dort tanken."
+        XCTAssertEqual(CarPlayStopReminderPresentationPolicy.kind(for: combined), .combined)
+        XCTAssertEqual(
+            CarPlayStopReminderPresentationPolicy.titleVariants(for: combined),
+            [combined, "Fahrtstopp einplanen"]
+        )
+        XCTAssertEqual(
+            CarPlayStopReminderPresentationPolicy.kind(for: "Bitte Pause einlegen."),
+            .rest
+        )
+        XCTAssertEqual(
+            CarPlayStopReminderPresentationPolicy.kind(for: "Jetzt tanken."),
+            .fuel
+        )
+        XCTAssertTrue(CarPlayStopReminderPresentationPolicy.titleVariants(for: "  ").isEmpty)
+    }
+
     func testDestinationSearchPublishesOnlyForCurrentUnchangedQuery() {
         let current = UUID()
         XCTAssertTrue(DestinationSearchCompletionPolicy.mayPublish(

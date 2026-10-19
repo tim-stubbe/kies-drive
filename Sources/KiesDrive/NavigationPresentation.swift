@@ -271,6 +271,32 @@ enum CarPlayBreakReminderPresentationPolicy {
     }
 }
 
+enum CarPlayStopReminderPresentationPolicy {
+    enum Kind: Equatable { case rest, fuel, combined }
+
+    static func kind(for message: String) -> Kind {
+        let folded = message.folding(
+            options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+        )
+        let hasRest = folded.contains("pause") || folded.contains("rast")
+        let hasFuel = folded.contains("tank")
+        if hasRest && hasFuel { return .combined }
+        return hasFuel ? .fuel : .rest
+    }
+
+    static func titleVariants(for message: String) -> [String] {
+        let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+        let fallback: String
+        switch kind(for: cleaned) {
+        case .rest: fallback = "Pause einplanen"
+        case .fuel: fallback = "Tankstopp einplanen"
+        case .combined: fallback = "Fahrtstopp einplanen"
+        }
+        return [cleaned, fallback]
+    }
+}
+
 struct CarPlayPlannedStopAction: Equatable {
     enum Purpose: Equatable {
         case breakOnly

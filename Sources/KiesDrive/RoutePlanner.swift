@@ -305,6 +305,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var hasArrived = false
     @Published var breakReminderText: String?
     @Published var fuelReminderText: String?
+    /// One authoritative alert stream for CarPlay. Break and fuel state still
+    /// remain separate for the detailed phone UI, but a head unit must never
+    /// present two competing navigation alerts for one location update.
+    @Published var drivingStopReminderText: String?
     @Published private(set) var usageStatistics = DriveUsageStatisticsStore.load()
     @Published private(set) var isUsingOfflineGuidance = false
     @Published private(set) var isManeuverGuidanceReliable = true
@@ -713,6 +717,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         drivingRestStore.clear()
         breakReminderText = nil
         fuelReminderText = nil
+        drivingStopReminderText = nil
         drivingFuelState = DrivingFuelState()
         drivingFuelStore.clear()
     }
@@ -798,6 +803,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             deliveredBreakReminderStages = []
             breakReminderText = nil
             fuelReminderText = nil
+            drivingStopReminderText = nil
         }
         if drivingFuelState.tripID != lock.id {
             drivingFuelState = DrivingFuelState(
@@ -834,6 +840,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         drivingRestStore.save(drivingRestState)
         breakReminderText = nil
+        if fuelReminderText == nil { drivingStopReminderText = nil }
         DriveDiagnosticStore.append(
             .restBreakCompleted,
             detail: "Pause manuell bei sicherem Stillstand bestätigt"
@@ -880,6 +887,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if previousContinuousDriving > 0 && drivingRestState.continuousDriving == 0 {
             deliveredBreakReminderStages = []
             breakReminderText = nil
+            if fuelReminderText == nil { drivingStopReminderText = nil }
             DriveDiagnosticStore.append(
                 .restBreakCompleted,
                 detail: "Mindestens 20 Minuten Stillstand während pausierter Navigation erkannt"
@@ -2576,6 +2584,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             drivingRestState.pendingSpokenReminderRawValue = nil
             if hadPendingSpeech { drivingRestStore.save(drivingRestState) }
             breakReminderText = nil
+            if fuelReminderText == nil { drivingStopReminderText = nil }
             return
         }
         let distanceProgress = RouteSearchPolicy.installedRouteProgress(
@@ -2612,6 +2621,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 stage: newlyDueStage, plannedName: plannedName
             )
             breakReminderText = text
+            drivingStopReminderText = text
             DriveDiagnosticStore.append(
                 .breakReminderShown,
                 detail: "Pausenerinnerung · \(newlyDueStage) · \(text)"
@@ -2636,6 +2646,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // Restore the visible reminder after an app/scene restart as well as
         // the pending spoken claim.
         breakReminderText = text
+        drivingStopReminderText = text
         let inFlight = pendingBreakReminderSpeech.values.contains { $0.stage == stageToRetry } ||
             activeBreakReminderSpeech.values.contains { $0.stage == stageToRetry }
         guard !inFlight else { return }
@@ -2645,6 +2656,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func updateFuelReminder() {
         guard isNavigating, let result = longTripPlan?.results.first else {
             fuelReminderText = nil
+            if breakReminderText == nil { drivingStopReminderText = nil }
             return
         }
         let currentProgress = currentInstalledRouteProgress
@@ -2659,6 +2671,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 drivingFuelStore.save(drivingFuelState)
             }
             fuelReminderText = nil
+            if breakReminderText == nil { drivingStopReminderText = nil }
             return
         }
         let distance = NavigationFuelReminderPolicy.remainingDistance(
@@ -2687,6 +2700,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             fuelReminderText = NavigationFuelReminderPolicy.text(
                 stage: newlyDueStage, stationName: stop.candidate?.name
             )
+            drivingStopReminderText = fuelReminderText
             DriveDiagnosticStore.append(
                 .fuelReminderShown,
                 detail: "Tankhinweis · \(newlyDueStage) · \(fuelReminderText ?? "")"
@@ -2736,6 +2750,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             fuelReminder: fuelText
         )
         fuelReminderText = text
+        drivingStopReminderText = text
         if drivingFuelState.pendingSpokenReminderKey != key ||
             drivingFuelState.pendingSpokenReminderText != text {
             drivingFuelState.pendingSpokenReminderKey = key

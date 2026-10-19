@@ -290,21 +290,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
-        planner.$breakReminderText
+        planner.$drivingStopReminderText
             .removeDuplicates()
             .compactMap { $0 }
+            // RoutePlanner can publish the break wording and replace it with
+            // a combined break/fuel sentence in the same GPS update. Coalesce
+            // that burst so CarPlay presents one stable alert.
+            .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] reminder in
-                self?.presentBreakReminder(reminder)
-            }
-            .store(in: &cancellables)
-
-        planner.$fuelReminderText
-            .removeDuplicates()
-            .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] reminder in
-                self?.presentFuelReminder(reminder)
+                self?.presentStopReminder(reminder)
             }
             .store(in: &cancellables)
 
@@ -1101,31 +1096,21 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         interfaceController?.presentTemplate(alert, animated: true, completion: nil)
     }
 
-    private func presentBreakReminder(_ message: String) {
+    private func presentStopReminder(_ message: String) {
         guard RoutePlanner.shared.isNavigating, let mapTemplate else { return }
-        let variants = CarPlayBreakReminderPresentationPolicy.titleVariants(for: message)
+        let variants = CarPlayStopReminderPresentationPolicy.titleVariants(for: message)
         guard !variants.isEmpty else { return }
+        let symbol: String
+        switch CarPlayStopReminderPresentationPolicy.kind(for: message) {
+        case .rest: symbol = "cup.and.saucer.fill"
+        case .fuel: symbol = "fuelpump.fill"
+        case .combined: symbol = "car.fill"
+        }
         let acknowledge = CPAlertAction(title: "OK", style: .default) { _ in }
         let alert = CPNavigationAlert(
             titleVariants: variants,
             subtitleVariants: nil,
-            image: UIImage(systemName: "cup.and.saucer.fill"),
-            primaryAction: acknowledge,
-            secondaryAction: nil,
-            duration: 8
-        )
-        mapTemplate.present(navigationAlert: alert, animated: true)
-    }
-
-    private func presentFuelReminder(_ message: String) {
-        guard RoutePlanner.shared.isNavigating, let mapTemplate else { return }
-        let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        let acknowledge = CPAlertAction(title: "OK", style: .default) { _ in }
-        let alert = CPNavigationAlert(
-            titleVariants: [cleaned, "Tankstopp einplanen"],
-            subtitleVariants: nil,
-            image: UIImage(systemName: "fuelpump.fill"),
+            image: UIImage(systemName: symbol),
             primaryAction: acknowledge,
             secondaryAction: nil,
             duration: 8
