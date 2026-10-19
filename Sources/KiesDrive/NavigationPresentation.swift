@@ -1888,6 +1888,20 @@ enum CarPlayRouteLinePolicy {
     }
 }
 
+enum CarPlayRouteOverviewPolicy {
+    static func mapRect(routeRects: [MKMapRect],
+                        vehicleCoordinate: CLLocationCoordinate2D?) -> MKMapRect? {
+        let routeRect = routeRects.reduce(MKMapRect.null) { $0.union($1) }
+        guard !routeRect.isNull, !routeRect.isEmpty else { return nil }
+        let safeVehicle = RouteOverviewMapRectPolicy.vehicleCoordinate(
+            vehicleCoordinate, near: routeRect
+        )
+        return RouteOverviewMapRectPolicy.including(
+            routeRect, coordinates: [safeVehicle].compactMap { $0 }
+        )
+    }
+}
+
 enum RouteOverviewMapRectPolicy {
     /// Reject a wildly displaced GPS fix before it becomes part of the full
     /// route overview. A restored route can briefly receive a cached or

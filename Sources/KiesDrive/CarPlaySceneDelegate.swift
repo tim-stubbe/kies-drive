@@ -517,7 +517,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         refreshRouteStroke()
         refreshOfflineMapOverlay()
         mapView.setUserTrackingMode(.none, animated: false)
-        let rect = polylines.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
+        guard let rect = CarPlayRouteOverviewPolicy.mapRect(
+            routeRects: polylines.map(\.boundingMapRect),
+            vehicleCoordinate: LocationService.shared.location?.coordinate
+        ) else { return }
         mapView.setVisibleMapRect(rect, edgePadding: .init(top: 90, left: 55, bottom: 90, right: 55), animated: true)
     }
 

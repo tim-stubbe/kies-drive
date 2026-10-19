@@ -596,6 +596,29 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayOverviewIncludesPlausibleVehicleButRejectsDisplacedFix() throws {
+        let start = MKMapPoint(CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0))
+        let end = MKMapPoint(CLLocationCoordinate2D(latitude: 50.1, longitude: 8.1))
+        let route = MKMapRect(
+            x: min(start.x, end.x), y: min(start.y, end.y),
+            width: abs(end.x - start.x), height: abs(end.y - start.y)
+        )
+        let nearby = CLLocationCoordinate2D(latitude: 50.12, longitude: 8.12)
+        let nearbyRect = try XCTUnwrap(CarPlayRouteOverviewPolicy.mapRect(
+            routeRects: [route], vehicleCoordinate: nearby
+        ))
+        XCTAssertTrue(nearbyRect.contains(MKMapPoint(nearby)))
+
+        let displaced = CLLocationCoordinate2D(latitude: 48.1, longitude: 11.6)
+        let safeRect = try XCTUnwrap(CarPlayRouteOverviewPolicy.mapRect(
+            routeRects: [route], vehicleCoordinate: displaced
+        ))
+        XCTAssertFalse(safeRect.contains(MKMapPoint(displaced)))
+        XCTAssertNil(CarPlayRouteOverviewPolicy.mapRect(
+            routeRects: [], vehicleCoordinate: nearby
+        ))
+    }
+
     func testRouteOverviewIncludesVehicleDestinationAndRequiredStops() throws {
         let routeStart = MKMapPoint(CLLocationCoordinate2D(latitude: 50, longitude: 8))
         let routeEnd = MKMapPoint(CLLocationCoordinate2D(latitude: 50.1, longitude: 8.1))
