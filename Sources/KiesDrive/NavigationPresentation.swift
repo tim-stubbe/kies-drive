@@ -1124,8 +1124,9 @@ enum NavigationRerouteStatusSpeechPolicy {
 }
 
 enum NavigationSpeechFailureDeduplicationPolicy {
-    static func key(maneuverKey: String, stage: NavigationAnnouncementStage) -> String {
-        "\(maneuverKey)|\(stage.rawValue)"
+    static func key(routeGeneration: UUID, maneuverKey: String,
+                    stage: NavigationAnnouncementStage) -> String {
+        "\(routeGeneration.uuidString)|\(maneuverKey)|\(stage.rawValue)"
     }
 }
 

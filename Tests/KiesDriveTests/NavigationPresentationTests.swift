@@ -785,29 +785,48 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testAudioActivationFailureDeduplicatesByManeuverStage() {
+        let firstRoute = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let secondRoute = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
         XCTAssertEqual(
             NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
                 maneuverKey: "route-1:step-4", stage: .prepare
             ),
             NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
                 maneuverKey: "route-1:step-4", stage: .prepare
             )
         )
         XCTAssertNotEqual(
             NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
                 maneuverKey: "route-1:step-4", stage: .prepare
             ),
             NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
                 maneuverKey: "route-1:step-4", stage: .final
             )
         )
         XCTAssertNotEqual(
             NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
                 maneuverKey: "route-1:step-4", stage: .final
             ),
             NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
                 maneuverKey: "route-1:step-5", stage: .final
             )
+        )
+        XCTAssertNotEqual(
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: firstRoute,
+                maneuverKey: "route-1:step-4", stage: .final
+            ),
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                routeGeneration: secondRoute,
+                maneuverKey: "route-1:step-4", stage: .final
+            ),
+            "A replacement route owns a fresh diagnostic namespace"
         )
     }
 

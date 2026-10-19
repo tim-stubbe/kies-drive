@@ -3345,6 +3345,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func resetLiveNavigationProgress() {
         navigationStepCursor = 0
         announcedManeuverStages = [:]
+        // Leg/step identifiers are route-local. A replacement route may reuse
+        // the same numbers, so audio failures from the old geometry must not
+        // suppress diagnostics for the new maneuver.
+        reportedAudioActivationFailureClaims.removeAll(keepingCapacity: true)
         pendingManeuverSpeech = [:]
         activeManeuverSpeech = [:]
         pendingBreakReminderSpeech = [:]
@@ -4050,6 +4054,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // of waiting on an utterance that cannot become audible.
             for claim in requestedManeuverClaims {
                 let failureKey = NavigationSpeechFailureDeduplicationPolicy.key(
+                    routeGeneration: routeCalculationGeneration,
                     maneuverKey: claim.key, stage: claim.stage
                 )
                 guard reportedAudioActivationFailureClaims.insert(failureKey).inserted else {
