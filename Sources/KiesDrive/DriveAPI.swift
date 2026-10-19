@@ -554,8 +554,18 @@ enum TollEvidenceValidator {
         case "GBP": currencyTokens = ["gbp", "£", "pfund", "pound"]
         default: currencyTokens = [currency.lowercased()]
         }
-        return amountTokens.contains(where: joined.contains) &&
+        return amountTokens.contains(where: { containsDelimitedAmount($0, in: joined) }) &&
             currencyTokens.contains(where: joined.contains)
+    }
+
+    private static func containsDelimitedAmount(_ token: String, in text: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: token)
+        guard let expression = try? NSRegularExpression(
+            pattern: "(?<![0-9])\(escaped)(?![0-9])"
+        ) else { return false }
+        return expression.firstMatch(
+            in: text, range: NSRange(text.startIndex..., in: text)
+        ) != nil
     }
 
     private static func textCorroboratesNoToll(_ texts: [String]?) -> Bool {

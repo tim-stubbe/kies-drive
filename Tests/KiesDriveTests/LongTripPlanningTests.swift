@@ -2195,6 +2195,21 @@ final class LongTripPlanningTests: XCTestCase {
         ), "A matching number in another currency is not evidence")
     }
 
+    func testTollEvidenceDoesNotMatchAmountInsideLargerNumber() {
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 26, currency: "EUR",
+            source: "Offizielle Mautseite", sourceURL: "https://example.com/toll",
+            corroboratingSourceURLs: ["https://example.com/toll"],
+            corroboratingSourceTexts: ["Gesamtpreis für die Strecke: 126 EUR"]
+        ))
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 26, currency: "EUR",
+            source: "Offizielle Mautseite", sourceURL: "https://example.com/toll",
+            corroboratingSourceURLs: ["https://example.com/toll"],
+            corroboratingSourceTexts: ["Gesamtpreis für die Strecke: 26 EUR"]
+        ))
+    }
+
     func testNoTollEvidenceRequiresExplicitSourceWording() {
         XCTAssertTrue(TollEvidenceValidator.validatesNoToll(
             status: "no_toll", source: "Official provider",
