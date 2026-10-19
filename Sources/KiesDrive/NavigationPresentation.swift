@@ -34,11 +34,21 @@ enum NavigationSearchBatchPolicy {
     static let usefulResultCount = 8
     static let minimumCompletedSearches = 2
 
-    static func shouldFinishEarly(resultCount: Int, completedSearches: Int,
+    static func uniqueResultCount<Result>(
+        _ results: [Result], areDuplicates: (Result, Result) -> Bool
+    ) -> Int {
+        var unique: [Result] = []
+        for result in results where !unique.contains(where: { areDuplicates(result, $0) }) {
+            unique.append(result)
+        }
+        return unique.count
+    }
+
+    static func shouldFinishEarly(uniqueResultCount: Int, completedSearches: Int,
                                   totalSearches: Int) -> Bool {
         totalSearches > completedSearches &&
             completedSearches >= minimumCompletedSearches &&
-            resultCount >= usefulResultCount
+            uniqueResultCount >= usefulResultCount
     }
 }
 

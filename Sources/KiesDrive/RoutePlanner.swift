@@ -5326,8 +5326,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             for await items in group {
                 completedSearches += 1
                 results.append(contentsOf: items)
+                let uniqueResultCount = NavigationSearchBatchPolicy.uniqueResultCount(
+                    results
+                ) { candidate, existing in
+                    DestinationSearchRankingPolicy.isDuplicate(
+                        name: candidate.name,
+                        coordinate: candidate.placemark.coordinate,
+                        existingName: existing.name,
+                        existingCoordinate: existing.placemark.coordinate,
+                        toleranceMetres: 80
+                    )
+                }
                 if NavigationSearchBatchPolicy.shouldFinishEarly(
-                    resultCount: results.count,
+                    uniqueResultCount: uniqueResultCount,
                     completedSearches: completedSearches,
                     totalSearches: searches.count
                 ) {

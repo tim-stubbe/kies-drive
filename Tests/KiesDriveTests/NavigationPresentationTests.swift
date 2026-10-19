@@ -4572,17 +4572,27 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentRouteSearches, 5)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches, 8)
         XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
-            resultCount: 20, completedSearches: 1, totalSearches: 5
+            uniqueResultCount: 20, completedSearches: 1, totalSearches: 5
         ), "One region is not enough geographic coverage")
         XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
-            resultCount: 7, completedSearches: 2, totalSearches: 5
+            uniqueResultCount: 7, completedSearches: 2, totalSearches: 5
         ))
         XCTAssertTrue(NavigationSearchBatchPolicy.shouldFinishEarly(
-            resultCount: 8, completedSearches: 2, totalSearches: 5
+            uniqueResultCount: 8, completedSearches: 2, totalSearches: 5
         ))
         XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
-            resultCount: 20, completedSearches: 5, totalSearches: 5
+            uniqueResultCount: 20, completedSearches: 5, totalSearches: 5
         ), "A completed batch does not need an early-cancellation path")
+    }
+
+    func testRouteSearchBatchCountsOverlappingResultsOnlyOnce() {
+        let rawResults = ["McDonalds A", "McDonalds A", "Tankstelle B", "Tankstelle B"]
+        let uniqueCount = NavigationSearchBatchPolicy.uniqueResultCount(rawResults, areDuplicates: ==)
+
+        XCTAssertEqual(uniqueCount, 2)
+        XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
+            uniqueResultCount: uniqueCount, completedSearches: 2, totalSearches: 5
+        ), "Duplicate POIs from overlapping regions must not cancel searches farther ahead")
     }
 
     func testDirectionsDeadlinePrecedesRerouteWatchdog() {
