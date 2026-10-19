@@ -1508,6 +1508,19 @@ final class LongTripPlanningTests: XCTestCase {
         ), .due)
     }
 
+    func testDueBreakReminderNeverBackfillsOlderWarningsAfterRestart() {
+        XCTAssertEqual(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 125 * 60,
+            remainingTravelTime: 60 * 60,
+            delivered: []
+        ), .due)
+        XCTAssertNil(NavigationBreakReminderPolicy.stage(
+            continuousDriving: 125 * 60,
+            remainingTravelTime: 60 * 60,
+            delivered: [.due]
+        ), "After the due warning, stale soon/plan messages must stay suppressed")
+    }
+
     func testBreakReminderNeverRepeatsDeliveredStage() {
         XCTAssertNil(NavigationBreakReminderPolicy.stage(
             continuousDriving: 95 * 60, remainingTravelTime: 60 * 60, delivered: [.plan]

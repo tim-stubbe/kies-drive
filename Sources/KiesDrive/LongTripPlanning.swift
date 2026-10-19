@@ -1233,12 +1233,21 @@ enum NavigationBreakReminderPolicy {
                       delivered: Set<Stage>) -> Stage? {
         let driven = max(0, continuousDriving)
         let remaining = max(0, remainingTravelTime)
-        if driven >= dueTime, !delivered.contains(.due) { return .due }
-        if driven >= soonTime, driven + remaining > dueTime,
-           !delivered.contains(.soon) { return .soon }
-        if driven >= planningTime, driven + remaining > dueTime,
-           !delivered.contains(.plan) { return .plan }
-        return nil
+        let current: Stage?
+        if driven >= dueTime {
+            current = .due
+        } else if driven >= soonTime, driven + remaining > dueTime {
+            current = .soon
+        } else if driven >= planningTime, driven + remaining > dueTime {
+            current = .plan
+        } else {
+            current = nil
+        }
+        // A location gap or app restart can jump directly from no warning to
+        // `.due`. Once that highest urgency has been delivered, never backfill
+        // the older `.soon` and `.plan` messages on following GPS updates.
+        guard let current, !delivered.contains(current) else { return nil }
+        return current
     }
 
     static func nextPlannedStopName(
