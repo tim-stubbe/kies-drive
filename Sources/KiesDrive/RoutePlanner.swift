@@ -5401,15 +5401,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guard let projection = RouteGeometryProgress.nearestProgress(
                 of: station.coordinate, on: routeCoordinates, progressRange: projectionRange
             ),
-                  projection.distance <= 4_000 else { return nil }
-            if useMeasuredDetours, let measured = measuredBreakDetours[station.id],
-               !BreakCandidateDetourPolicy.acceptsMeasured(measured) { return nil }
+                  projection.distance <= 4_000,
+                  let detour = BreakCandidateDetourPolicy.resolvedDistance(
+                    measured: useMeasuredDetours ? measuredBreakDetours[station.id] : nil,
+                    estimated: projection.distance * 2
+                  ) else { return nil }
             return BreakCandidateFactory.fuelStation(
                 station, progress: projection.progress,
                 timeProgress: RouteTravelTimeProgress.value(
                     distanceProgress: projection.progress, segments: timeline
                 ),
-                detourMetres: useMeasuredDetours ? measuredBreakDetours[station.id] ?? projection.distance * 2 : projection.distance * 2,
+                detourMetres: detour,
                 detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[station.id] == nil
             )
         }
@@ -5417,15 +5419,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guard let projection = RouteGeometryProgress.nearestProgress(
                 of: candidate.coordinate, on: routeCoordinates, progressRange: projectionRange
             ),
-                  projection.distance <= 4_000 else { return nil }
-            if useMeasuredDetours, let measured = measuredBreakDetours[candidate.id],
-               !BreakCandidateDetourPolicy.acceptsMeasured(measured) { return nil }
+                  projection.distance <= 4_000,
+                  let detour = BreakCandidateDetourPolicy.resolvedDistance(
+                    measured: useMeasuredDetours ? measuredBreakDetours[candidate.id] : nil,
+                    estimated: projection.distance * 2
+                  ) else { return nil }
             return .init(id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
                          progress: projection.progress,
                          timeProgress: RouteTravelTimeProgress.value(
                             distanceProgress: projection.progress, segments: timeline
                          ),
-                         detourMetres: useMeasuredDetours ? measuredBreakDetours[candidate.id] ?? projection.distance * 2 : projection.distance * 2,
+                         detourMetres: detour,
                          detourIsEstimated: !useMeasuredDetours || measuredBreakDetours[candidate.id] == nil,
                          isOpen: candidate.isOpen, supportsFuel: candidate.supportsFuel)
         }
@@ -5444,7 +5448,6 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let generation = UUID()
         breakDetourLoadGeneration = generation
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
-        let candidates = breakCandidates(along: legs, useMeasuredDetours: false)
         let projectionRange: ClosedRange<Double>? = {
             guard isNavigating, totalDistance > 0, remainingDistanceMetres >= 0 else { return nil }
             return RemainingRoutePlanningPolicy.projectionRange(
@@ -5453,56 +5456,66 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
         }()
         var measurements: [String: CLLocationDistance] = [:]
-        var measurementCount = 0
+        var attemptedCandidateIDs = Set<String>()
         var loadWasSuperseded = false
-        await withTaskGroup(of: BreakDetourLoadOutcome.self) { group in
-            for candidate in candidates {
-                guard let projection = RouteGeometryProgress.nearestProgress(
-                    of: candidate.coordinate, on: routeCoordinates,
-                    progressRange: projectionRange
-                ), let anchors = RouteSearchPolicy.detourAnchors(
-                    routeCoordinates: routeCoordinates, progress: projection.progress
-                ) else { continue }
-                group.addTask { [weak self] in
-                    let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
-                    let distance = await self?.drivingDetour(through: item, anchors: anchors)
-                    return .measurement(candidate.id, distance)
-                }
-                measurementCount += 1
-            }
-            if measurementCount > 0 {
-                group.addTask { [weak self] in
-                    while !Task.isCancelled {
-                        try? await Task.sleep(nanoseconds: 100_000_000)
-                        guard !Task.isCancelled else { break }
-                        guard let self else { return .superseded }
-                        if !(await self.isCurrentBreakDetourLoad(
-                            routeGeneration: routeGeneration,
-                            loadGeneration: generation
-                        )) { return .superseded }
+        // Two bounded passes let a candidate with a proven excessive detour
+        // expose and measure the next-best stop in the same route section.
+        // Without the second pass that replacement would appear only after
+        // planning, carrying an optimistic air-line estimate.
+        for _ in 0..<2 where !loadWasSuperseded {
+            measuredBreakDetours = measurements
+            let candidates = breakCandidates(along: legs, useMeasuredDetours: true)
+                .filter { !attemptedCandidateIDs.contains($0.id) }
+            guard !candidates.isEmpty else { break }
+            attemptedCandidateIDs.formUnion(candidates.map(\.id))
+            var measurementCount = 0
+            await withTaskGroup(of: BreakDetourLoadOutcome.self) { group in
+                for candidate in candidates {
+                    guard let projection = RouteGeometryProgress.nearestProgress(
+                        of: candidate.coordinate, on: routeCoordinates,
+                        progressRange: projectionRange
+                    ), let anchors = RouteSearchPolicy.detourAnchors(
+                        routeCoordinates: routeCoordinates, progress: projection.progress
+                    ) else { continue }
+                    group.addTask { [weak self] in
+                        let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
+                        let distance = await self?.drivingDetour(through: item, anchors: anchors)
+                        return .measurement(candidate.id, distance)
                     }
-                    return .superseded
+                    measurementCount += 1
                 }
-            }
-            var remainingMeasurements = measurementCount
-            while remainingMeasurements > 0, let outcome = await group.next() {
-                switch outcome {
-                case .measurement(let id, let distance):
-                    remainingMeasurements -= 1
-                    // Retain a successful oversized measurement as negative
-                    // evidence. Dropping it would make `breakCandidates` use
-                    // the optimistic air-line estimate again and could send
-                    // the driver tens of kilometres off route.
-                    if let distance, distance.isFinite, distance >= 0 {
-                        measurements[id] = distance
+                if measurementCount > 0 {
+                    group.addTask { [weak self] in
+                        while !Task.isCancelled {
+                            try? await Task.sleep(nanoseconds: 100_000_000)
+                            guard !Task.isCancelled else { break }
+                            guard let self else { return .superseded }
+                            if !(await self.isCurrentBreakDetourLoad(
+                                routeGeneration: routeGeneration,
+                                loadGeneration: generation
+                            )) { return .superseded }
+                        }
+                        return .superseded
                     }
-                case .superseded:
-                    loadWasSuperseded = true
-                    group.cancelAll()
-                    return
                 }
+                var remainingMeasurements = measurementCount
+                while remainingMeasurements > 0, let outcome = await group.next() {
+                    switch outcome {
+                    case .measurement(let id, let distance):
+                        remainingMeasurements -= 1
+                        // Retain a successful oversized measurement as
+                        // negative evidence so the next pass excludes it.
+                        if let distance, distance.isFinite, distance >= 0 {
+                            measurements[id] = distance
+                        }
+                    case .superseded:
+                        loadWasSuperseded = true
+                        group.cancelAll()
+                        return
+                    }
+                }
+                group.cancelAll()
             }
-            group.cancelAll()
         }
         guard !loadWasSuperseded else { return }
         guard RouteEnrichmentPublicationPolicy.isCurrent(

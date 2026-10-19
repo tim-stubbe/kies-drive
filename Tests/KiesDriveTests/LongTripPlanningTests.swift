@@ -458,6 +458,12 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(BreakCandidateDetourPolicy.acceptsMeasured(20_001))
         XCTAssertFalse(BreakCandidateDetourPolicy.acceptsMeasured(.infinity))
         XCTAssertFalse(BreakCandidateDetourPolicy.acceptsMeasured(-1))
+        XCTAssertNil(BreakCandidateDetourPolicy.resolvedDistance(
+            measured: 25_000, estimated: 400
+        ), "A proven large detour must not fall back to the air-line estimate")
+        XCTAssertEqual(BreakCandidateDetourPolicy.resolvedDistance(
+            measured: nil, estimated: 400
+        ), 400, "A failed measurement may remain visibly approximate")
     }
 
     func testFuelStationSelectionIsStableAcrossOpeningPriceAndRouteDistance() {

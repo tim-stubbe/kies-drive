@@ -521,6 +521,13 @@ enum BreakCandidateDetourPolicy {
     static func acceptsMeasured(_ distance: CLLocationDistance) -> Bool {
         distance.isFinite && distance >= 0 && distance <= maximumAcceptedMetres
     }
+
+    static func resolvedDistance(measured: CLLocationDistance?,
+                                 estimated: CLLocationDistance) -> CLLocationDistance? {
+        if let measured { return acceptsMeasured(measured) ? measured : nil }
+        guard estimated.isFinite, estimated >= 0 else { return nil }
+        return estimated
+    }
 }
 
 enum BreakCandidateSelectionPolicy {
