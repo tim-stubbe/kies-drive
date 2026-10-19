@@ -4924,6 +4924,18 @@ final class NavigationPresentationTests: XCTestCase {
         ), .publish)
     }
 
+    func testRouteSearchResultsDisappearAsSoonAsQueryMateriallyChanges() {
+        XCTAssertTrue(RouteSearchPublishedQueryPolicy.matches(
+            resultQuery: " McDonald’s ", editedQuery: "mcdonald’s"
+        ))
+        XCTAssertFalse(RouteSearchPublishedQueryPolicy.matches(
+            resultQuery: "McDonald’s", editedQuery: "Burger King"
+        ))
+        XCTAssertFalse(RouteSearchPublishedQueryPolicy.matches(
+            resultQuery: nil, editedQuery: "McDonald’s"
+        ))
+    }
+
     func testRouteSearchCanMergeSameNamedPoiCoordinateDrift() {
         let first = CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000)
         let nearby = CLLocationCoordinate2D(latitude: 50.0005, longitude: 8.0000)

@@ -3241,6 +3241,19 @@ enum RouteSearchCompletionPolicy {
     }
 }
 
+enum RouteSearchPublishedQueryPolicy {
+    /// Results remain selectable only while the field still represents the
+    /// query that produced them. Trimming and letter case are harmless editing;
+    /// any material text change requires a fresh search.
+    static func matches(resultQuery: String?, editedQuery: String) -> Bool {
+        guard let resultQuery else { return false }
+        return resultQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            .localizedCaseInsensitiveCompare(
+                editedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            ) == .orderedSame
+    }
+}
+
 struct OfflineGuidanceStep {
     let instruction: String
     let distance: CLLocationDistance

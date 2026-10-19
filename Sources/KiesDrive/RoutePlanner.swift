@@ -440,6 +440,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let stations: [FuelStation]
         let searchResults: [RouteSearchResult]
         let searchQuery: String
+        let searchResultsQuery: String?
     }
     private var routeStopMutationGeneration = UUID()
     private var routeStopMutationSnapshot: RouteStopMutationSnapshot?
@@ -462,6 +463,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
     private var destinationActivationSnapshot: DestinationActivationSnapshot?
     private var routeSearchGeneration = UUID()
+    private var routeSearchResultsQuery: String?
     private var activeDestinationSearches: [MKLocalSearch] = []
     private var activeRouteSearches: [MKLocalSearch] = []
     private var activeAmenitySearches: [MKLocalSearch] = []
@@ -587,6 +589,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeAmenitySearches.forEach { $0.cancel() }
         activeAmenitySearches = []
         routeSearchResults = []
+        routeSearchResultsQuery = nil
         routeSearchMessage = nil
         isSearchingAlongRoute = false
         let selectedRoute = alternatives[index]
@@ -788,6 +791,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         comparisonSpeedLimitPoints = []
         comparisonSpeedLimits = []
         routeSearchResults = []
+        routeSearchResultsQuery = nil
         routeSearchMessage = nil
         isSearchingAlongRoute = false
         longTripPlan = nil
@@ -961,6 +965,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// route commits. Keep every presentation surface on the same forward-only
     /// truth instead of waiting for a tap to reject a now-stale result.
     var actionableRouteSearchResults: [RouteSearchResult] {
+        guard RouteSearchPublishedQueryPolicy.matches(
+            resultQuery: routeSearchResultsQuery, editedQuery: routeSearchQuery
+        ) else { return [] }
         let currentProgress = currentInstalledRouteProgress
         return routeSearchResults.filter {
             RouteSearchSelectionPolicy.isActionable(
@@ -975,6 +982,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     var actionableRouteSearchMessage: String? {
+        guard RouteSearchPublishedQueryPolicy.matches(
+            resultQuery: routeSearchResultsQuery, editedQuery: routeSearchQuery
+        ) else { return nil }
         if !routeSearchResults.isEmpty, actionableRouteSearchResults.isEmpty {
             return "Die gefundenen Orte liegen inzwischen hinter dir. Bitte erneut suchen."
         }
@@ -1528,6 +1538,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard !legs.isEmpty, !cleanQuery.isEmpty else {
             routeSearchQuery = cleanQuery
             routeSearchResults = []
+            routeSearchResultsQuery = nil
             routeSearchMessage = nil
             isSearchingAlongRoute = false
             return false
@@ -1539,6 +1550,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // synchronously; the new request publishes its own complete list only
         // after both POI and detour validation finish.
         routeSearchResults = []
+        routeSearchResultsQuery = nil
         routeSearchMessage = nil
         isSearchingAlongRoute = true
         let routeGeneration = routeCalculationGeneration
@@ -1748,6 +1760,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
             return lhs == rhs ? $0.detourMetres < $1.detourMetres : lhs < rhs
         }
+        routeSearchResultsQuery = cleanQuery
         DriveDiagnosticStore.append(
             .routeSearchCompleted,
             detail: "POI \(matches.count) · Korridor \(candidates.count) · Umweg geprüft \(shortlist.count) · zulässig \(routeSearchResults.count)"
@@ -1767,6 +1780,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeRouteSearches = []
         if clearResults {
             routeSearchResults = []
+            routeSearchResultsQuery = nil
             routeSearchMessage = nil
         }
         isSearchingAlongRoute = false
@@ -1877,7 +1891,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             lock: routeLockStore.activeLock,
             stations: viaStations,
             searchResults: routeSearchResults,
-            searchQuery: routeSearchQuery
+            searchQuery: routeSearchQuery,
+            searchResultsQuery: routeSearchResultsQuery
         )
         // A user may add a stop while merely previewing a calculated route,
         // before tapping Start. Materialise the lock here so the action never
@@ -1947,6 +1962,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                              kind: .userStop)
         let mutatedLock = routeLockStore.activeLock
         routeSearchResults = []
+        routeSearchResultsQuery = nil
         routeSearchMessage = nil
         isSearchingAlongRoute = false
         let succeeded = await calculate(
@@ -1963,6 +1979,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             viaStations = rollback.stations
             routeSearchQuery = rollback.searchQuery
             routeSearchResults = rollback.searchResults
+            routeSearchResultsQuery = rollback.searchResultsQuery
             isSearchingAlongRoute = false
             DriveDiagnosticStore.append(
                 .routeStopFailed,
@@ -2043,7 +2060,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 lock: routeLockStore.activeLock,
                 stations: viaStations,
                 searchResults: routeSearchResults,
-                searchQuery: routeSearchQuery
+                searchQuery: routeSearchQuery,
+                searchResultsQuery: routeSearchResultsQuery
             )
         )
         routeStopMutationSnapshot = rollback
@@ -2072,6 +2090,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeRouteLock = rollback.lock
             routeSearchResults = rollback.searchResults
             routeSearchQuery = rollback.searchQuery
+            routeSearchResultsQuery = rollback.searchResultsQuery
             isSearchingAlongRoute = false
             return false
         }
@@ -2127,6 +2146,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         activeAmenitySearches.forEach { $0.cancel() }
         activeAmenitySearches = []
         routeSearchResults = []
+        routeSearchResultsQuery = nil
         isSearchingAlongRoute = false
         // Keep the currently usable route enrichment visible until a complete
         // replacement route commits. In particular, a failed attempt to add
@@ -5630,7 +5650,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 lock: routeLockStore.activeLock,
                 stations: viaStations,
                 searchResults: routeSearchResults,
-                searchQuery: routeSearchQuery
+                searchQuery: routeSearchQuery,
+                searchResultsQuery: routeSearchResultsQuery
             )
         )
         routeStopMutationSnapshot = rollback
@@ -5671,6 +5692,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             activeRouteLock = rollback.lock
             routeSearchResults = rollback.searchResults
             routeSearchQuery = rollback.searchQuery
+            routeSearchResultsQuery = rollback.searchResultsQuery
             isSearchingAlongRoute = false
             return false
         }
@@ -5716,7 +5738,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     lock: routeLockStore.activeLock,
                     stations: viaStations,
                     searchResults: routeSearchResults,
-                    searchQuery: routeSearchQuery
+                    searchQuery: routeSearchQuery,
+                    searchResultsQuery: routeSearchResultsQuery
                 )
             )
             routeStopMutationSnapshot = rollback
@@ -5755,6 +5778,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 activeRouteLock = rollback.lock
                 routeSearchResults = rollback.searchResults
                 routeSearchQuery = rollback.searchQuery
+                routeSearchResultsQuery = rollback.searchResultsQuery
                 isSearchingAlongRoute = false
                 return false
             }
