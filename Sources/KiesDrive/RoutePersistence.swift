@@ -63,6 +63,28 @@ enum RouteWaypointVisitConfirmationPolicy {
     }
 }
 
+enum RouteWaypointPassedProgressPolicy {
+    static let minimumLeadMetres: CLLocationDistance = 150
+
+    static func isSafelyBeyond(waypointIndex: Int, currentIndex: Int,
+                               corridor: [DriveCoordinate],
+                               minimumLead: CLLocationDistance = minimumLeadMetres) -> Bool {
+        guard corridor.indices.contains(waypointIndex),
+              corridor.indices.contains(currentIndex),
+              currentIndex > waypointIndex else { return false }
+        var distance: CLLocationDistance = 0
+        for index in waypointIndex..<currentIndex {
+            let start = corridor[index]
+            let end = corridor[index + 1]
+            distance += CLLocation(
+                latitude: start.latitude, longitude: start.longitude
+            ).distance(from: CLLocation(latitude: end.latitude, longitude: end.longitude))
+            if distance >= max(0, minimumLead) { return true }
+        }
+        return distance >= max(0, minimumLead)
+    }
+}
+
 enum RouteCalculationLateWaypointPolicy {
     /// A multi-leg MapKit calculation can take long enough for the car to pass
     /// a drive-through constraint in the meantime. Detect only location fixes
@@ -484,9 +506,14 @@ extension ActiveRouteLock {
             guard waypoint.mayAutoCompleteWhenPassed else { break }
             guard let match = RouteCorridorRestorePolicy.earliestNearBestMatch(
                 for: waypoint.coordinate, in: corridorPoints
-            ), match.index < currentMatch.index else { break }
-            // Keep the next corridor point active. A small index margin avoids
-            // skipping a mandatory pass when GPS lies just beyond its sample.
+            ), RouteWaypointPassedProgressPolicy.isSafelyBeyond(
+                waypointIndex: match.index,
+                currentIndex: currentMatch.index,
+                corridor: corridorPoints
+            ) else { break }
+            // Keep the point active until the matched corridor has advanced a
+            // real road distance beyond it. Index-only comparison is unsafe
+            // for densely sampled bends and GPS jitter around a pass summit.
             passed.append(waypoint.id)
         }
         return passed

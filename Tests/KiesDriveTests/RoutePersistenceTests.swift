@@ -806,6 +806,24 @@ final class RoutePersistenceTests: XCTestCase {
         ), 1, "A delayed second fix is not continuous passage evidence")
     }
 
+    func testPassedWaypointRequiresRealDistanceBeyondCorridorAnchor() {
+        let dense = [
+            DriveCoordinate(latitude: 50.0000, longitude: 8),
+            DriveCoordinate(latitude: 50.0005, longitude: 8),
+            DriveCoordinate(latitude: 50.0010, longitude: 8),
+            DriveCoordinate(latitude: 50.0020, longitude: 8),
+        ]
+        XCTAssertFalse(RouteWaypointPassedProgressPolicy.isSafelyBeyond(
+            waypointIndex: 0, currentIndex: 2, corridor: dense
+        ), "Two nearby samples are still inside the GPS-jitter margin")
+        XCTAssertTrue(RouteWaypointPassedProgressPolicy.isSafelyBeyond(
+            waypointIndex: 0, currentIndex: 3, corridor: dense
+        ))
+        XCTAssertFalse(RouteWaypointPassedProgressPolicy.isSafelyBeyond(
+            waypointIndex: 2, currentIndex: 1, corridor: dense
+        ))
+    }
+
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")
