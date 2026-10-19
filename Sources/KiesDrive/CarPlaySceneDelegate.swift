@@ -67,6 +67,12 @@ private final class CarPlaySpeedLimitBadgeView: UIView {
 @MainActor
 final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, CPMapTemplateDelegate,
                                   CPSearchTemplateDelegate {
+    private struct SearchSelection<Value> {
+        let generation: UUID
+        let purpose: CarPlaySearchPurpose
+        let value: Value
+    }
+
     private enum OneShotSearchOutcome {
         case results([MKMapItem])
         case failed
@@ -85,8 +91,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var observedNavigationActive = false
     private var lastReliableCourse: CLLocationDirection?
     private var lastCameraUpdateAt: Date?
-    private var carPlaySearchResults: [ObjectIdentifier: MKMapItem] = [:]
-    private var carPlayRouteSearchResults: [ObjectIdentifier: RouteSearchResult] = [:]
+    private var carPlaySearchResults: [ObjectIdentifier: SearchSelection<MKMapItem>] = [:]
+    private var carPlayRouteSearchResults: [ObjectIdentifier: SearchSelection<RouteSearchResult>] = [:]
     private var carPlaySearchPurpose: CarPlaySearchPurpose = .destination
     private var carPlaySearchGeneration = UUID()
     private var activeCarPlaySearches: [MKLocalSearch] = []
@@ -786,10 +792,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         }
         let generation = UUID()
         carPlaySearchGeneration = generation
+        // CPSearchTemplate can keep the previous rows visible while a new
+        // query is loading. Revoke their action ownership synchronously.
+        carPlaySearchResults = [:]
+        carPlayRouteSearchResults = [:]
         if carPlaySearchPurpose == .routeStop {
             activeCarPlaySearches.forEach { $0.cancel() }
             activeCarPlaySearches = []
-            carPlaySearchResults = [:]
             Task { [weak self] in
                 guard let self else {
                     finish([])
@@ -802,7 +811,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     finish([])
                     return
                 }
-                var mapped: [ObjectIdentifier: RouteSearchResult] = [:]
+                var mapped: [ObjectIdentifier: SearchSelection<RouteSearchResult>] = [:]
                 let items = RoutePlanner.shared.actionableRouteSearchResults.prefix(8).map { result in
                     let name = result.mapItem.name ?? "Zwischenstopp"
                     let item = CPListItem(
@@ -814,7 +823,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                         ),
                         image: UIImage(systemName: "plus.circle.fill")
                     )
-                    mapped[ObjectIdentifier(item)] = result
+                    mapped[ObjectIdentifier(item)] = SearchSelection(
+                        generation: generation, purpose: .routeStop, value: result
+                    )
                     return item
                 }
                 self.carPlayRouteSearchResults = mapped
@@ -822,7 +833,6 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             return
         }
-        carPlayRouteSearchResults = [:]
         var requests: [MKLocalSearch.Request] = []
         if let coordinate = LocationService.shared.location?.coordinate {
             let local = MKLocalSearch.Request()
@@ -872,7 +882,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 return
             }
             self.activeCarPlaySearches = []
-            var mapped: [ObjectIdentifier: MKMapItem] = [:]
+            var mapped: [ObjectIdentifier: SearchSelection<MKMapItem>] = [:]
             let origin = LocationService.shared.location
             let ordered = mapItems.sorted { lhs, rhs in
                 let lhsRelevance = DestinationSearchRankingPolicy.relevanceScore(
@@ -908,7 +918,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 let item = CPListItem(text: mapItem.name ?? "Ziel",
                                       detailText: address.isEmpty ? mapItem.placemark.title : address,
                                       image: UIImage(systemName: "mappin.and.ellipse"))
-                mapped[ObjectIdentifier(item)] = mapItem
+                mapped[ObjectIdentifier(item)] = SearchSelection(
+                    generation: generation, purpose: .destination, value: mapItem
+                )
                 return item
             }
             self.carPlaySearchResults = mapped
@@ -918,7 +930,14 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     func searchTemplate(_ searchTemplate: CPSearchTemplate, selectedResult item: CPListItem,
                         completionHandler: @escaping () -> Void) {
-        if let result = carPlayRouteSearchResults[ObjectIdentifier(item)] {
+        if let selection = carPlayRouteSearchResults[ObjectIdentifier(item)],
+           CarPlaySearchSelectionPolicy.accepts(
+               resultGeneration: selection.generation,
+               currentGeneration: carPlaySearchGeneration,
+               resultPurpose: selection.purpose,
+               currentPurpose: carPlaySearchPurpose
+           ) {
+            let result = selection.value
             guard let start = LocationService.shared.location?.coordinate else {
                 completionHandler()
                 showFailure("Der aktuelle Standort ist nicht mehr verfügbar.")
@@ -942,12 +961,19 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             return
         }
-        guard let mapItem = carPlaySearchResults[ObjectIdentifier(item)],
+        guard let selection = carPlaySearchResults[ObjectIdentifier(item)],
+              CarPlaySearchSelectionPolicy.accepts(
+                  resultGeneration: selection.generation,
+                  currentGeneration: carPlaySearchGeneration,
+                  resultPurpose: selection.purpose,
+                  currentPurpose: carPlaySearchPurpose
+              ),
               let start = LocationService.shared.location?.coordinate else {
             completionHandler()
             showFailure("Das Ziel oder der aktuelle Standort ist nicht mehr verfügbar.")
             return
         }
+        let mapItem = selection.value
         Task { [weak self] in
             await self?.navigate(to: mapItem, from: start)
             completionHandler()

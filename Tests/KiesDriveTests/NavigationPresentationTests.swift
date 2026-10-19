@@ -1596,6 +1596,22 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(CarPlaySearchPurpose.routeStop.replacesDestination)
     }
 
+    func testCarPlaySearchSelectionRequiresCurrentQueryAndPurpose() {
+        let generation = UUID()
+        XCTAssertTrue(CarPlaySearchSelectionPolicy.accepts(
+            resultGeneration: generation, currentGeneration: generation,
+            resultPurpose: .destination, currentPurpose: .destination
+        ))
+        XCTAssertFalse(CarPlaySearchSelectionPolicy.accepts(
+            resultGeneration: UUID(), currentGeneration: generation,
+            resultPurpose: .destination, currentPurpose: .destination
+        ))
+        XCTAssertFalse(CarPlaySearchSelectionPolicy.accepts(
+            resultGeneration: generation, currentGeneration: generation,
+            resultPurpose: .routeStop, currentPurpose: .destination
+        ))
+    }
+
     func testSpeechNormalisesCompactRoadNamesAndUnsafeCharacters() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("\u{FFFC} ↗ A66 • B40 – Richtung Köln (E40)"),

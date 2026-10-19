@@ -972,6 +972,15 @@ enum CarPlaySearchPurpose: Equatable {
     var replacesDestination: Bool { self == .destination }
 }
 
+enum CarPlaySearchSelectionPolicy {
+    static func accepts(
+        resultGeneration: UUID, currentGeneration: UUID,
+        resultPurpose: CarPlaySearchPurpose, currentPurpose: CarPlaySearchPurpose
+    ) -> Bool {
+        resultGeneration == currentGeneration && resultPurpose == currentPurpose
+    }
+}
+
 enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     case early
     case prepare
