@@ -812,10 +812,20 @@ enum PlannedStopOpeningStatusPolicy {
     /// prediction; the UI still labels that status as needing verification.
     static let staleAfter: TimeInterval = 45 * 60
 
+    static func effectiveStatus(isOpen: Bool?, secondsUntilArrival: TimeInterval?) -> Bool? {
+        guard let secondsUntilArrival, secondsUntilArrival.isFinite else { return isOpen }
+        // A provider flag is a snapshot at lookup time, not opening-hours
+        // evidence for a future arrival. Once it is old, both "open" and
+        // "closed" become unknown rather than a promise or a rejection.
+        guard secondsUntilArrival >= 0 else { return isOpen }
+        guard secondsUntilArrival < staleAfter else { return nil }
+        return isOpen
+    }
+
     static func mayUse(isOpen: Bool?, secondsUntilArrival: TimeInterval?) -> Bool {
-        guard isOpen == false else { return true }
-        guard let secondsUntilArrival, secondsUntilArrival.isFinite else { return false }
-        return secondsUntilArrival >= staleAfter
+        effectiveStatus(
+            isOpen: isOpen, secondsUntilArrival: secondsUntilArrival
+        ) != false
     }
 }
 
@@ -1615,11 +1625,23 @@ struct BreakPlanner {
               alreadyDrivenSinceBreak: TimeInterval = 0) -> [PlannedBreak] {
         let elapsed = min(maximumContinuousDriving, max(0, alreadyDrivenSinceBreak))
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
-        var remaining = candidates.filter { candidate in
-            guard BreakCandidateValidationPolicy.isUsable(candidate) else { return false }
+        var remaining = candidates.compactMap { candidate -> BreakCandidate? in
+            guard BreakCandidateValidationPolicy.isUsable(candidate) else { return nil }
             let arrival = (candidate.timeProgress ?? candidate.progress) * drivingTime
-            return PlannedStopOpeningStatusPolicy.mayUse(
+            guard PlannedStopOpeningStatusPolicy.mayUse(
                 isOpen: candidate.isOpen, secondsUntilArrival: arrival
+            ) else { return nil }
+            let effectiveStatus = PlannedStopOpeningStatusPolicy.effectiveStatus(
+                isOpen: candidate.isOpen, secondsUntilArrival: arrival
+            )
+            return BreakCandidate(
+                id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
+                progress: candidate.progress,
+                installedRouteProgress: candidate.installedRouteProgress,
+                timeProgress: candidate.timeProgress,
+                detourMetres: candidate.detourMetres,
+                detourIsEstimated: candidate.detourIsEstimated,
+                isOpen: effectiveStatus, supportsFuel: candidate.supportsFuel
             )
         }
         var remainingFuelStops = plannedFuelStops

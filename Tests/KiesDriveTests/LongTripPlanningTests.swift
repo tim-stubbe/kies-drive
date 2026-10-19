@@ -988,6 +988,15 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertTrue(PlannedStopOpeningStatusPolicy.mayUse(
             isOpen: true, secondsUntilArrival: 5 * 60
         ))
+        XCTAssertEqual(PlannedStopOpeningStatusPolicy.effectiveStatus(
+            isOpen: true, secondsUntilArrival: 5 * 60
+        ), true)
+        XCTAssertNil(PlannedStopOpeningStatusPolicy.effectiveStatus(
+            isOpen: true, secondsUntilArrival: 3 * 3600
+        ), "A currently open stop is not proven open several hours later")
+        XCTAssertNil(PlannedStopOpeningStatusPolicy.effectiveStatus(
+            isOpen: false, secondsUntilArrival: 3 * 3600
+        ), "A currently closed stop may reopen before a distant arrival")
     }
 
     func testBreakPlannerCanUseCurrentlyClosedStopHoursAhead() {
@@ -1001,6 +1010,21 @@ final class LongTripPlanningTests: XCTestCase {
 
         XCTAssertEqual(planned.first?.candidate?.id, "later")
         XCTAssertTrue(planned.first?.explanation.contains("Öffnungsstatus") == true)
+    }
+
+    func testBreakPlannerDoesNotPromiseCurrentOpeningStatusHoursAhead() {
+        let candidate = BreakCandidate(
+            id: "later-open", name: "Raststätte später", coordinate: .init(),
+            progress: 0.4, detourMetres: 0, isOpen: true
+        )
+        let planned = BreakPlanner().plan(
+            drivingTime: 5 * 3600, candidates: [candidate]
+        ).first
+
+        XCTAssertEqual(planned?.candidate?.id, "later-open")
+        XCTAssertNil(planned?.candidate?.isOpen)
+        XCTAssertTrue(planned?.explanation.contains("Öffnungsstatus") == true)
+        XCTAssertFalse(planned?.explanation.contains("Geöffneter Halt") == true)
     }
 
     func testRouteTravelTimeProgressAccountsForSlowLegs() {
