@@ -1135,6 +1135,18 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testStableRouteRejoinClearsFailedRerouteBackoff() {
+        XCTAssertFalse(NavigationRouteRejoinPolicy.shouldClearRerouteRetryState(
+            guidanceReliable: false, consecutiveInsideFixes: 2
+        ))
+        XCTAssertTrue(NavigationRouteRejoinPolicy.shouldClearRerouteRetryState(
+            guidanceReliable: false, consecutiveInsideFixes: 3
+        ))
+        XCTAssertFalse(NavigationRouteRejoinPolicy.shouldClearRerouteRetryState(
+            guidanceReliable: true, consecutiveInsideFixes: 3
+        ))
+    }
+
     func testDeviationThresholdReroutesSoonerInTownWithoutWeakeningMotorwayNoiseMargin() {
         XCTAssertEqual(NavigationDeviationPolicy.threshold(
             horizontalAccuracy: 8, speedMetresPerSecond: 8

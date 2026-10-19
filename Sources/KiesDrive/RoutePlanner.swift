@@ -4474,7 +4474,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     rerouteGeneration = UUID()
                     routeCalculationGeneration = UUID()
                     isRecalculating = false
+                }
+                // A stable rejoin resolves the failed recovery episode too,
+                // even when its network request had already ended. Keeping
+                // that old failure count/backoff would delay an unrelated
+                // genuine departure much later in the same trip.
+                if NavigationRouteRejoinPolicy.shouldClearRerouteRetryState(
+                    guidanceReliable: isManeuverGuidanceReliable,
+                    consecutiveInsideFixes: onRouteRecoveryFixCount
+                ) {
                     consecutiveRerouteFailures = 0
+                    lastRerouteAt = nil
                     lastRerouteLocation = nil
                 }
                 isManeuverGuidanceReliable = true

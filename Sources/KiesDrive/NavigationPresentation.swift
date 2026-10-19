@@ -2566,6 +2566,11 @@ enum NavigationRouteRejoinPolicy {
         consecutiveInsideFixes >= requiredConsecutiveInsideFixes
     }
 
+    static func shouldClearRerouteRetryState(guidanceReliable: Bool,
+                                             consecutiveInsideFixes: Int) -> Bool {
+        !guidanceReliable && isConfirmed(consecutiveInsideFixes: consecutiveInsideFixes)
+    }
+
     /// Proximity alone cannot prove a rejoin on parallel roads or at a
     /// flyover. Once the car is moving quickly enough for Core Location's
     /// course to be meaningful, the local route direction must agree too.
