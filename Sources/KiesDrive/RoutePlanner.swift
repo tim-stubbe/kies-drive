@@ -1671,64 +1671,69 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ? remainingDistanceMetres : totalDistance
         var routed: [RouteSearchResult] = []
         var detourSearchWasSuperseded = false
-        await withTaskGroup(of: RouteSearchDetourOutcome.self) { group in
-            for candidate in shortlist {
+        for batch in NavigationSearchBatchPolicy.detourBatches(
+            candidateCount: shortlist.count
+        ) {
+            await withTaskGroup(of: RouteSearchDetourOutcome.self) { group in
+                for index in batch {
+                    let candidate = shortlist[index]
+                    group.addTask { [weak self] in
+                        let driven = await self?.drivingDetour(
+                            through: candidate.item, anchors: candidate.anchors
+                        )
+                        guard let detour = driven ?? RouteSearchPolicy.estimatedDetour(
+                            airDistance: candidate.airDistance
+                        ) else { return .candidate(nil) }
+                        guard RouteSearchPolicy.acceptsDetour(
+                            detour, remainingRouteDistance: remainingRouteDistance
+                        ) else { return .candidate(nil) }
+                        let coordinate = candidate.item.placemark.coordinate
+                        return .candidate(RouteSearchResult(
+                            id: "\(candidate.item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
+                            mapItem: candidate.item,
+                            detourMetres: detour,
+                            detourIsEstimated: driven == nil,
+                            queryRelevance: DestinationSearchRankingPolicy.relevanceScore(
+                                query: cleanQuery,
+                                name: candidate.item.name,
+                                title: candidate.item.placemark.title
+                            ),
+                            routeProgress: candidate.progress,
+                            routeGeneration: routeGeneration
+                        ))
+                    }
+                }
+                // MKDirections requests used for detour measurement are more
+                // expensive than the POI search itself. Observe route/query
+                // ownership while each bounded batch runs so a new search
+                // cancels obsolete network work promptly.
                 group.addTask { [weak self] in
-                    let driven = await self?.drivingDetour(
-                        through: candidate.item, anchors: candidate.anchors
-                    )
-                    guard let detour = driven ?? RouteSearchPolicy.estimatedDetour(
-                        airDistance: candidate.airDistance
-                    ) else { return .candidate(nil) }
-                    guard RouteSearchPolicy.acceptsDetour(
-                        detour, remainingRouteDistance: remainingRouteDistance
-                    ) else { return .candidate(nil) }
-                    let coordinate = candidate.item.placemark.coordinate
-                    return .candidate(RouteSearchResult(
-                        id: "\(candidate.item.name ?? ""): \(coordinate.latitude):\(coordinate.longitude)",
-                        mapItem: candidate.item,
-                        detourMetres: detour,
-                        detourIsEstimated: driven == nil,
-                        queryRelevance: DestinationSearchRankingPolicy.relevanceScore(
-                            query: cleanQuery,
-                            name: candidate.item.name,
-                            title: candidate.item.placemark.title
-                        ),
-                        routeProgress: candidate.progress,
-                        routeGeneration: routeGeneration
-                    ))
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 100_000_000)
+                        guard !Task.isCancelled else { break }
+                        guard let self else { return .superseded }
+                        if !(await self.isCurrentRouteSearch(
+                            generation: generation, routeGeneration: routeGeneration,
+                            query: cleanQuery
+                        )) { return .superseded }
+                    }
+                    return .superseded
                 }
-            }
-            // MKDirections requests used for detour measurement are more
-            // expensive than the POI search itself. Observe route/query
-            // ownership while they run so a new search cancels their entire
-            // task tree instead of leaving up to six obsolete requests alive
-            // until their individual network timeouts.
-            group.addTask { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 100_000_000)
-                    guard !Task.isCancelled else { break }
-                    guard let self else { return .superseded }
-                    if !(await self.isCurrentRouteSearch(
-                        generation: generation, routeGeneration: routeGeneration,
-                        query: cleanQuery
-                    )) { return .superseded }
+                var remainingCandidates = batch.count
+                while remainingCandidates > 0, let outcome = await group.next() {
+                    switch outcome {
+                    case .candidate(let result):
+                        remainingCandidates -= 1
+                        if let result { routed.append(result) }
+                    case .superseded:
+                        detourSearchWasSuperseded = true
+                        group.cancelAll()
+                        return
+                    }
                 }
-                return .superseded
+                group.cancelAll()
             }
-            var remainingCandidates = shortlist.count
-            while remainingCandidates > 0, let outcome = await group.next() {
-                switch outcome {
-                case .candidate(let result):
-                    remainingCandidates -= 1
-                    if let result { routed.append(result) }
-                case .superseded:
-                    detourSearchWasSuperseded = true
-                    group.cancelAll()
-                    return
-                }
-            }
-            group.cancelAll()
+            if detourSearchWasSuperseded { break }
         }
         if detourSearchWasSuperseded { return false }
         switch RouteSearchCompletionPolicy.disposition(

@@ -4787,6 +4787,13 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationSearchBatchPolicy.timeoutNanoseconds, 8_000_000_000)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentRouteSearches, 5)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches, 8)
+        XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentDetourCalculations, 3)
+        XCTAssertEqual(NavigationSearchBatchPolicy.detourBatches(candidateCount: 0), [])
+        XCTAssertEqual(NavigationSearchBatchPolicy.detourBatches(candidateCount: 2), [0..<2])
+        XCTAssertEqual(
+            NavigationSearchBatchPolicy.detourBatches(candidateCount: 6),
+            [0..<3, 3..<6]
+        )
         XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
             uniqueResultCount: 20, completedSearches: 1, totalSearches: 5
         ), "One region is not enough geographic coverage")

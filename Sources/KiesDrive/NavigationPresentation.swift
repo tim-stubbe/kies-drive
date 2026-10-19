@@ -31,6 +31,7 @@ enum NavigationSearchBatchPolicy {
     static let timeoutNanoseconds: UInt64 = 8_000_000_000
     static let maximumConcurrentRouteSearches = 5
     static let maximumConcurrentAmenitySearches = 8
+    static let maximumConcurrentDetourCalculations = 3
     static let usefulResultCount = 8
     static let minimumCompletedSearches = 2
 
@@ -49,6 +50,15 @@ enum NavigationSearchBatchPolicy {
         totalSearches > completedSearches &&
             completedSearches >= minimumCompletedSearches &&
             uniqueResultCount >= usefulResultCount
+    }
+
+    static func detourBatches(candidateCount: Int) -> [Range<Int>] {
+        guard candidateCount > 0 else { return [] }
+        return stride(
+            from: 0, to: candidateCount, by: maximumConcurrentDetourCalculations
+        ).map { start in
+            start..<min(candidateCount, start + maximumConcurrentDetourCalculations)
+        }
     }
 }
 
