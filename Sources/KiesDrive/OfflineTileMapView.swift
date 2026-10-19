@@ -41,8 +41,9 @@ struct OfflineTileMapView: View {
     }
 }
 
-private final class LocalXYZTileOverlay: MKTileOverlay {
+final class LocalXYZTileOverlay: MKTileOverlay {
     private let package: InstalledOfflineMapPackage
+    let packageID: String
     private let tileReadQueue = DispatchQueue(
         label: "app.kies.drive.offline-tiles",
         qos: .userInitiated,
@@ -51,6 +52,7 @@ private final class LocalXYZTileOverlay: MKTileOverlay {
 
     init(package: InstalledOfflineMapPackage) {
         self.package = package
+        self.packageID = package.id
         super.init(urlTemplate: nil)
         // Keep MapKit underneath as a safe fallback for a missing/corrupt
         // local tile. A complete package still covers it; an incomplete one

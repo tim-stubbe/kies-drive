@@ -82,6 +82,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var carWindow: CPWindow?
     private var mapView: MKMapView?
     private var speedLimitBadgeView: CarPlaySpeedLimitBadgeView?
+    private var offlineAttributionLabel: UILabel?
+    private var offlineTileOverlay: LocalXYZTileOverlay?
     private var mapTemplate: CPMapTemplate?
     private var audioMapButton: CPMapButton?
     private var navigationSession: CPNavigationSession?
@@ -164,6 +166,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let speedBadge = CarPlaySpeedLimitBadgeView()
             speedBadge.translatesAutoresizingMaskIntoConstraints = false
             controller.view.addSubview(speedBadge)
+            let attribution = UILabel()
+            attribution.translatesAutoresizingMaskIntoConstraints = false
+            attribution.font = .systemFont(ofSize: 11, weight: .semibold)
+            attribution.textColor = .label
+            attribution.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.82)
+            attribution.layer.cornerRadius = 7
+            attribution.layer.masksToBounds = true
+            attribution.textAlignment = .center
+            attribution.isHidden = true
+            controller.view.addSubview(attribution)
             NSLayoutConstraint.activate([
                 map.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor),
                 map.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor),
@@ -177,11 +189,20 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 ),
                 speedBadge.widthAnchor.constraint(equalToConstant: 68),
                 speedBadge.heightAnchor.constraint(equalToConstant: 68),
+                attribution.leadingAnchor.constraint(
+                    equalTo: controller.view.safeAreaLayoutGuide.leadingAnchor, constant: 12
+                ),
+                attribution.bottomAnchor.constraint(
+                    equalTo: controller.view.safeAreaLayoutGuide.bottomAnchor, constant: -8
+                ),
+                attribution.heightAnchor.constraint(equalToConstant: 24),
+                attribution.widthAnchor.constraint(lessThanOrEqualToConstant: 260),
             ])
             window.rootViewController = controller
             window.isHidden = false
             mapView = map
             speedLimitBadgeView = speedBadge
+            offlineAttributionLabel = attribution
         }
 
         let template = CPMapTemplate()
@@ -210,6 +231,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         carWindow = nil
         mapView = nil
         speedLimitBadgeView = nil
+        offlineAttributionLabel = nil
+        offlineTileOverlay = nil
         mapTemplate = nil
         audioMapButton = nil
         navigationSession = nil
@@ -251,6 +274,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 self.cameraMode = requestedMode
                 self.observedNavigationActive = isNavigating
                 self.redrawRoute()
+                self.refreshOfflineMapOverlay()
                 self.synchroniseNavigationSession()
                 if startedNewNavigation { self.followVehicle() }
             }
@@ -337,10 +361,19 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
+        Publishers.CombineLatest(
+            OfflineMapPackageStore.shared.$packages,
+            OfflineMapPackageStore.shared.$activePackageID
+        )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in self?.refreshOfflineMapOverlay() }
+            .store(in: &cancellables)
+
         LocationService.shared.$location
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] location in
+                self?.refreshOfflineMapOverlay(at: location)
                 self?.updateCamera(for: location)
                 self?.updateSpeedLimitBadge(for: location)
                 self?.updateGuidanceEstimates()
@@ -444,6 +477,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         cameraMode = .follow
         lastCameraUpdateAt = nil
         refreshRouteStroke()
+        refreshOfflineMapOverlay()
         mapView?.setUserTrackingMode(.followWithHeading, animated: true)
     }
 
@@ -453,6 +487,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         guard !polylines.isEmpty else { return }
         cameraMode = .overview
         refreshRouteStroke()
+        refreshOfflineMapOverlay()
         mapView.setUserTrackingMode(.none, animated: false)
         let rect = polylines.reduce(MKMapRect.null) { $0.union($1.boundingMapRect) }
         mapView.setVisibleMapRect(rect, edgePadding: .init(top: 90, left: 55, bottom: 90, right: 55), animated: true)
@@ -1168,7 +1203,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func redrawRoute() {
         guard let mapView else { return }
-        mapView.removeOverlays(mapView.overlays)
+        mapView.removeOverlays(mapView.overlays.filter { $0 is MKPolyline })
         // Guidance geometry must win over labels and map decorations at busy
         // interchanges. Otherwise the route can look interrupted precisely
         // where the driver needs it most.
@@ -1180,9 +1215,71 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         if cameraMode == .overview { showRouteOverview() }
     }
 
+    private func refreshOfflineMapOverlay(at suppliedLocation: CLLocation? = nil) {
+        guard let mapView else { return }
+        let store = OfflineMapPackageStore.shared
+        let location = suppliedLocation ?? LocationService.shared.location
+        let package = applicableOfflinePackage(store: store, location: location)
+        if offlineTileOverlay?.packageID != package?.id {
+            if let offlineTileOverlay { mapView.removeOverlay(offlineTileOverlay) }
+            offlineTileOverlay = nil
+            if let package {
+                let overlay = LocalXYZTileOverlay(package: package)
+                mapView.addOverlay(overlay, level: .aboveRoads)
+                offlineTileOverlay = overlay
+            }
+        }
+        offlineAttributionLabel?.text = package.map { "  \($0.manifest.attribution)  " }
+        offlineAttributionLabel?.isHidden = package == nil
+    }
+
+    private func applicableOfflinePackage(
+        store: OfflineMapPackageStore, location: CLLocation?
+    ) -> InstalledOfflineMapPackage? {
+        // A freely panned CarPlay camera may leave the verified route/location
+        // coverage. Fall back to Apple Maps until the driver chooses follow or
+        // overview again instead of showing partial local tiles as complete.
+        guard cameraMode != .free else { return nil }
+        guard let package = store.activePackage else { return nil }
+        let routeCoordinates = visibleRouteCoordinates
+        let needsRouteCoverage = cameraMode == .overview || location == nil
+        guard OfflineMapCoveragePolicy.canUse(
+            bounds: package.manifest.bounds,
+            currentCoordinate: location?.coordinate,
+            routeCoordinates: needsRouteCoverage ? routeCoordinates : [],
+            showsRouteOverview: cameraMode == .overview
+        ) else { return nil }
+        let requiredCoordinates = needsRouteCoverage
+            ? routeCoordinates : [location?.coordinate].compactMap { $0 }
+        guard !requiredCoordinates.isEmpty,
+              store.hasBaseTiles(covering: requiredCoordinates, package: package) else {
+            return nil
+        }
+        if needsRouteCoverage, !routeCoordinates.isEmpty {
+            let corridor = OfflineRouteCorridorCoveragePolicy.coordinates(along: routeCoordinates)
+            guard store.hasNavigationTiles(along: corridor, package: package) else { return nil }
+        } else if let location {
+            let lookahead = OfflineRouteLookaheadPolicy.coordinates(
+                from: location.coordinate, route: routeCoordinates,
+                routeProgress: RoutePlanner.shared.isNavigating
+                    ? RoutePlanner.shared.currentInstalledRouteProgress : nil
+            )
+            guard store.hasNavigationTiles(along: lookahead, package: package) else { return nil }
+        }
+        return package
+    }
+
     private var visibleRoutePolylines: [MKPolyline] {
         let live = RoutePlanner.shared.legs.map(\.polyline)
         return live.isEmpty ? RoutePlanner.shared.offlinePolylines : live
+    }
+
+    private var visibleRouteCoordinates: [CLLocationCoordinate2D] {
+        visibleRoutePolylines.flatMap { polyline -> [CLLocationCoordinate2D] in
+            guard polyline.pointCount > 0 else { return [] }
+            let points = polyline.points()
+            return (0..<polyline.pointCount).map { points[$0].coordinate }
+        }
     }
 
     private func synchroniseNavigationSession() {
@@ -1398,10 +1495,14 @@ extension CarPlaySceneDelegate: MKMapViewDelegate {
             // location button. Incoming GPS fixes must not fight the gesture.
             cameraMode = .free
             mapView.setUserTrackingMode(.none, animated: false)
+            refreshOfflineMapOverlay()
         }
     }
 
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+        if let tiles = overlay as? MKTileOverlay {
+            return MKTileOverlayRenderer(tileOverlay: tiles)
+        }
         guard let polyline = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
         let renderer = MKPolylineRenderer(polyline: polyline)
         renderer.strokeColor = .systemBlue
