@@ -811,6 +811,28 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testCarPlayManeuverEstimateRejectsStaleMotorwaySpeed() {
+        let now = Date(timeIntervalSince1970: 20_000)
+        func location(age: TimeInterval, accuracy: CLLocationAccuracy = 8) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: 50, longitude: 8),
+                altitude: 0, horizontalAccuracy: accuracy, verticalAccuracy: 5,
+                course: 90, courseAccuracy: 5,
+                speed: 36, speedAccuracy: 1,
+                timestamp: now.addingTimeInterval(-age)
+            )
+        }
+
+        XCTAssertEqual(
+            CarPlayManeuverEstimatePolicy.speed(location(age: 2), now: now), 36
+        )
+        XCTAssertNil(CarPlayManeuverEstimatePolicy.speed(location(age: 6), now: now))
+        XCTAssertNil(CarPlayManeuverEstimatePolicy.speed(
+            location(age: 1, accuracy: 90), now: now
+        ))
+        XCTAssertNil(CarPlayManeuverEstimatePolicy.speed(nil, now: now))
+    }
+
     func testFollowCameraShowsMoreRoadAheadAtMotorwaySpeed() {
         XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: nil), 700)
         XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: 30), 1_190)

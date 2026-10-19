@@ -1497,7 +1497,9 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         guard let distance = CarPlayManeuverEstimatePolicy.distance(
             RoutePlanner.shared.nextManeuverDistance
         ) else { return nil }
-        let speed = LocationService.shared.location.flatMap(NavigationMotionPolicy.reliableSpeed(for:)) ?? 0
+        let speed = CarPlayManeuverEstimatePolicy.speed(
+            LocationService.shared.location
+        ) ?? 0
         return CPTravelEstimates(
             distanceRemaining: Measurement(value: distance, unit: UnitLength.meters),
             timeRemaining: NavigationEstimatePolicy.timeToManeuver(

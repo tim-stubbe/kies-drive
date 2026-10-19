@@ -1399,6 +1399,16 @@ enum CarPlayManeuverEstimatePolicy {
         guard let value, value.isFinite, value >= 0 else { return nil }
         return value
     }
+
+    /// A retained motorway-speed sample must not keep shrinking CarPlay's
+    /// maneuver ETA after GPS reception has stopped. Falling back to the
+    /// conservative estimate is safer than presenting stale precision.
+    static func speed(_ location: CLLocation?, now: Date = Date()) -> Double? {
+        guard let location,
+              abs(location.timestamp.timeIntervalSince(now)) <=
+                NavigationSpeedDisplayPolicy.maximumAge else { return nil }
+        return NavigationMotionPolicy.reliableSpeed(for: location)
+    }
 }
 
 enum CarPlayRouteRecoveryPresentationState: Equatable {
