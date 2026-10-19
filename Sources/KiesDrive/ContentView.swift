@@ -171,8 +171,10 @@ struct DriveContentView: View {
                 if showsNavigationUI {
                     if isShowingRouteOverview {
                         compactNavigationInstructionCard
+                            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     } else {
                         navigationInstructionCard
+                            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     }
                 } else {
                     mobileHeader
@@ -754,13 +756,20 @@ struct DriveContentView: View {
                 HStack {
                     Button("Auf Route suchen", systemImage: "magnifyingglass") { showRouteDetails = true }
                         .font(.subheadline.weight(.semibold)).foregroundStyle(Color.kiesForest)
+                        .lineLimit(1).minimumScaleFactor(0.75)
                     Spacer()
                     Button("Beenden", systemImage: "xmark.circle.fill", role: .destructive) { planner.completeActiveTrip() }
                         .font(.subheadline.weight(.semibold))
+                        .lineLimit(1).minimumScaleFactor(0.75)
                 }
             }
             .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 14)
             .background(Color.kiesIvory)
+            // While driving, stable glanceable geometry is safety-critical.
+            // VoiceOver still exposes every value and action, but extreme
+            // accessibility sizes must not push the route or End button off
+            // screen. Non-driving sheets and forms remain fully scalable.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         } else if planner.route != nil {
             VStack(spacing: 12) {
                 Capsule().fill(.tertiary).frame(width: 36, height: 5)
@@ -855,6 +864,7 @@ struct DriveContentView: View {
             Text(value).font(.system(size: 21, weight: .bold, design: .rounded)).monospacedDigit()
                 .foregroundStyle(emphasized ? Color.kiesForest : .primary)
             Text(label).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity)
     }
