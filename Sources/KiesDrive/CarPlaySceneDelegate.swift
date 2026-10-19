@@ -551,16 +551,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             let item = CPListItem(text: stop.name, detailText: "Zwischenstopp entfernen",
                                   image: UIImage(systemName: "minus.circle.fill"))
             item.handler = { [weak self] _, completion in
+                guard let self else {
+                    completion()
+                    return
+                }
+                let requestedConnection = self.connectionGeneration
                 Task {
                     guard let start = LocationService.shared.location?.coordinate else {
                         completion()
-                        self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                        self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                         return
                     }
                     let succeeded = await planner.removeRouteStop(id: stop.id, from: start, settings: .shared)
                     completion()
-                    if succeeded { self?.showDestinationsAndStopsReplacingCurrentList() }
-                    else { self?.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht entfernt werden.") }
+                    guard self.mayPublishCarPlayWork(requestedConnection) else { return }
+                    if succeeded { self.showDestinationsAndStopsReplacingCurrentList() }
+                    else { self.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht entfernt werden.") }
                 }
             }
             routeManagementItems.append(item)
@@ -570,16 +576,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                                   detailText: "Tankstopp entfernen",
                                   image: UIImage(systemName: "fuelpump.slash.fill"))
             item.handler = { [weak self] _, completion in
+                guard let self else {
+                    completion()
+                    return
+                }
+                let requestedConnection = self.connectionGeneration
                 Task {
                     guard let start = LocationService.shared.location?.coordinate else {
                         completion()
-                        self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                        self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                         return
                     }
                     let succeeded = await planner.toggleWaypoint(station, from: start, settings: .shared)
                     completion()
-                    if succeeded { self?.showDestinationsAndStopsReplacingCurrentList() }
-                    else { self?.showFailure(planner.errorMessage ?? "Der Tankstopp konnte nicht entfernt werden.") }
+                    guard self.mayPublishCarPlayWork(requestedConnection) else { return }
+                    if succeeded { self.showDestinationsAndStopsReplacingCurrentList() }
+                    else { self.showFailure(planner.errorMessage ?? "Der Tankstopp konnte nicht entfernt werden.") }
                 }
             }
             routeManagementItems.append(item)
@@ -599,6 +611,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                                   image: UIImage(systemName: selected
                                                  ? "checkmark.circle.fill" : "fuelpump.fill"))
             item.handler = { _, completion in
+                let requestedConnection = self.connectionGeneration
                 Task {
                     guard let start = LocationService.shared.location?.coordinate else {
                         completion()
@@ -607,6 +620,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     }
                     let succeeded = await planner.toggleWaypoint(station, from: start, settings: .shared)
                     completion()
+                    guard self.mayPublishCarPlayWork(requestedConnection) else { return }
                     if succeeded { self.interfaceController?.popToRootTemplate(animated: true, completion: nil) }
                     else { self.showFailure(planner.errorMessage ?? "Die Route zum Tankstopp konnte nicht berechnet werden.") }
                 }
@@ -664,20 +678,26 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 let item = CPListItem(text: title, detailText: plannedStopDetail(action),
                                       image: UIImage(systemName: symbol))
                 item.handler = { [weak self] _, completion in
+                    guard let self else {
+                        completion()
+                        return
+                    }
+                    let requestedConnection = self.connectionGeneration
                     Task {
                         guard let start = LocationService.shared.location?.coordinate else {
                             completion()
-                            self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                            self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                             return
                         }
                         let succeeded = await planner.addCarPlayPlannedStop(
                             action, from: start, settings: .shared
                         )
                         completion()
+                        guard self.mayPublishCarPlayWork(requestedConnection) else { return }
                         if succeeded {
-                            self?.interfaceController?.popToRootTemplate(animated: true, completion: nil)
+                            self.interfaceController?.popToRootTemplate(animated: true, completion: nil)
                         } else {
-                            self?.showFailure(
+                            self.showFailure(
                                 planner.errorMessage ??
                                     "Der geplante Stopp konnte nicht zur Route hinzugefügt werden."
                             )
@@ -703,10 +723,15 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     ))
                 )
                 item.handler = { [weak self] _, completion in
+                    guard let self else {
+                        completion()
+                        return
+                    }
+                    let requestedConnection = self.connectionGeneration
                     Task {
                         guard let start = LocationService.shared.location?.coordinate else {
                             completion()
-                            self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
+                            self.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                             return
                         }
                         let succeeded = await planner.updateRouteOptionsAndRecalculate(
@@ -716,10 +741,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                             from: start, settings: .shared
                         )
                         completion()
+                        guard self.mayPublishCarPlayWork(requestedConnection) else { return }
                         if succeeded {
-                            self?.showDestinationsAndStopsReplacingCurrentList()
+                            self.showDestinationsAndStopsReplacingCurrentList()
                         } else {
-                            self?.showFailure(
+                            self.showFailure(
                                 planner.errorMessage ??
                                     "Die Route mit dieser Vorgabe konnte nicht berechnet werden."
                             )
@@ -1054,6 +1080,14 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         interfaceController?.popTemplate(animated: false, completion: { [weak self] _, _ in
             self?.showDestinationsAndStops()
         })
+    }
+
+    private func mayPublishCarPlayWork(_ requestedConnection: UUID) -> Bool {
+        CarPlayConnectionWorkPolicy.mayPublish(
+            request: requestedConnection,
+            current: connectionGeneration,
+            connected: interfaceController != nil
+        )
     }
 
     private func navigateHome(_ address: String) async {
