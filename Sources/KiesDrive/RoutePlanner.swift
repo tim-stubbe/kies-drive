@@ -4283,7 +4283,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         } else {
             onRouteRecoveryFixCount = 0
         }
-        let shouldAccumulate = NavigationDeviationPolicy.shouldAccumulate(
+        let retriesConfirmedDeparture = NavigationRerouteRetryPolicy
+            .shouldRetryConfirmedDeparture(
+                guidanceReliable: isManeuverGuidanceReliable,
+                isOutsideCorridor: isOutsideCorridor,
+                retryAllowed: rerouteAllowed,
+                consecutiveFailures: consecutiveRerouteFailures
+            )
+        let shouldAccumulate = retriesConfirmedDeparture || NavigationDeviationPolicy.shouldAccumulate(
             distanceFromRoute: nearest,
             previousDistance: previousOffRouteDistance,
             horizontalAccuracy: location.horizontalAccuracy,
@@ -4308,10 +4315,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         lastOffRouteFixAt = now
         guard let offRouteSince,
-              NavigationDeviationPolicy.isConfirmed(
-                elapsed: now.timeIntervalSince(offRouteSince),
-                consecutiveFixes: offRouteFixCount,
-                speedMetresPerSecond: reliableSpeed
+              retriesConfirmedDeparture || NavigationDeviationPolicy.isConfirmed(
+                  elapsed: now.timeIntervalSince(offRouteSince),
+                  consecutiveFixes: offRouteFixCount,
+                  speedMetresPerSecond: reliableSpeed
               ), allowsAutomaticReroute, !isRecalculating else { return }
         isManeuverGuidanceReliable = false
         // A confirmed departure invalidates the current maneuver immediately.

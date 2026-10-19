@@ -2471,6 +2471,20 @@ enum NavigationRerouteRetryPolicy {
         }
         return false
     }
+
+    /// Once a departure was already confirmed, a failed network request must
+    /// remain retryable after the normal backoff even if the driver has stopped.
+    /// Requiring moving evidence again can strand guidance indefinitely at a
+    /// lay-by or junction. This never establishes a new departure: it only
+    /// continues recovery while fresh geometry still proves the car is outside.
+    static func shouldRetryConfirmedDeparture(
+        guidanceReliable: Bool,
+        isOutsideCorridor: Bool,
+        retryAllowed: Bool,
+        consecutiveFailures: Int
+    ) -> Bool {
+        !guidanceReliable && isOutsideCorridor && retryAllowed && consecutiveFailures > 0
+    }
 }
 
 /// MapKit normally answers quickly, but an interrupted network request can

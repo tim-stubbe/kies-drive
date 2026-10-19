@@ -1098,6 +1098,39 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testFailedRerouteCanRetryWhileStoppedOnlyForConfirmedDeparture() {
+        XCTAssertTrue(NavigationRerouteRetryPolicy.shouldRetryConfirmedDeparture(
+            guidanceReliable: false,
+            isOutsideCorridor: true,
+            retryAllowed: true,
+            consecutiveFailures: 1
+        ))
+        XCTAssertFalse(NavigationRerouteRetryPolicy.shouldRetryConfirmedDeparture(
+            guidanceReliable: true,
+            isOutsideCorridor: true,
+            retryAllowed: true,
+            consecutiveFailures: 1
+        ), "An ordinary GPS outlier must still pass full departure confirmation")
+        XCTAssertFalse(NavigationRerouteRetryPolicy.shouldRetryConfirmedDeparture(
+            guidanceReliable: false,
+            isOutsideCorridor: false,
+            retryAllowed: true,
+            consecutiveFailures: 1
+        ), "Returning to the installed route must suppress the retry")
+        XCTAssertFalse(NavigationRerouteRetryPolicy.shouldRetryConfirmedDeparture(
+            guidanceReliable: false,
+            isOutsideCorridor: true,
+            retryAllowed: false,
+            consecutiveFailures: 1
+        ), "The existing backoff remains authoritative")
+        XCTAssertFalse(NavigationRerouteRetryPolicy.shouldRetryConfirmedDeparture(
+            guidanceReliable: false,
+            isOutsideCorridor: true,
+            retryAllowed: true,
+            consecutiveFailures: 0
+        ), "The first departure still requires moving multi-fix evidence")
+    }
+
     func testConfirmedDeviationHidesStaleTurnCard() {
         let matching = NavigationInstructionDisplayPolicy.display(
             instruction: "Alte Abfahrt", distance: 50,
