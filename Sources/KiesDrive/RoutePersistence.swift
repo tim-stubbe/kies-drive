@@ -151,6 +151,11 @@ struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
     /// waypoints were route constraints, so `nil` intentionally retains that
     /// meaning while all newly inserted comfort stops set an explicit kind.
     var kind: Kind? = nil
+    /// The unambiguous position on the route at the time a comfort stop was
+    /// selected. Coordinates alone are insufficient on loops, crossings and
+    /// parallel carriageways because the same place may match several route
+    /// sections. Optional keeps locks from earlier releases decodable.
+    var insertionRouteProgress: Double? = nil
 
     var isTollEvidenceAnchor: Bool {
         mayAutoCompleteWhenPassed
@@ -380,13 +385,16 @@ extension ActiveRouteLock {
                                  progress: (DriveCoordinate) -> Double) {
         guard !waypoints.contains(where: { $0.id == waypoint.id }) else { return }
         let insertionProgress = knownProgress ?? progress(waypoint.coordinate)
-        let index = waypoints.firstIndex { progress($0.coordinate) > insertionProgress }
+        let index = waypoints.firstIndex {
+            ($0.insertionRouteProgress ?? progress($0.coordinate)) > insertionProgress
+        }
             ?? waypoints.endIndex
         let inheritedOptions = index == 0
             ? defaultOptions
             : (waypoints[index - 1].optionsAfter ?? defaultOptions)
         var inserted = waypoint
         inserted.optionsAfter = inheritedOptions
+        inserted.insertionRouteProgress = insertionProgress
         waypoints.insert(inserted, at: index)
         visitedWaypointIDs?.removeAll { $0 == waypoint.id }
         updatedAt = Date()

@@ -492,6 +492,39 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.waypoints.map(\.id), ["early", "fuel", "break", "late"])
     }
 
+    func testLaterInsertionKeepsEarlierStopsKnownCrossingProgress() {
+        let now = Date(timeIntervalSince1970: 1)
+        var lock = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Home",
+            destination: .init(latitude: 0, longitude: 100),
+            waypoints: [
+                .init(id: "early", name: "Early", coordinate: .init(latitude: 0, longitude: 20),
+                      required: true, optionsAfter: nil),
+                .init(id: "late", name: "Late", coordinate: .init(latitude: 0, longitude: 80),
+                      required: true, optionsAfter: nil),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil, visitedWaypointIDs: [],
+            status: .active, createdAt: now, updatedAt: now
+        )
+        lock.insertWaypoint(
+            .init(id: "fuel", name: "Fuel", coordinate: .init(latitude: 0, longitude: 20),
+                  required: true, optionsAfter: nil, kind: .fuelStop),
+            knownProgress: 0.55,
+            progress: { $0.longitude / 100 }
+        )
+        lock.insertWaypoint(
+            .init(id: "food", name: "Food", coordinate: .init(latitude: 0, longitude: 20),
+                  required: true, optionsAfter: nil, kind: .userStop),
+            knownProgress: 0.4,
+            progress: { $0.longitude / 100 }
+        )
+
+        XCTAssertEqual(lock.waypoints.map(\.id), ["early", "food", "fuel", "late"])
+        XCTAssertEqual(lock.waypoints.first { $0.id == "food" }?.insertionRouteProgress, 0.4)
+        XCTAssertEqual(lock.waypoints.first { $0.id == "fuel" }?.insertionRouteProgress, 0.55)
+    }
+
     func testEquivalentRouteStopDetectionHandlesSearchDriftWithoutBlockingNearbyPlaces() {
         let now = Date(timeIntervalSince1970: 1)
         let lock = ActiveRouteLock(
