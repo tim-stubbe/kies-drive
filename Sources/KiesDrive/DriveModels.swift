@@ -272,6 +272,7 @@ enum DriveUsageSegmentPolicy {
 
 enum DriveDiagnosticKind: String, Codable, Hashable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
+    case routeRestoreSucceeded, routeRestoreFailed
     case navigationStopped, arrivalReached, locationRejected, locationGapRecovered
     case maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
@@ -357,6 +358,7 @@ enum DriveDiagnosticStore {
 
     private static let priorityKinds: Set<DriveDiagnosticKind> = [
         .rerouteRequested, .rerouteSucceeded, .rerouteFailed, .routeRejoined,
+        .routeRestoreFailed,
         .maneuverFinalCueMissed, .speechDeliveryFailed,
         .offlineRouteDeparture, .offlineRouteRejoined,
     ]

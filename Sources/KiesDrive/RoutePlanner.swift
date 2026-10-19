@@ -1064,7 +1064,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard RouteRestoreCommitPolicy.mayResume(
             expected: restoreConstraintSnapshot,
             current: RouteCalculationConstraintSnapshot(routeLockStore.activeLock)
-        ) else { return false }
+        ) else {
+            DriveDiagnosticStore.append(
+                .routeRestoreFailed,
+                detail: "Wiederherstellung verworfen: Reise wurde während der Berechnung geändert"
+            )
+            return false
+        }
         let hasMatchingLiveRoute = !legs.isEmpty && LiveRouteRestoreEligibilityPolicy.mayReuse(
             destinationMatches: NavigationDestinationIdentityPolicy.matches(
                 liveRouteDestinationCoordinate, lock.destination.clLocationCoordinate
@@ -1093,10 +1099,34 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) {
         case .online, .staleLive:
             startNavigation(voiceGuidance: settings.voiceGuidance)
+            if isNavigating {
+                DriveDiagnosticStore.append(
+                    .routeRestoreSucceeded,
+                    detail: onlineCalculationSucceeded
+                        ? "Reise mit frisch berechneter Online-Route fortgesetzt"
+                        : "Reise mit exakt passender Live-Route fortgesetzt"
+                )
+            } else {
+                DriveDiagnosticStore.append(
+                    .routeRestoreFailed,
+                    detail: "Passende Route konnte nicht gestartet werden"
+                )
+            }
             return isNavigating
         case .offline:
-            return startOfflineGuidanceIfAvailable(replacingLiveRoute: true)
+            let restored = startOfflineGuidanceIfAvailable(replacingLiveRoute: true)
+            DriveDiagnosticStore.append(
+                restored ? .routeRestoreSucceeded : .routeRestoreFailed,
+                detail: restored
+                    ? "Reise mit exakt passendem Offline-Cache fortgesetzt"
+                    : "Offline-Cache war beim Start nicht mehr nutzbar"
+            )
+            return restored
         case .unavailable:
+            DriveDiagnosticStore.append(
+                .routeRestoreFailed,
+                detail: "Keine passende Online-, Offline- oder Live-Route verfügbar"
+            )
             return false
         }
     }
