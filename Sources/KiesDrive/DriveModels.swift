@@ -286,6 +286,19 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
 /// bug from a weak GPS fix when a real drive is reviewed later.
 enum DriveDiagnosticDetail {
     private static let maneuverIdentityPrefix = "Manöver-ID "
+    static let maximumStoredLength = 500
+
+    /// Diagnostics are a compact local quality journal, not a transport log.
+    /// Collapse multiline/provider text and cap every event so one verbose
+    /// network or audio error cannot bloat UserDefaults or an exported report.
+    static func storageSafe(_ detail: String,
+                            maximumLength: Int = maximumStoredLength) -> String {
+        guard maximumLength > 0 else { return "" }
+        let collapsed = detail.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return String(collapsed.prefix(maximumLength))
+    }
 
     static func navigationSample(_ description: String, location: CLLocation?) -> String {
         guard let location else { return description }
@@ -393,7 +406,10 @@ enum DriveDiagnosticStore {
         } else {
             sessionID = defaults.string(forKey: activeSessionKey).flatMap(UUID.init(uuidString:))
         }
-        events.append(.init(sessionID: sessionID, kind: kind, detail: detail))
+        events.append(.init(
+            sessionID: sessionID, kind: kind,
+            detail: DriveDiagnosticDetail.storageSafe(detail)
+        ))
         if events.count > maximumCount {
             events = bounded(events)
         }

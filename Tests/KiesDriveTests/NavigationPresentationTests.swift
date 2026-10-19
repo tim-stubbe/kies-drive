@@ -3139,6 +3139,21 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(events.last?.detail, "119")
     }
 
+    func testDiagnosticStoreBoundsAndFlattensVerboseDetail() throws {
+        let suite = "DriveDiagnosticDetailBounds-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let verbose = "Audiofehler\n\t" + String(repeating: "x", count: 2_000)
+
+        DriveDiagnosticStore.append(.speechDeliveryFailed, detail: verbose, defaults: defaults)
+
+        let event = try XCTUnwrap(DriveDiagnosticStore.load(defaults: defaults).last)
+        XCTAssertLessThanOrEqual(event.detail.count, DriveDiagnosticDetail.maximumStoredLength)
+        XCTAssertFalse(event.detail.contains("\n"))
+        XCTAssertFalse(event.detail.contains("\t"))
+        XCTAssertTrue(event.detail.hasPrefix("Audiofehler "))
+    }
+
     func testDiagnosticStoreNotifiesViewsAfterAppendAndClear() throws {
         let suite = "DriveDiagnosticNotificationTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
