@@ -729,7 +729,16 @@ enum NavigationSpeechFormatter {
         let englishManeuvers: [(String, String)] = [
             (#"(?i)\bat the roundabout\b"#, "Im Kreisverkehr"),
             (#"(?i)\btake the\s+([0-9]{1,2})(?:st|nd|rd|th)\s+exit\b"#, "die $1. Ausfahrt nehmen"),
+            (#"(?i)\buse the right(?:-hand)? lane to take exit\s+([0-9]{1,3}[A-Za-z]?)\b"#,
+             "die rechte Spur benutzen und Ausfahrt $1 nehmen"),
+            (#"(?i)\buse the left(?:-hand)? lane to take exit\s+([0-9]{1,3}[A-Za-z]?)\b"#,
+             "die linke Spur benutzen und Ausfahrt $1 nehmen"),
+            (#"(?i)\buse the (\d+) right lanes to take exit\s+([0-9]{1,3}[A-Za-z]?)\b"#,
+             "die $1 rechten Spuren benutzen und Ausfahrt $2 nehmen"),
+            (#"(?i)\buse the (\d+) left lanes to take exit\s+([0-9]{1,3}[A-Za-z]?)\b"#,
+             "die $1 linken Spuren benutzen und Ausfahrt $2 nehmen"),
             (#"(?i)\btake exit\s+([0-9]{1,3}[A-Za-z]?)\b"#, "Ausfahrt $1 nehmen"),
+            (#"(?i)\bexit\s+([0-9]{1,3}[A-Za-z]?)\b"#, "Ausfahrt $1 nehmen"),
             (#"(?i)\bexit the roundabout onto\b"#, "den Kreisverkehr verlassen auf"),
             (#"(?i)\btake the ramp(?: on the)? right onto\b"#, "die Auffahrt rechts nehmen auf"),
             (#"(?i)\btake the ramp(?: on the)? left onto\b"#, "die Auffahrt links nehmen auf"),
@@ -751,6 +760,8 @@ enum NavigationSpeechFormatter {
             (#"(?i)\bcontinue on\b"#, "weiterfahren auf"),
             (#"(?i)\bcontinue straight\b"#, "geradeaus weiterfahren"),
             (#"(?i)\bkeep straight\b"#, "geradeaus weiterfahren"),
+            (#"(?i)\bstay on\b"#, "weiterfahren auf"),
+            (#"(?i)\bfollow signs for\b"#, "der Beschilderung folgen Richtung"),
             (#"(?i)\bmake a u[- ]turn\b"#, "bitte wenden"),
             (#"(?i)\byour destination is on the right\b"#, "Das Ziel befindet sich rechts"),
             (#"(?i)\byour destination is on the left\b"#, "Das Ziel befindet sich links"),
@@ -795,6 +806,10 @@ enum NavigationSpeechFormatter {
         // as one garbled word. Keep every sign component audible.
         text = replacing(
             #"(?i)\b(Ausfahrt|Exit|Anschlussstelle)\s+([0-9]{1,3})\s*[- ]\s*([A-Z])\b"#,
+            in: text, with: "$1 $2 $3"
+        )
+        text = replacing(
+            #"(?i)\b(Ausfahrt|Exit|Anschlussstelle)\s+([0-9]{1,3})([A-Z])\b"#,
             in: text, with: "$1 $2 $3"
         )
         text = replacingRoundaboutExitOrdinal(in: text)

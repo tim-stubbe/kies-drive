@@ -1720,6 +1720,36 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechTranslatesEnglishMotorwayLaneAndExitInstructions() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Use the right lane to take exit 69A toward A66"
+            ),
+            "Die rechte Spur benutzen und Ausfahrt 69 A nehmen Richtung A 66."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText(
+                "Use the 2 left lanes to take exit 12 toward Graz"
+            ),
+            "Die 2 linken Spuren benutzen und Ausfahrt 12 nehmen Richtung Graz."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Exit 7B toward Split"),
+            "Ausfahrt 7 B nehmen Richtung Split."
+        )
+    }
+
+    func testSpeechTranslatesEnglishMotorwayContinuationInstructions() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Stay on A10 toward Salzburg"),
+            "Weiterfahren auf A 10 Richtung Salzburg."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Follow signs for E71 toward Zagreb"),
+            "Der Beschilderung folgen Richtung E 71 Richtung Zagreb."
+        )
+    }
+
     func testSpeechUsesNaturalKilometreDistance() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("Ausfahrt rechts nehmen", distance: 1_760),
