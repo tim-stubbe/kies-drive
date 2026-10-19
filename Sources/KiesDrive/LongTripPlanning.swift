@@ -1673,7 +1673,14 @@ struct BreakPlanner {
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
         var remaining = candidates.compactMap { candidate -> BreakCandidate? in
             guard BreakCandidateValidationPolicy.isUsable(candidate) else { return nil }
-            let arrival = (candidate.timeProgress ?? candidate.progress) * drivingTime
+            // Opening information must be evaluated when the car reaches the
+            // actual entrance, not when it passes the projection on the main
+            // route. A sizeable motorway/service-area detour can otherwise
+            // turn a near-term provider snapshot into a false "open" promise.
+            let arrival = candidateArrivalTime(
+                candidate: candidate, fallbackProgress: candidate.progress,
+                drivingTime: drivingTime, accumulatedDetourDrivingTime: 0
+            )
             guard PlannedStopOpeningStatusPolicy.mayUse(
                 isOpen: candidate.isOpen, secondsUntilArrival: arrival
             ) else { return nil }

@@ -1102,6 +1102,27 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertFalse(planned?.explanation.contains("Geöffneter Halt") == true)
     }
 
+    func testBreakPlannerIncludesOutboundDetourWhenJudgingOpeningSnapshot() {
+        // Route projection is reached after 40 minutes. The ten-minute drive
+        // from the motorway to the stop makes the provider's current opening
+        // flag older than the trusted 45-minute window at actual arrival.
+        let candidate = BreakCandidate(
+            id: "detour-opening", name: "Autohof", coordinate: .init(),
+            progress: 1.0 / 3.0, timeProgress: 1.0 / 3.0,
+            detourMetres: 50_000.0 / 3.0, detourIsEstimated: false,
+            isOpen: true
+        )
+        let planned = BreakPlanner().plan(
+            drivingTime: 2 * 3600, candidates: [candidate],
+            alreadyDrivenSinceBreak: 70 * 60
+        ).first
+
+        XCTAssertEqual(planned?.candidate?.id, "detour-opening")
+        XCTAssertNil(planned?.candidate?.isOpen)
+        XCTAssertTrue(planned?.explanation.contains("Öffnungsstatus") == true)
+        XCTAssertFalse(planned?.explanation.contains("Geöffneter Halt") == true)
+    }
+
     func testRouteTravelTimeProgressAccountsForSlowLegs() {
         let segments: [(distance: Double, travelTime: TimeInterval)] = [
             (100_000, 3 * 3600),
