@@ -1881,6 +1881,24 @@ enum NavigationMotionPolicy {
     }
 }
 
+/// Presentation boundary for the live speed badge. Core Location can retain
+/// its last sample while the app is briefly backgrounded or GPS reception is
+/// lost. Showing that value as the current speed would be more misleading
+/// than hiding it, especially next to a legal speed-limit sign.
+enum NavigationSpeedDisplayPolicy {
+    static let maximumAge: TimeInterval = 5
+
+    static func speedKilometresPerHour(
+        for location: CLLocation?, now: Date = Date()
+    ) -> Int? {
+        guard let location,
+              abs(location.timestamp.timeIntervalSince(now)) <= maximumAge,
+              let metresPerSecond = NavigationMotionPolicy.reliableSpeed(for: location)
+        else { return nil }
+        return Int((metresPerSecond * 3.6).rounded())
+    }
+}
+
 /// Keeps the driver's marker low in the navigation viewport and exposes more
 /// of the road ahead as speed increases. Fixed zoom and a coordinate centered
 /// exactly on the car hide motorway exits until they are unnecessarily close.

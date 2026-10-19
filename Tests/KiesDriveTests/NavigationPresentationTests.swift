@@ -725,6 +725,38 @@ final class NavigationPresentationTests: XCTestCase {
             speedMetresPerSecond: 95, speedAccuracy: 1, horizontalAccuracy: 12))
     }
 
+    func testSpeedDisplayUsesOnlyFreshReliableLocation() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let fresh = CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            altitude: 0, horizontalAccuracy: 8, verticalAccuracy: 5,
+            course: 90, courseAccuracy: 4,
+            speed: 23.4, speedAccuracy: 0.8,
+            timestamp: now.addingTimeInterval(-2)
+        )
+        XCTAssertEqual(
+            NavigationSpeedDisplayPolicy.speedKilometresPerHour(for: fresh, now: now), 84
+        )
+
+        let stale = CLLocation(
+            coordinate: fresh.coordinate, altitude: 0,
+            horizontalAccuracy: 8, verticalAccuracy: 5,
+            course: 90, courseAccuracy: 4,
+            speed: 23.4, speedAccuracy: 0.8,
+            timestamp: now.addingTimeInterval(-6)
+        )
+        XCTAssertNil(NavigationSpeedDisplayPolicy.speedKilometresPerHour(for: stale, now: now))
+
+        let inaccurate = CLLocation(
+            coordinate: fresh.coordinate, altitude: 0,
+            horizontalAccuracy: 90, verticalAccuracy: 5,
+            course: 90, courseAccuracy: 4,
+            speed: 23.4, speedAccuracy: 0.8,
+            timestamp: now
+        )
+        XCTAssertNil(NavigationSpeedDisplayPolicy.speedKilometresPerHour(for: inaccurate, now: now))
+    }
+
     func testMotionPolicyKeepsCameraStableAtLowSpeed() {
         XCTAssertEqual(NavigationMotionPolicy.reliableCourse(
             courseDegrees: 182, courseAccuracy: 8, speedMetresPerSecond: 18), 182)

@@ -1799,25 +1799,27 @@ struct DriveContentView: View {
             }
             #endif
         }
-        .overlay(alignment: .topLeading) {
-            if !isShowingRouteOverview,
-               let coordinate = location.location?.coordinate,
-               let limit = planner.currentSpeedLimit(near: coordinate) {
-                speedLimitSign(limit).padding()
-            }
-        }
         .overlay(alignment: .bottomLeading) {
             #if os(iOS)
-            if isSimulatorNavigationPreview && !isShowingRouteOverview {
+            if showsNavigationUI && !isShowingRouteOverview {
                 VStack(spacing: 8) {
-                    ZStack {
-                        Circle().fill(.white).frame(width: 56, height: 56)
-                        Circle().stroke(.red, lineWidth: 5).frame(width: 52, height: 52)
-                        Text("100").font(.system(size: 17, weight: .heavy)).foregroundStyle(.black)
+                    if isSimulatorNavigationPreview {
+                        speedLimitSign(SpeedLimitResult(maxspeed: 100, unlimited: false))
+                    } else if let coordinate = location.location?.coordinate,
+                              let limit = planner.currentSpeedLimit(near: coordinate) {
+                        speedLimitSign(limit)
                     }
-                    Text("84").font(.title2.bold()).monospacedDigit()
-                        .frame(width: 58, height: 48)
-                        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    if let speed = isSimulatorNavigationPreview
+                        ? 84
+                        : NavigationSpeedDisplayPolicy.speedKilometresPerHour(for: location.location) {
+                        Text("\(speed)")
+                            .font(.title2.bold()).monospacedDigit()
+                            .foregroundStyle(.primary)
+                            .frame(minWidth: 58, minHeight: 48)
+                            .background(.ultraThickMaterial,
+                                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .accessibilityLabel("Aktuelle Geschwindigkeit \(speed) Kilometer pro Stunde")
+                    }
                 }
                 .padding(.leading, 14).padding(.bottom, 190)
             }
@@ -1963,6 +1965,7 @@ struct DriveContentView: View {
                 EmptyView()
             }
         }
+        .frame(width: 56, height: 56)
         .shadow(radius: 3)
         .accessibilityLabel(speedLimitAccessibilityLabel(limit))
     }
