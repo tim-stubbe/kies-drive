@@ -2636,8 +2636,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             previousAt: lastReliableGuidanceSpeedAt,
             now: location.timestamp
         )
-        if let currentSpeed {
-            lastReliableGuidanceSpeedMps = currentSpeed
+        if currentSpeed != nil {
+            // Keep the filtered guidance speed, rather than the raw fix, so
+            // a motorway warning horizon contracts smoothly while braking.
+            lastReliableGuidanceSpeedMps = guidanceSpeed
             lastReliableGuidanceSpeedAt = location.timestamp
         }
         let previousContinuousDriving = drivingRestState.continuousDriving

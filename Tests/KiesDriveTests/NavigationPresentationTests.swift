@@ -848,6 +848,29 @@ final class NavigationPresentationTests: XCTestCase {
         ), 22, accuracy: 0.01)
     }
 
+    func testGuidanceSpeedDoesNotCollapseOnAbruptMotorwaySlowdown() {
+        let measuredAt = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
+            current: 12, previous: 50, previousAt: measuredAt,
+            now: measuredAt.addingTimeInterval(1)
+        ), 47, accuracy: 0.01)
+    }
+
+    func testGuidanceSpeedConvergesDuringSustainedDeceleration() {
+        let measuredAt = Date(timeIntervalSince1970: 1_000)
+        let first = NavigationGuidanceSpeedPolicy.effective(
+            current: 12, previous: 50, previousAt: measuredAt,
+            now: measuredAt.addingTimeInterval(2)
+        )
+        let second = NavigationGuidanceSpeedPolicy.effective(
+            current: 12, previous: first,
+            previousAt: measuredAt.addingTimeInterval(2),
+            now: measuredAt.addingTimeInterval(4)
+        )
+        XCTAssertEqual(first, 44, accuracy: 0.01)
+        XCTAssertEqual(second, 38, accuracy: 0.01)
+    }
+
     func testManeuverEstimateUsesMovementAndSensibleFallback() {
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_000, speedMetresPerSecond: 20), 50, accuracy: 0.01)
         XCTAssertEqual(NavigationEstimatePolicy.timeToManeuver(distanceMetres: 1_390, speedMetresPerSecond: 0), 100, accuracy: 0.1)

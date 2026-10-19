@@ -1910,10 +1910,24 @@ enum NavigationFollowCameraPolicy {
 enum NavigationGuidanceSpeedPolicy {
     static let retention: TimeInterval = 20
     static let fallbackMetresPerSecond = 13.9 // roughly 50 km/h
+    static let maximumGuidanceDeceleration = 3.0
 
     static func effective(current: Double?, previous: Double?, previousAt: Date?,
                           now: Date) -> Double {
-        if let current { return current }
+        if let current {
+            guard let previous, let previousAt else { return current }
+            let elapsed = now.timeIntervalSince(previousAt)
+            guard elapsed >= 0, elapsed <= retention else { return current }
+            // A single noisy fix or braking wave before a motorway exit must
+            // not collapse the warning horizon from motorway to city timing.
+            // Follow genuine deceleration quickly, but limit the rate at
+            // which guidance timing shrinks. Persisting this effective value
+            // makes the reduction continuous over subsequent fixes.
+            let decayedPrevious = max(
+                0, previous - maximumGuidanceDeceleration * elapsed
+            )
+            return max(current, decayedPrevious)
+        }
         if let previous, let previousAt,
            now.timeIntervalSince(previousAt) >= 0,
            now.timeIntervalSince(previousAt) <= retention {
