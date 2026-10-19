@@ -1567,6 +1567,25 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechTranslatesCommonCrossBorderManeuvers() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Take the ramp right onto A2 toward Graz"),
+            "Die Auffahrt rechts nehmen auf A 2 Richtung Graz."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Merge onto A10"),
+            "Einfädeln auf A 10."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Slight left onto SS13"),
+            "Leicht links abbiegen auf SS 13."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Your destination is on the right"),
+            "Das Ziel befindet sich rechts."
+        )
+    }
+
     func testSpeechUsesNaturalKilometreDistance() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("Ausfahrt rechts nehmen", distance: 1_760),
