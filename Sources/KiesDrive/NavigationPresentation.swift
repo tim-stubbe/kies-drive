@@ -2420,8 +2420,34 @@ enum NavigationRerouteWatchdogPolicy {
     static let timeout: TimeInterval = 20
     static let timeoutNanoseconds: UInt64 = UInt64(timeout * 1_000_000_000)
 
+    static func timeout(legCount: Int) -> TimeInterval {
+        timeout * Double(NavigationMultiLegRoutingPolicy.batchCount(for: legCount))
+    }
+
+    static func timeoutNanoseconds(legCount: Int) -> UInt64 {
+        UInt64(timeout(legCount: legCount) * 1_000_000_000)
+    }
+
     static func hasTimedOut(startedAt: Date, now: Date = Date()) -> Bool {
         now.timeIntervalSince(startedAt) >= timeout
+    }
+}
+
+enum NavigationMultiLegRoutingPolicy {
+    /// Matches the already proven bounded concurrency used by along-route POI
+    /// search. Holiday routes no longer wait for every independent MapKit leg
+    /// serially, while arbitrary stop lists cannot flood the service.
+    static let maximumConcurrentLegs = 5
+
+    static func batches(legCount: Int) -> [Range<Int>] {
+        guard legCount > 0 else { return [] }
+        return stride(from: 0, to: legCount, by: maximumConcurrentLegs).map { start in
+            start..<min(legCount, start + maximumConcurrentLegs)
+        }
+    }
+
+    static func batchCount(for legCount: Int) -> Int {
+        max(1, batches(legCount: legCount).count)
     }
 }
 

@@ -1237,6 +1237,20 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testMultiLegRoutesUseBoundedParallelBatchesAndMatchingWatchdog() {
+        XCTAssertEqual(NavigationMultiLegRoutingPolicy.maximumConcurrentLegs, 5)
+        XCTAssertEqual(NavigationMultiLegRoutingPolicy.batches(legCount: 0), [])
+        XCTAssertEqual(NavigationMultiLegRoutingPolicy.batches(legCount: 4), [0..<4])
+        XCTAssertEqual(NavigationMultiLegRoutingPolicy.batches(legCount: 6), [0..<5, 5..<6])
+        XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeout(legCount: 1), 20)
+        XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeout(legCount: 5), 20)
+        XCTAssertEqual(NavigationRerouteWatchdogPolicy.timeout(legCount: 6), 40)
+        XCTAssertEqual(
+            NavigationRerouteWatchdogPolicy.timeoutNanoseconds(legCount: 6),
+            40_000_000_000
+        )
+    }
+
     func testRemoteSyncPolicyIsFastOnlyDuringNavigationAndRejectsBadFixes() {
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: true), 5)
         XCTAssertEqual(DriveRemoteSyncPolicy.interval(navigationActive: false), 15)

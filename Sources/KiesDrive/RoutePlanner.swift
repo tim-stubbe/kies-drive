@@ -2186,7 +2186,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 shouldLoadComparison = true
             } else {
                 // MapKit kennt keine mehrgliedrigen Routen als ein einziges Objekt.
-                // Daher Teilstrecken sequentiell (Start→wp1→wp2→…→Ziel) berechnen.
+                // Die voneinander unabhängigen Teilstrecken werden begrenzt
+                // parallel berechnet und anschließend wieder geordnet.
                 let waypoints: [MKMapItem] = waypointSource == .transientStations
                     ? viaStations.map {
                         let item = MKMapItem(placemark: MKPlacemark(coordinate: $0.coordinate))
@@ -2200,20 +2201,40 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     }
                 let allStops = [startItem] + waypoints + [destination]
 
-                var newLegs: [MKRoute] = []
-                for i in 0..<(allStops.count - 1) {
-                    let from = allStops[i]
-                    let to = allStops[i + 1]
-                    let lockedOptions = i == 0 ? currentLockedOptions
-                        : lockedWaypoints[safe: i - 1]?.optionsAfter ?? lock?.defaultOptions
-                    guard let leg = try await computeRoutes(from: from, to: to, settings: settings,
-                                                            alternates: false, lockedOptions: lockedOptions).first else {
-                        throw DriveAPIError.invalidData
+                let legCount = allStops.count - 1
+                var newLegs = [MKRoute?](repeating: nil, count: legCount)
+                for batch in NavigationMultiLegRoutingPolicy.batches(legCount: legCount) {
+                    let calculated = try await withThrowingTaskGroup(
+                        of: (Int, MKRoute).self,
+                        returning: [(Int, MKRoute)].self
+                    ) { group in
+                        for index in batch {
+                            let from = allStops[index]
+                            let to = allStops[index + 1]
+                            let lockedOptions = index == 0 ? currentLockedOptions
+                                : lockedWaypoints[safe: index - 1]?.optionsAfter ?? lock?.defaultOptions
+                            group.addTask { @MainActor [weak self] in
+                                guard let self,
+                                      let leg = try await self.computeRoutes(
+                                        from: from, to: to, settings: settings,
+                                        alternates: false, lockedOptions: lockedOptions
+                                      ).first else {
+                                    throw DriveAPIError.invalidData
+                                }
+                                return (index, leg)
+                            }
+                        }
+                        var result: [(Int, MKRoute)] = []
+                        for try await leg in group { result.append(leg) }
+                        return result
                     }
                     guard calculationGeneration == routeCalculationGeneration else { return false }
-                    newLegs.append(leg)
+                    for (index, leg) in calculated { newLegs[index] = leg }
                 }
-                computedLegs = newLegs
+                guard newLegs.allSatisfy({ $0 != nil }) else {
+                    throw DriveAPIError.invalidData
+                }
+                computedLegs = newLegs.compactMap { $0 }
                 computedAlternatives = []
                 computedComparison = nil
                 shouldLoadComparison = false
@@ -4319,8 +4340,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // by "Route wird neu berechnet" forever. The generation checks make
         // this watchdog ownership-specific: a new trip or newer reroute is
         // never stopped by an older timer.
+        let remainingRequiredWaypoints = routeLockStore.activeLock.map { lock in
+            let visited = Set(lock.visitedWaypointIDs ?? [])
+            return lock.waypoints.filter { $0.required && !visited.contains($0.id) }.count
+        } ?? 0
+        let watchdogLegCount = max(1, max(remainingRequiredWaypoints, viaStations.count) + 1)
+        let watchdogTimeout = NavigationRerouteWatchdogPolicy.timeout(
+            legCount: watchdogLegCount
+        )
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: NavigationRerouteWatchdogPolicy.timeoutNanoseconds)
+            try? await Task.sleep(
+                nanoseconds: NavigationRerouteWatchdogPolicy.timeoutNanoseconds(
+                    legCount: watchdogLegCount
+                )
+            )
             guard let self,
                   NavigationAsyncWorkPolicy.isCurrent(
                     navigationActive: self.isNavigating,
@@ -4338,7 +4371,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             self.lastRerouteAt = Date()
             DriveDiagnosticStore.append(
                 .rerouteFailed,
-                detail: "Zeitüberschreitung nach \(Int(NavigationRerouteWatchdogPolicy.timeout)) Sekunden"
+                detail: "Zeitüberschreitung nach \(Int(watchdogTimeout)) Sekunden"
             )
             if settings.voiceGuidance {
                 _ = self.speak(
