@@ -2370,6 +2370,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(actions.count, 1)
         XCTAssertEqual(actions.first?.purpose, CarPlayPlannedStopAction.Purpose.breakAndFuel)
         XCTAssertEqual(actions.first?.candidate.id, "stop-a")
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsCarPlayAction(
+            actions[0], currentPlan: plan
+        ))
     }
 
     func testCarPlayPlannedStopsExcludeExistingAndKeepEarliestTwo() {
@@ -2428,6 +2431,36 @@ final class NavigationPresentationTests: XCTestCase {
 
         XCTAssertEqual(actions.map(\.candidate.id), ["ahead"])
         XCTAssertEqual(actions.first?.purpose, .fuelOnly)
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsCarPlayAction(
+            actions[0], currentPlan: .init(createdAt: Date(), results: [result], note: "")
+        ), "A fuel-only CarPlay action must be valid without manufacturing a break")
+    }
+
+    func testCarPlayRejectsStalePlannedStopAfterPlanMoves() {
+        let candidate = BreakCandidate(
+            id: "stop", name: "Autohof", coordinate: .init(),
+            progress: 0.4, detourMetres: 100, isOpen: true
+        )
+        let action = CarPlayPlannedStopAction(
+            candidate: candidate, purpose: .breakOnly,
+            insertionRouteProgress: 0.4, afterDriving: 3_000, afterDistanceMetres: nil
+        )
+        let movedBreak = PlannedBreak(
+            id: "break", candidate: candidate, afterDriving: 3_500,
+            duration: 1_200, routeProgress: 0.5, explanation: "Neu geplant",
+            installedRouteProgress: 0.5
+        )
+        let result = RouteScenarioResult(
+            id: "route", routeTitle: "Route", scenario: .target(130),
+            distanceMetres: 100_000, drivingTime: 4_000, totalTime: 5_200,
+            fuel: .init(litres: 7, cost: 12, averageConsumptionLPer100km: 7),
+            toll: .unknown(reason: "Test"), breaks: [movedBreak], fuelStops: [],
+            unlimitedFraction: 0
+        )
+
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsCarPlayAction(
+            action, currentPlan: .init(createdAt: Date(), results: [result], note: "")
+        ))
     }
 
     func testCarPlayKeepsRebasedRemainingStopUsingInstalledRouteProgress() throws {

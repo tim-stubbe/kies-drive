@@ -5477,7 +5477,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Route neu.
     @discardableResult
     func toggleWaypoint(_ station: FuelStation, from start: CLLocationCoordinate2D,
-                        settings: DriveSettings) async -> Bool {
+                        settings: DriveSettings,
+                        knownRouteProgress: Double? = nil) async -> Bool {
         // `toggle` is especially vulnerable to double taps: the first call
         // inserts synchronously before awaiting MapKit, so an overlapping
         // second call would otherwise interpret the same tap as "remove".
@@ -5490,7 +5491,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
         )
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
-        let candidateProgress = RouteGeometryProgress.nearestProgress(
+        let candidateProgress = knownRouteProgress ?? RouteGeometryProgress.nearestProgress(
             of: station.coordinate, on: routeCoordinates
         )?.progress
         guard PlannedStopSelectionPolicy.acceptsFuelStation(
@@ -5666,6 +5667,42 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 knownRouteProgress: plannedBreak.insertionRouteProgress
             )
         }
+    }
+
+    /// CarPlay presents a compact projection of the selected route scenario,
+    /// not a newly authored `PlannedBreak`. Resolve that projection back to
+    /// the authoritative current plan before mutating the route. This also
+    /// supports fuel-only actions, which intentionally have no break object.
+    @discardableResult
+    func addCarPlayPlannedStop(_ action: CarPlayPlannedStopAction,
+                               from start: CLLocationCoordinate2D,
+                               settings: DriveSettings) async -> Bool {
+        guard PlannedStopSelectionPolicy.acceptsCarPlayAction(
+            action, currentPlan: longTripPlan
+        ) else {
+            errorMessage = "Der Reiseplan wurde inzwischen aktualisiert. Bitte öffne die Stoppliste erneut."
+            return false
+        }
+        if isRouteStopSelected(id: action.candidate.id) { return true }
+        if action.purpose != .fuelOnly,
+           let plannedBreak = longTripPlan?.results.first?.breaks.first(where: {
+               $0.candidate?.id == action.candidate.id &&
+                   abs($0.insertionRouteProgress - action.insertionRouteProgress) <= 0.000_1
+           }) {
+            return await addPlannedBreak(plannedBreak, from: start, settings: settings)
+        }
+        if let station = stations.first(where: { $0.id == action.candidate.id }) {
+            return await toggleWaypoint(
+                station, from: start, settings: settings,
+                knownRouteProgress: action.insertionRouteProgress
+            )
+        }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: action.candidate.coordinate))
+        item.name = action.candidate.name
+        return await addRouteStop(
+            item, from: start, settings: settings,
+            knownRouteProgress: action.insertionRouteProgress
+        )
     }
 
     private func sample(_ polyline: MKPolyline, maximum: Int) -> [CLLocationCoordinate2D] {

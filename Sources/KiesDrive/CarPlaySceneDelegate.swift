@@ -627,14 +627,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                             self?.showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
                             return
                         }
-                        let plannedBreak = PlannedBreak(
-                            id: action.candidate.id, candidate: action.candidate,
-                            afterDriving: action.afterDriving ?? 0, duration: 0,
-                            routeProgress: action.insertionRouteProgress,
-                            explanation: "Über CarPlay zur Route hinzugefügt"
-                        )
-                        let succeeded = await planner.addPlannedBreak(
-                            plannedBreak, from: start, settings: .shared
+                        let succeeded = await planner.addCarPlayPlannedStop(
+                            action, from: start, settings: .shared
                         )
                         completion()
                         if succeeded {

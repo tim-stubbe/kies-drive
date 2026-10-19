@@ -404,6 +404,24 @@ enum PlannedStopSelectionPolicy {
                              currentPlan: LongTripPlan?) -> Bool {
         currentPlan?.results.contains { $0.breaks.contains(plannedBreak) } ?? false
     }
+
+    static func acceptsCarPlayAction(_ action: CarPlayPlannedStopAction,
+                                     currentPlan: LongTripPlan?) -> Bool {
+        guard let result = currentPlan?.results.first else { return false }
+        let matchingBreak = result.breaks.first {
+            $0.candidate?.id == action.candidate.id &&
+                abs($0.insertionRouteProgress - action.insertionRouteProgress) <= 0.000_1
+        }
+        let matchingFuel = result.fuelStops.first {
+            $0.candidate?.id == action.candidate.id &&
+                abs($0.insertionRouteProgress - action.insertionRouteProgress) <= 0.000_1
+        }
+        switch action.purpose {
+        case .breakOnly: return matchingBreak != nil && matchingFuel == nil
+        case .fuelOnly: return matchingBreak == nil && matchingFuel != nil
+        case .breakAndFuel: return matchingBreak != nil && matchingFuel != nil
+        }
+    }
 }
 
 struct RouteStopMutationGate {
