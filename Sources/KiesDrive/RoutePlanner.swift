@@ -2288,12 +2288,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 async let stationLoad: Void = self.loadStations(fuel: settings.fuel)
                 async let amenityLoad: Void = self.loadBreakAmenities()
                 async let speedLimitLoad: Void = self.loadSpeedLimits()
-                await stationLoad
-                await amenityLoad
+                // Speed evidence alone is enough for the first honest
+                // 150/200-km/h time and fuel comparison. Publish that as soon
+                // as it arrives instead of keeping the whole travel planner
+                // blank behind slower station, amenity and detour providers.
+                await speedLimitLoad
+                guard calculationGeneration == self.routeCalculationGeneration else { return }
+                self.buildLongTripPlan(settings: settings)
+                _ = await (stationLoad, amenityLoad)
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 await self.measureBreakCandidateDetours()
-                guard calculationGeneration == self.routeCalculationGeneration else { return }
-                await speedLimitLoad
                 guard calculationGeneration == self.routeCalculationGeneration else { return }
                 if !shouldLoadComparison {
                     await self.loadTollCost(from: start, settings: settings)
