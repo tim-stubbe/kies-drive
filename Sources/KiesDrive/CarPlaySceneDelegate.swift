@@ -131,6 +131,19 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         // finishes only the CarPlay presentation; RoutePlanner keeps the
         // local trip and guidance running on the phone.
         navigationSession?.finishTrip()
+        // A head unit is allowed to reconnect without first delivering the
+        // matching disconnect callback. Release every presentation object
+        // owned by that previous connection before attaching the new one;
+        // otherwise location and route updates can continue targeting an old
+        // MKMapView while the fresh dashboard remains visually stale.
+        carWindow?.isHidden = true
+        carWindow = nil
+        mapView = nil
+        speedLimitBadgeView = nil
+        offlineAttributionLabel = nil
+        offlineTileOverlay = nil
+        mapTemplate = nil
+        audioMapButton = nil
         routeRestoreTask?.cancel()
         routeRestoreTask = nil
         routeRestoreInProgress = false
@@ -144,6 +157,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         carPlaySearchGeneration = UUID()
         carPlaySearchResults = [:]
         carPlayRouteSearchResults = [:]
+        hasShownLocationAccessAlert = false
+        hasShownBackgroundLocationAlert = false
+        hasShownRouteRestoreAlert = false
+        routeRecoveryPresentationState = .normal
         cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
         observedNavigationActive = false
         lastReliableCourse = nil
