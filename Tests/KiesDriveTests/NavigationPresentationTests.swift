@@ -1411,6 +1411,29 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(display.guidanceUnavailable)
     }
 
+    func testInstructionCardCompactsOnlyOnReliableLongCruiseLegs() {
+        XCTAssertTrue(NavigationInstructionCardLayoutPolicy.usesCompactCruiseLayout(
+            distance: 2_001, guidanceReliable: true,
+            recalculating: false, matchingPosition: false
+        ))
+        XCTAssertFalse(NavigationInstructionCardLayoutPolicy.usesCompactCruiseLayout(
+            distance: 2_000, guidanceReliable: true,
+            recalculating: false, matchingPosition: false
+        ), "The full card must return before an approaching maneuver")
+        XCTAssertFalse(NavigationInstructionCardLayoutPolicy.usesCompactCruiseLayout(
+            distance: 5_000, guidanceReliable: false,
+            recalculating: false, matchingPosition: false
+        ))
+        XCTAssertFalse(NavigationInstructionCardLayoutPolicy.usesCompactCruiseLayout(
+            distance: 5_000, guidanceReliable: true,
+            recalculating: true, matchingPosition: false
+        ))
+        XCTAssertFalse(NavigationInstructionCardLayoutPolicy.usesCompactCruiseLayout(
+            distance: 5_000, guidanceReliable: true,
+            recalculating: false, matchingPosition: true
+        ))
+    }
+
     func testRerouteWatchdogEndsOnlyAfterBoundedWait() {
         let startedAt = Date(timeIntervalSince1970: 10_000)
         XCTAssertFalse(NavigationRerouteWatchdogPolicy.hasTimedOut(

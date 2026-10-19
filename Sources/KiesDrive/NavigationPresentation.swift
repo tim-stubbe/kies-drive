@@ -2674,6 +2674,22 @@ enum NavigationInstructionDisplayPolicy {
     }
 }
 
+/// Keeps the map useful on long motorway legs without shrinking the guidance
+/// when the driver actually needs to make a decision. Any uncertain state is
+/// deliberately rendered with the full card.
+enum NavigationInstructionCardLayoutPolicy {
+    static let compactDistanceThreshold: CLLocationDistance = 2_000
+
+    static func usesCompactCruiseLayout(distance: CLLocationDistance?,
+                                        guidanceReliable: Bool,
+                                        recalculating: Bool,
+                                        matchingPosition: Bool) -> Bool {
+        guard guidanceReliable, !recalculating, !matchingPosition,
+              let distance, distance.isFinite else { return false }
+        return distance > compactDistanceThreshold
+    }
+}
+
 /// Failed MapKit requests must not turn a genuine deviation into a spoken
 /// recalculation loop. Successful reroutes retain the short normal cooldown;
 /// repeated failures back off while the old route remains visible.

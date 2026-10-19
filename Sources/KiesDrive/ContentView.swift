@@ -34,7 +34,16 @@ struct DriveContentView: View {
 
     private var isSimulatorNavigationPreview: Bool {
         #if targetEnvironment(simulator)
-        ProcessInfo.processInfo.arguments.contains("--navigation-preview")
+        ProcessInfo.processInfo.arguments.contains("--navigation-preview") ||
+            ProcessInfo.processInfo.arguments.contains("--navigation-cruise-preview")
+        #else
+        false
+        #endif
+    }
+
+    private var isSimulatorNavigationCruisePreview: Bool {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--navigation-cruise-preview")
         #else
         false
         #endif
@@ -171,6 +180,14 @@ struct DriveContentView: View {
                 if showsNavigationUI {
                     if isShowingRouteOverview {
                         compactNavigationInstructionCard
+                            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                    } else if NavigationInstructionCardLayoutPolicy.usesCompactCruiseLayout(
+                        distance: isSimulatorNavigationCruisePreview ? 8_400 : planner.nextManeuverDistance,
+                        guidanceReliable: isSimulatorNavigationPreview || planner.isManeuverGuidanceReliable,
+                        recalculating: planner.isRecalculating,
+                        matchingPosition: planner.isMatchingOfflinePosition
+                    ) {
+                        cruiseNavigationInstructionCard
                             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     } else {
                         navigationInstructionCard
@@ -1194,6 +1211,40 @@ struct DriveContentView: View {
         .foregroundStyle(.white).padding(14)
         .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+    }
+
+    private var cruiseNavigationInstructionCard: some View {
+        let instruction = isSimulatorNavigationCruisePreview
+            ? "Ausfahrt 12 rechts Richtung Wiesbaden auf die A66"
+            : (planner.nextManeuverInstruction ?? planner.nextInstruction ?? "Route folgen")
+        let maneuver = NavigationManeuverPresentation(instruction)
+        return HStack(spacing: 14) {
+            Image(systemName: maneuver.direction.symbolName)
+                .font(.system(size: 34, weight: .bold)).frame(width: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                if let distance = isSimulatorNavigationCruisePreview ? 8_400 : planner.nextManeuverDistance {
+                    Text("In \(formatDistance(distance))")
+                        .font(.title2.bold()).monospacedDigit()
+                }
+                Text(maneuver.destinationLabel.map { "Richtung \($0)" } ?? maneuver.instruction)
+                    .font(.headline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.72)
+            }
+            Spacer(minLength: 4)
+            Button {
+                settings.voiceGuidance.toggle()
+                planner.setVoiceGuidanceEnabled(settings.voiceGuidance)
+            } label: {
+                Image(systemName: settings.voiceGuidance ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .font(.title3.bold()).frame(width: 42, height: 42)
+                    .background(.white.opacity(0.18), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(settings.voiceGuidance ? "Sprachansagen ausschalten" : "Sprachansagen einschalten")
+        }
+        .foregroundStyle(.white).padding(14)
+        .background(Color.kiesForest.opacity(0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+        .accessibilityElement(children: .combine)
     }
 
     private func stationDetailSheet(_ station: FuelStation) -> some View {
