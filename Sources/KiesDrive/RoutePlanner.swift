@@ -1,6 +1,7 @@
 import Foundation
 import MapKit
 import AVFoundation
+import CryptoKit
 
 private enum FuelStationLoadOutcome {
     case batch([FuelStation])
@@ -189,7 +190,21 @@ enum OfflineRouteGeometryIdentityPolicy {
                 coordinate(coordinates[$0])
             }.joined(separator: ";")
             let distance = Int((max(0, leg.distance) / 100).rounded()) * 100
-            return "\(index):\(distance):\(coordinates.count):\(anchors)"
+            // Geometry alone cannot detect a readable cache whose maneuver
+            // text was changed from e.g. left to right. Bind every instruction
+            // and step distance into the fingerprint without storing another
+            // reversible copy of street names in cache metadata.
+            let guidanceMaterial = leg.steps.map {
+                let instruction = $0.instructions
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let stepDistance = Int((max(0, $0.distance) / 10).rounded()) * 10
+                return "\(stepDistance):\(instruction)"
+            }.joined(separator: "\u{1f}")
+            let guidanceHash = SHA256.hash(data: Data(guidanceMaterial.utf8))
+                .prefix(12)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            return "v2:\(index):\(distance):\(coordinates.count):\(anchors):\(guidanceHash)"
         }
         return parts.joined(separator: "|")
     }

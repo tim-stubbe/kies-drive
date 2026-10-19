@@ -335,6 +335,45 @@ final class RoutePersistenceTests: XCTestCase {
         )
     }
 
+    func testOfflineRouteFingerprintRejectsAlteredManeuverText() throws {
+        let coordinates = [
+            DriveCoordinate(latitude: 50, longitude: 8),
+            DriveCoordinate(latitude: 50.01, longitude: 8.1),
+        ]
+        let originalLegs = [CachedRoute.Leg(
+            distance: 12_000, travelTime: 900,
+            steps: [.init(
+                instructions: "Rechts abbiegen", distance: 12_000,
+                coordinates: coordinates
+            )],
+            coordinates: coordinates
+        )]
+        let identity = try XCTUnwrap(
+            OfflineRouteGeometryIdentityPolicy.identity(for: originalLegs)
+        )
+        XCTAssertTrue(identity.hasPrefix("v2:"))
+
+        let alteredLegs = [CachedRoute.Leg(
+            distance: 12_000, travelTime: 900,
+            steps: [.init(
+                instructions: "Links abbiegen", distance: 12_000,
+                coordinates: coordinates
+            )],
+            coordinates: coordinates
+        )]
+        let altered = CachedRoute(
+            destinationName: "Hochheim", tripID: UUID(),
+            destinationCoordinate: .init(latitude: 50.01, longitude: 8.35),
+            routeConstraintIdentity: "constraints", geometryIdentity: identity,
+            legs: alteredLegs, stations: [], savedAt: Date()
+        )
+
+        XCTAssertFalse(OfflineRouteCacheValidationPolicy.isValid(altered))
+        XCTAssertNotEqual(
+            identity, OfflineRouteGeometryIdentityPolicy.identity(for: alteredLegs)
+        )
+    }
+
     func testOfflineRouteRejectsEmptyGeometryFingerprint() {
         let legs = [CachedRoute.Leg(
             distance: 1_000, travelTime: 60,
