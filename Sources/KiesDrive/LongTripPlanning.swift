@@ -1561,11 +1561,13 @@ struct BreakPlanner {
         // this remaining route. PlannedBreak.afterDriving stays relative to
         // now, which is what the UI communicates to the driver.
         var lastBreakDrivingTime = -elapsed
+        var accumulatedDetourDrivingTime: TimeInterval = 0
         var result: [PlannedBreak] = []
-        while drivingTime - lastBreakDrivingTime > maximumContinuousDriving {
+        while drivingTime + accumulatedDetourDrivingTime - lastBreakDrivingTime > maximumContinuousDriving {
             let index = result.count + 1
             let idealDrivingTime = lastBreakDrivingTime + maximumContinuousDriving
-            let idealProgress = min(0.95, max(0, idealDrivingTime / drivingTime))
+            let idealBaseDrivingTime = max(0, idealDrivingTime - accumulatedDetourDrivingTime)
+            let idealProgress = min(0.95, max(0, idealBaseDrivingTime / drivingTime))
             let earliestDrivingTime = max(0,
                                           idealDrivingTime - earliestStopTolerance)
             // A named amenity may move the stop slightly earlier, never past
@@ -1575,21 +1577,41 @@ struct BreakPlanner {
             let latestDrivingTime = min(drivingTime, idealDrivingTime)
             let coordinatedFuelStop = remainingFuelStops
                 .filter {
-                    let stopTime = ($0.candidate?.timeProgress ?? $0.routeProgress) * drivingTime
+                    let stopTime = candidateArrivalTime(
+                        candidate: $0.candidate,
+                        fallbackProgress: $0.routeProgress,
+                        drivingTime: drivingTime,
+                        accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                    )
                     return stopTime > lastBreakDrivingTime &&
                         stopTime >= earliestDrivingTime && stopTime <= latestDrivingTime
                 }
                 .min {
-                    abs(($0.candidate?.timeProgress ?? $0.routeProgress) * drivingTime - idealDrivingTime) <
-                        abs(($1.candidate?.timeProgress ?? $1.routeProgress) * drivingTime - idealDrivingTime)
+                    abs(candidateArrivalTime(
+                        candidate: $0.candidate, fallbackProgress: $0.routeProgress,
+                        drivingTime: drivingTime,
+                        accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                    ) - idealDrivingTime) < abs(candidateArrivalTime(
+                        candidate: $1.candidate, fallbackProgress: $1.routeProgress,
+                        drivingTime: drivingTime,
+                        accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                    ) - idealDrivingTime)
                 }
             let candidatesAhead = remaining.filter {
-                let candidateTime = ($0.timeProgress ?? $0.progress) * drivingTime
+                let candidateTime = candidateArrivalTime(
+                    candidate: $0, fallbackProgress: $0.progress,
+                    drivingTime: drivingTime,
+                    accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                )
                 return candidateTime >= earliestDrivingTime &&
                     candidateTime <= latestDrivingTime
             }
             let candidatesInWindow = candidatesAhead.filter {
-                abs(($0.timeProgress ?? $0.progress) - idealProgress) <= 0.12
+                abs(candidateArrivalTime(
+                    candidate: $0, fallbackProgress: $0.progress,
+                    drivingTime: drivingTime,
+                    accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                ) - idealDrivingTime) <= drivingTime * 0.12
             }
             // A distant stop is not an "optimal" pause merely because it is
             // the only search result. Leave the location unverified instead.
@@ -1606,7 +1628,15 @@ struct BreakPlanner {
                 best = coordinatedFuelStop.candidate
             } else {
                 best = candidatesInWindow.min {
-                    score($0, idealProgress: idealProgress) < score($1, idealProgress: idealProgress)
+                    score(
+                        $0, idealDrivingTime: idealDrivingTime,
+                        drivingTime: drivingTime,
+                        accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                    ) < score(
+                        $1, idealDrivingTime: idealDrivingTime,
+                        drivingTime: drivingTime,
+                        accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                    )
                 }
             }
             if let best {
@@ -1620,7 +1650,12 @@ struct BreakPlanner {
                 ?? best?.timeProgress
                 ?? coordinatedFuelStop?.routeProgress
                 ?? progress
-            let breakDrivingTime = drivingTime * selectedTimeProgress
+            let selectedCandidate = coordinatedFuelStop?.candidate ?? best
+            let selectedDetourDrivingTime = selectedCandidate.map {
+                BreakStopDetourTimingPolicy.totalDrivingTime(detourMetres: $0.detourMetres)
+            } ?? 0
+            let breakDrivingTime = drivingTime * selectedTimeProgress +
+                accumulatedDetourDrivingTime + selectedDetourDrivingTime / 2
             let detour = best.map {
                 " · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres / 100) * 100) m Umweg"
             } ?? ""
@@ -1633,6 +1668,7 @@ struct BreakPlanner {
             ))
             guard breakDrivingTime > lastBreakDrivingTime else { break }
             lastBreakDrivingTime = breakDrivingTime
+            accumulatedDetourDrivingTime += selectedDetourDrivingTime
         }
         return result
     }
@@ -1652,10 +1688,36 @@ struct BreakPlanner {
         return "\(purpose) nahe dem optimalen Pausenfenster\(detour) · Öffnungsstatus vor Abfahrt prüfen."
     }
 
-    private func score(_ candidate: BreakCandidate, idealProgress: Double) -> Double {
+    private func candidateArrivalTime(candidate: BreakCandidate?, fallbackProgress: Double,
+                                      drivingTime: TimeInterval,
+                                      accumulatedDetourDrivingTime: TimeInterval) -> TimeInterval {
+        let base = (candidate?.timeProgress ?? candidate?.progress ?? fallbackProgress) * drivingTime
+        let outbound = candidate.map {
+            BreakStopDetourTimingPolicy.totalDrivingTime(detourMetres: $0.detourMetres) / 2
+        } ?? 0
+        return base + accumulatedDetourDrivingTime + outbound
+    }
+
+    private func score(_ candidate: BreakCandidate, idealDrivingTime: TimeInterval,
+                       drivingTime: TimeInterval,
+                       accumulatedDetourDrivingTime: TimeInterval) -> Double {
         let unknownOpeningPenalty = candidate.isOpen == nil ? 3.0 : 0
-        return abs((candidate.timeProgress ?? candidate.progress) - idealProgress) * 100 +
+        let arrival = candidateArrivalTime(
+            candidate: candidate, fallbackProgress: candidate.progress,
+            drivingTime: drivingTime,
+            accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+        )
+        return abs(arrival - idealDrivingTime) / max(1, drivingTime) * 100 +
             min(40, candidate.detourMetres / 1_000 * 8) + unknownOpeningPenalty
+    }
+}
+
+enum BreakStopDetourTimingPolicy {
+    static let assumedSpeedKmh = 50.0
+
+    static func totalDrivingTime(detourMetres: CLLocationDistance) -> TimeInterval {
+        guard detourMetres.isFinite, detourMetres > 0 else { return 0 }
+        return detourMetres / (assumedSpeedKmh / 3.6)
     }
 }
 

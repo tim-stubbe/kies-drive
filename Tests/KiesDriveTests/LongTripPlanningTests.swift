@@ -960,7 +960,7 @@ final class LongTripPlanningTests: XCTestCase {
     func testBreakPlannerCanUseCurrentlyClosedStopHoursAhead() {
         let candidate = BreakCandidate(
             id: "later", name: "Raststätte später", coordinate: .init(),
-            progress: 0.4, detourMetres: 100, isOpen: false
+            progress: 0.4, detourMetres: 0, isOpen: false
         )
         let planned = BreakPlanner().plan(
             drivingTime: 5 * 3600, candidates: [candidate]
@@ -1065,7 +1065,7 @@ final class LongTripPlanningTests: XCTestCase {
             BreakCandidate(
                 id: "time-near", name: "Zeitlich passend", coordinate: .init(),
                 progress: 0.6, timeProgress: 0.4,
-                detourMetres: 200, isOpen: true
+                detourMetres: 0, isOpen: true
             ),
         ]
 
@@ -1764,6 +1764,34 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(planned?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
     }
 
+    func testBreakPlannerIncludesOutboundDetourBeforeSafetyLimit() {
+        let atLimitButOffRoute = BreakCandidate(
+            id: "late-after-exit", name: "Autohof mit Zufahrt", coordinate: .init(),
+            progress: 2.0 / 3.0, detourMetres: 20_000, isOpen: true
+        )
+        let planned = BreakPlanner().plan(
+            drivingTime: 3 * 3600, candidates: [atLimitButOffRoute]
+        ).first
+
+        XCTAssertNil(planned?.candidate,
+                     "The outbound half of a detour must not push continuous driving past two hours")
+        XCTAssertEqual(planned?.afterDriving ?? 0, 2 * 3600, accuracy: 1)
+        XCTAssertEqual(
+            BreakStopDetourTimingPolicy.totalDrivingTime(detourMetres: 20_000),
+            24 * 60, accuracy: 0.1
+        )
+
+        let safelyEarly = BreakCandidate(
+            id: "early-enough", name: "Früher Autohof", coordinate: .init(),
+            progress: 1.75 / 3.0, detourMetres: 20_000, isOpen: true
+        )
+        let accepted = BreakPlanner().plan(
+            drivingTime: 3 * 3600, candidates: [safelyEarly]
+        ).first
+        XCTAssertEqual(accepted?.candidate?.id, "early-enough")
+        XCTAssertEqual(accepted?.afterDriving ?? 0, 1.75 * 3600 + 12 * 60, accuracy: 1)
+    }
+
     func testBreakPlannerDoesNotChooseAnUnhelpfullyEarlyStop() {
         let tooEarly = BreakCandidate(id: "early", name: "Zu früh", coordinate: .init(),
                                       progress: 0.2, detourMetres: 20, isOpen: true)
@@ -1853,7 +1881,7 @@ final class LongTripPlanningTests: XCTestCase {
 
     func testBreakPlannerKeepsUnknownOpeningStatusHonest() {
         let unknown = BreakCandidate(id: "unknown", name: "Rastplatz", coordinate: .init(),
-                                     progress: 2.0 / 3.0, detourMetres: 100, isOpen: nil)
+                                     progress: 2.0 / 3.0, detourMetres: 0, isOpen: nil)
         let stop = BreakPlanner().plan(drivingTime: 3 * 3600, candidates: [unknown]).first
 
         XCTAssertEqual(stop?.candidate?.id, "unknown")
@@ -1865,7 +1893,7 @@ final class LongTripPlanningTests: XCTestCase {
         let station = FuelStation(id: "station", name: "Autohof", brand: "", street: "",
                                   place: "", lat: 50, lon: 8, price: 1.75,
                                   open: nil, distanceKm: 1)
-        let candidate = BreakCandidateFactory.fuelStation(station, progress: 0.5, detourMetres: 200)
+        let candidate = BreakCandidateFactory.fuelStation(station, progress: 0.49, detourMetres: 200)
         XCTAssertNil(candidate.isOpen)
         let planned = BreakPlanner(maximumContinuousDriving: 2 * 60 * 60)
             .plan(drivingTime: 4 * 60 * 60, candidates: [candidate]).first
