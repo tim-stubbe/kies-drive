@@ -784,6 +784,33 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A clock correction must not mute reroute status indefinitely")
     }
 
+    func testAudioActivationFailureDeduplicatesByManeuverStage() {
+        XCTAssertEqual(
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                maneuverKey: "route-1:step-4", stage: .prepare
+            ),
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                maneuverKey: "route-1:step-4", stage: .prepare
+            )
+        )
+        XCTAssertNotEqual(
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                maneuverKey: "route-1:step-4", stage: .prepare
+            ),
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                maneuverKey: "route-1:step-4", stage: .final
+            )
+        )
+        XCTAssertNotEqual(
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                maneuverKey: "route-1:step-4", stage: .final
+            ),
+            NavigationSpeechFailureDeduplicationPolicy.key(
+                maneuverKey: "route-1:step-5", stage: .final
+            )
+        )
+    }
+
     func testFollowCameraShowsMoreRoadAheadAtMotorwaySpeed() {
         XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: nil), 700)
         XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: 30), 1_190)

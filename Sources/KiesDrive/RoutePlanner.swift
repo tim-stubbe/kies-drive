@@ -382,6 +382,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
     private var pendingManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
     private var activeManeuverSpeech: [ObjectIdentifier: [ManeuverSpeechClaim]] = [:]
+    /// Audio-session activation can fail repeatedly on consecutive GPS fixes.
+    /// Record each affected maneuver stage once, while leaving it retryable.
+    private var reportedAudioActivationFailureClaims = Set<String>()
     private struct BreakReminderSpeechClaim {
         let stage: NavigationBreakReminderPolicy.Stage
         let issuedAt: Date
@@ -4045,6 +4048,22 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // No claim has been registered yet. Returning false keeps the
             // current maneuver/reminder eligible for a later GPS fix instead
             // of waiting on an utterance that cannot become audible.
+            for claim in requestedManeuverClaims {
+                let failureKey = NavigationSpeechFailureDeduplicationPolicy.key(
+                    maneuverKey: claim.key, stage: claim.stage
+                )
+                guard reportedAudioActivationFailureClaims.insert(failureKey).inserted else {
+                    continue
+                }
+                DriveDiagnosticStore.append(
+                    .speechDeliveryFailed,
+                    detail: DriveDiagnosticDetail.maneuver(
+                        "Audioausgabe nicht verfügbar · \(claim.stage) · \(claim.instruction)",
+                        key: claim.key,
+                        location: lastAcceptedNavigationLocation
+                    )
+                )
+            }
             return false
         }
         #endif
@@ -4606,6 +4625,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         isRecalculating = false
         lastRerouteAt = nil
         lastRerouteStatusAnnouncementAt = nil
+        reportedAudioActivationFailureClaims.removeAll(keepingCapacity: true)
         lastRerouteLocation = nil
         isManeuverGuidanceReliable = true
         let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id

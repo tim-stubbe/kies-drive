@@ -1123,6 +1123,12 @@ enum NavigationRerouteStatusSpeechPolicy {
     }
 }
 
+enum NavigationSpeechFailureDeduplicationPolicy {
+    static func key(maneuverKey: String, stage: NavigationAnnouncementStage) -> String {
+        "\(maneuverKey)|\(stage.rawValue)"
+    }
+}
+
 /// Separates speech accepted by AVSpeechSynthesizer from speech that has
 /// actually started. Audio-route changes can cancel a queued utterance; that
 /// maneuver must remain eligible for the next location update.
