@@ -307,7 +307,10 @@ enum DriveAPI {
             status: result.status, amount: result.amount, currency: result.currency,
             source: result.source, sourceURL: result.sourceURL,
             corroboratingSourceURLs: result.sources.map(\.url),
-            corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" }
+            corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" },
+            corroboratingSources: result.sources.map {
+                .init(url: $0.url, text: "\($0.title) \($0.snippet)")
+            }
         ) {
             return .known(
                 amount: Decimal(evidence.amount), currency: evidence.currency,
@@ -317,7 +320,10 @@ enum DriveAPI {
         if TollEvidenceValidator.validatesNoToll(
             status: result.status, source: result.source, sourceURL: result.sourceURL,
             corroboratingSourceURLs: result.sources.map(\.url),
-            corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" }
+            corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" },
+            corroboratingSources: result.sources.map {
+                .init(url: $0.url, text: "\($0.title) \($0.snippet)")
+            }
         ) {
             return .noToll(source: result.source, sourceURL: result.sourceURL)
         }
@@ -470,11 +476,13 @@ private struct TollSearchResponse: Decodable {
 
 enum TollEvidenceValidator {
     struct Evidence: Equatable { let amount: Double; let currency: String; let source: String }
+    struct SourceReference: Equatable { let url: String; let text: String }
 
     static func validate(status: String, amount: Double?, currency: String,
                          source: String, sourceURL: String?,
                          corroboratingSourceURLs: [String]? = nil,
-                         corroboratingSourceTexts: [String]? = nil) -> Evidence? {
+                         corroboratingSourceTexts: [String]? = nil,
+                         corroboratingSources: [SourceReference]? = nil) -> Evidence? {
         let normalizedCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
         guard status == "known", let amount, amount.isFinite, amount > 0, amount <= 5_000,
@@ -485,7 +493,10 @@ enum TollEvidenceValidator {
               sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs),
               textCorroboratesAmount(
                 amount, currency: normalizedCurrency,
-                texts: corroboratingSourceTexts
+                texts: evidenceTexts(
+                    for: sourceURL, references: corroboratingSources,
+                    legacyTexts: corroboratingSourceTexts
+                )
               ) else { return nil }
         return Evidence(amount: amount, currency: normalizedCurrency, source: source)
     }
@@ -493,14 +504,30 @@ enum TollEvidenceValidator {
 
     static func validatesNoToll(status: String, source: String, sourceURL: String?,
                                 corroboratingSourceURLs: [String]? = nil,
-                                corroboratingSourceTexts: [String]? = nil) -> Bool {
+                                corroboratingSourceTexts: [String]? = nil,
+                                corroboratingSources: [SourceReference]? = nil) -> Bool {
         guard status == "no_toll",
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL),
               url.scheme?.lowercased() == "https", url.host != nil,
               sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs),
-              textCorroboratesNoToll(corroboratingSourceTexts) else { return false }
+              textCorroboratesNoToll(evidenceTexts(
+                for: sourceURL, references: corroboratingSources,
+                legacyTexts: corroboratingSourceTexts
+              )) else { return false }
         return true
+    }
+
+    private static func evidenceTexts(
+        for sourceURL: String,
+        references: [SourceReference]?,
+        legacyTexts: [String]?
+    ) -> [String]? {
+        guard let references else { return legacyTexts }
+        guard let target = normalizedURL(sourceURL) else { return [] }
+        return references.compactMap { reference in
+            normalizedURL(reference.url) == target ? reference.text : nil
+        }
     }
 
     private static func textCorroboratesAmount(

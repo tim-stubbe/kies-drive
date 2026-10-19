@@ -2090,6 +2090,39 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollTextMustBelongToTheClaimedSourceURL() {
+        let references = [
+            TollEvidenceValidator.SourceReference(
+                url: "https://official.test/route",
+                text: "Informationen zur Strecke ohne Gesamtpreis"
+            ),
+            TollEvidenceValidator.SourceReference(
+                url: "https://blog.test/other-route",
+                text: "Gesamtmaut 27,40 EUR"
+            ),
+        ]
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://official.test/route",
+            corroboratingSourceURLs: references.map(\.url),
+            corroboratingSourceTexts: references.map(\.text),
+            corroboratingSources: references
+        ), "A price from another result must not corroborate the claimed source")
+
+        var corrected = references
+        corrected[0] = .init(
+            url: "https://official.test/route#price",
+            text: "Pkw-Gesamtmaut: 27,40 Euro"
+        )
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://official.test/route",
+            corroboratingSourceURLs: corrected.map(\.url),
+            corroboratingSourceTexts: corrected.map(\.text),
+            corroboratingSources: corrected
+        ))
+    }
+
     func testTollEvidenceCorroborationIgnoresTrackingButNotAnotherPage() {
         XCTAssertNotNil(TollEvidenceValidator.validate(
             status: "known", amount: 27.4, currency: "EUR",
