@@ -1444,6 +1444,7 @@ final class NavigationPresentationTests: XCTestCase {
 
         XCTAssertTrue(report.contains("routeSearchCompleted"))
         XCTAssertTrue(report.contains("routeStopAdded"))
+        XCTAssertFalse(report.contains("Raststätte Spessart"))
         XCTAssertFalse(report.contains("latitude"))
         XCTAssertFalse(report.contains("longitude"))
     }
@@ -2899,7 +2900,8 @@ final class NavigationPresentationTests: XCTestCase {
         let report = DriveDiagnosticReport.text(events: [event], appVersion: "1.0 (42)")
         XCTAssertTrue(report.contains("App-Version: 1.0 (42)"))
         XCTAssertTrue(report.contains("maneuverFinalCueMissed"))
-        XCTAssertTrue(report.contains("Rechts abbiegen auf die A66"))
+        XCTAssertFalse(report.contains("A66"))
+        XCTAssertTrue(report.contains("Fahranweisung ausgeblendet"))
         XCTAssertTrue(report.contains("Keine vollständige Standortspur"))
     }
 
@@ -3208,10 +3210,35 @@ final class NavigationPresentationTests: XCTestCase {
 
         XCTAssertNotNil(DriveDiagnosticDetail.maneuverIdentity(in: failure))
         XCTAssertFalse(failure.contains(key), "Diagnostic identity must not expose the raw route key")
+        XCTAssertFalse(failure.contains(Data(key.utf8).base64EncodedString()),
+                       "Diagnostic identity must not be reversibly encoded")
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
         XCTAssertEqual(summary.quality, .good)
         XCTAssertEqual(summary.speechDeliveryFailures, 0)
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
+    func testSharedDiagnosticReportRedactsDestinationsStopsAndManeuverRoads() {
+        let rawKey = "0:4:Rechts abbiegen auf Mainzer Straße"
+        let legacyIdentity = Data(rawKey.utf8).base64EncodedString()
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Privatadresse Hochheim"),
+            DriveDiagnosticEvent(kind: .routeStopAdded, detail: "Privater Treffpunkt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "Manöver-ID \(legacyIdentity) · now · Rechts abbiegen auf Mainzer Straße · GPS ±8 m · 48 km/h"
+            ),
+        ]
+
+        let report = DriveDiagnosticReport.text(events: events, appVersion: "Test")
+
+        XCTAssertFalse(report.contains("Privatadresse Hochheim"))
+        XCTAssertFalse(report.contains("Privater Treffpunkt"))
+        XCTAssertFalse(report.contains("Mainzer Straße"))
+        XCTAssertFalse(report.contains(legacyIdentity))
+        XCTAssertTrue(report.contains("Fahranweisung ausgeblendet"))
+        XCTAssertTrue(report.contains("GPS ±8 m"))
+        XCTAssertTrue(report.contains("48 km/h"))
     }
 
     func testDiagnosticSummaryClearsTransientRouteFailureAfterSuccessfulRecovery() throws {

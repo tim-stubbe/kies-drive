@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import CryptoKit
 
 struct FuelStation: Codable, Identifiable, Hashable {
     let id: String
@@ -298,7 +299,7 @@ enum DriveDiagnosticDetail {
 
     static func maneuver(_ description: String, key: String,
                          location: CLLocation? = nil) -> String {
-        let identity = Data(key.utf8).base64EncodedString()
+        let identity = fingerprint(key)
         return navigationSample(
             "\(maneuverIdentityPrefix)\(identity) · \(description)",
             location: location
@@ -318,6 +319,13 @@ enum DriveDiagnosticDetail {
               let separator = detail.range(of: "·") else { return detail }
         return String(detail[separator.upperBound...])
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A stable one-way identifier lets the quality summary match a failed
+    /// utterance with its later retry without embedding the reversible route
+    /// key (which can contain a street name) in the local archive or export.
+    static func fingerprint(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -674,8 +682,55 @@ enum DriveDiagnosticReport {
         ]
         let formatter = ISO8601DateFormatter()
         lines += events.map {
-            "\(formatter.string(from: $0.date)) | \($0.kind.rawValue) | \($0.detail.replacingOccurrences(of: "\n", with: " "))"
+            "\(formatter.string(from: $0.date)) | \($0.kind.rawValue) | \(exportSafeDetail(for: $0))"
         }
         return lines.joined(separator: "\n")
+    }
+
+    private static func exportSafeDetail(for event: DriveDiagnosticEvent) -> String {
+        let redacted: String
+        switch event.kind {
+        case .navigationStarted:
+            redacted = event.detail.hasPrefix("Offline")
+                ? "Offline-Navigation gestartet · Ziel ausgeblendet"
+                : "Navigation gestartet · Ziel ausgeblendet"
+        case .arrivalReached:
+            redacted = "Ziel erreicht · Ziel ausgeblendet"
+        case .routeStopAdded:
+            redacted = "Zwischenstopp hinzugefügt · Name ausgeblendet"
+        case .routeStopFailed:
+            redacted = "Zwischenstopp nicht berechenbar · Name ausgeblendet"
+        case .maneuverAnnounced, .maneuverFinalCueMissed, .speechDeliveryFailed:
+            redacted = redactedManeuverDetail(event.detail)
+        default:
+            redacted = event.detail
+        }
+        return redacted.replacingOccurrences(of: "\n", with: " ")
+    }
+
+    private static func redactedManeuverDetail(_ detail: String) -> String {
+        let identity = DriveDiagnosticDetail.maneuverIdentity(in: detail)
+            .map { "Manöver-ID \(DriveDiagnosticDetail.fingerprint($0))" }
+        let parts = DriveDiagnosticDetail.removingManeuverIdentity(from: detail)
+            .split(separator: "·")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var safe = parts.filter {
+            $0.hasPrefix("GPS ") || $0 == "GPS-Genauigkeit unbekannt" ||
+                $0.hasSuffix("km/h") ||
+                NavigationAnnouncementStageNamePolicy.isStageOrDistance($0)
+        }
+        safe.append("Fahranweisung ausgeblendet")
+        if let identity { safe.insert(identity, at: 0) }
+        return safe.joined(separator: " · ")
+    }
+}
+
+private enum NavigationAnnouncementStageNamePolicy {
+    static func isStageOrDistance(_ value: String) -> Bool {
+        let stages = ["early", "prepare", "final", "now"]
+        if stages.contains(value.lowercased()) { return true }
+        let components = value.split(separator: " ")
+        return components.count == 2 && Double(components[0]) != nil &&
+            ["m", "km"].contains(String(components[1]).lowercased())
     }
 }
