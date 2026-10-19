@@ -778,6 +778,34 @@ final class RoutePersistenceTests: XCTestCase {
         ), "fuel")
     }
 
+    func testDriveThroughWaypointNeedsConsecutiveMatchingFixes() {
+        let start = Date(timeIntervalSince1970: 10_000)
+        XCTAssertEqual(RouteWaypointVisitConfirmationPolicy.requiredMatches(
+            mayAutoCompleteWhenPassed: true
+        ), 2)
+        XCTAssertEqual(RouteWaypointVisitConfirmationPolicy.requiredMatches(
+            mayAutoCompleteWhenPassed: false
+        ), 1)
+
+        let first = RouteWaypointVisitConfirmationPolicy.updatedCount(
+            candidateID: "pass", previousCandidateID: nil, previousCount: 0,
+            previousMatchAt: nil, currentMatchAt: start
+        )
+        XCTAssertEqual(first, 1)
+        XCTAssertEqual(RouteWaypointVisitConfirmationPolicy.updatedCount(
+            candidateID: "pass", previousCandidateID: "pass", previousCount: first,
+            previousMatchAt: start, currentMatchAt: start.addingTimeInterval(3)
+        ), 2)
+        XCTAssertEqual(RouteWaypointVisitConfirmationPolicy.updatedCount(
+            candidateID: "other", previousCandidateID: "pass", previousCount: 1,
+            previousMatchAt: start, currentMatchAt: start.addingTimeInterval(3)
+        ), 1)
+        XCTAssertEqual(RouteWaypointVisitConfirmationPolicy.updatedCount(
+            candidateID: "pass", previousCandidateID: "pass", previousCount: 1,
+            previousMatchAt: start, currentMatchAt: start.addingTimeInterval(11)
+        ), 1, "A delayed second fix is not continuous passage evidence")
+    }
+
     func testHochheimPresetForcesRoadPointOnWurzenpass() {
         let lock = ActiveRouteLock.hochheimViaWurzenpass(now: Date(timeIntervalSince1970: 1))
         XCTAssertEqual(lock.destinationName, "Hochheim am Main")

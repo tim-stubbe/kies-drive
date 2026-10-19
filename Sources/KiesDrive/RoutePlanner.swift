@@ -487,6 +487,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// committed. Keeping the in-flight identity here prevents every GPS fix
     /// near the same point from starting another MapKit calculation.
     private var pendingReachedWaypointID: String?
+    private var waypointVisitCandidateID: String?
+    private var waypointVisitCandidateCount = 0
+    private var waypointVisitCandidateAt: Date?
     private var deliveredBreakReminderStages: Set<NavigationBreakReminderPolicy.Stage> {
         get {
             Set(drivingRestState.deliveredReminderRawValues.compactMap(
@@ -3344,6 +3347,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func resetLiveNavigationProgress() {
         navigationStepCursor = 0
+        resetWaypointVisitCandidate()
         announcedManeuverStages = [:]
         // Leg/step identifiers are route-local. A replacement route may reuse
         // the same numbers, so audio failures from the old geometry must not
@@ -3602,7 +3606,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let visited = Set(lock.visitedWaypointIDs ?? [])
         guard let reachedID = RouteWaypointVisitPolicy.reachedWaypointID(
             waypoints: lock.waypoints, visitedIDs: visited, location: location
-        ) else { return }
+        ) else {
+            resetWaypointVisitCandidate()
+            return
+        }
         // At bridges and motorway junctions distance alone can match the road
         // below. Only after the cheap proximity check do we sample the route
         // and verify a trustworthy vehicle course against the intended road.
@@ -3615,8 +3622,25 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guard RouteWaypointVisitPolicy.reachedWaypointID(
                 waypoints: lock.waypoints, visitedIDs: visited, location: location,
                 expectedCourseDegrees: expectedCourse
-            ) == reachedID else { return }
+            ) == reachedID else {
+                resetWaypointVisitCandidate()
+                return
+            }
+            waypointVisitCandidateCount = RouteWaypointVisitConfirmationPolicy.updatedCount(
+                candidateID: reachedID,
+                previousCandidateID: waypointVisitCandidateID,
+                previousCount: waypointVisitCandidateCount,
+                previousMatchAt: waypointVisitCandidateAt,
+                currentMatchAt: location.timestamp
+            )
+            waypointVisitCandidateID = reachedID
+            waypointVisitCandidateAt = location.timestamp
+            guard waypointVisitCandidateCount >=
+                    RouteWaypointVisitConfirmationPolicy.requiredMatches(
+                        mayAutoCompleteWhenPassed: waypoint.mayAutoCompleteWhenPassed
+                    ) else { return }
         }
+        resetWaypointVisitCandidate()
         pendingReachedWaypointID = reachedID
         let session = navigationSessionGeneration
         Task {
@@ -3627,6 +3651,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 pendingReachedWaypointID = nil
             }
         }
+    }
+
+    private func resetWaypointVisitCandidate() {
+        waypointVisitCandidateID = nil
+        waypointVisitCandidateCount = 0
+        waypointVisitCandidateAt = nil
     }
 
     private func persistRouteLockProgress(at location: CLLocation) {

@@ -46,6 +46,23 @@ enum RouteWaypointVisitPolicy {
     }
 }
 
+enum RouteWaypointVisitConfirmationPolicy {
+    static let maximumMatchInterval: TimeInterval = 10
+
+    static func requiredMatches(mayAutoCompleteWhenPassed: Bool) -> Int {
+        mayAutoCompleteWhenPassed ? 2 : 1
+    }
+
+    static func updatedCount(candidateID: String, previousCandidateID: String?,
+                             previousCount: Int, previousMatchAt: Date?,
+                             currentMatchAt: Date) -> Int {
+        guard candidateID == previousCandidateID, let previousMatchAt else { return 1 }
+        let interval = currentMatchAt.timeIntervalSince(previousMatchAt)
+        guard interval >= 0, interval <= maximumMatchInterval else { return 1 }
+        return max(0, previousCount) + 1
+    }
+}
+
 enum RouteCalculationLateWaypointPolicy {
     /// A multi-leg MapKit calculation can take long enough for the car to pass
     /// a drive-through constraint in the meantime. Detect only location fixes
