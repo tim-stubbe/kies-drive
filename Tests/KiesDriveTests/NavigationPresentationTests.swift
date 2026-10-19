@@ -768,6 +768,22 @@ final class NavigationPresentationTests: XCTestCase {
             courseDegrees: -1, courseAccuracy: 8, speedMetresPerSecond: 18))
     }
 
+    func testRerouteStatusSpeechDoesNotRepeatOnEveryRetry() {
+        let start = Date(timeIntervalSince1970: 10_000)
+        XCTAssertTrue(NavigationRerouteStatusSpeechPolicy.shouldAnnounce(
+            lastAnnouncement: nil, now: start
+        ))
+        XCTAssertFalse(NavigationRerouteStatusSpeechPolicy.shouldAnnounce(
+            lastAnnouncement: start, now: start.addingTimeInterval(119)
+        ))
+        XCTAssertTrue(NavigationRerouteStatusSpeechPolicy.shouldAnnounce(
+            lastAnnouncement: start, now: start.addingTimeInterval(120)
+        ))
+        XCTAssertTrue(NavigationRerouteStatusSpeechPolicy.shouldAnnounce(
+            lastAnnouncement: start, now: start.addingTimeInterval(-1)
+        ), "A clock correction must not mute reroute status indefinitely")
+    }
+
     func testFollowCameraShowsMoreRoadAheadAtMotorwaySpeed() {
         XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: nil), 700)
         XCTAssertEqual(NavigationFollowCameraPolicy.distance(speedMetresPerSecond: 30), 1_190)

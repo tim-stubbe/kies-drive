@@ -404,6 +404,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var onRouteRecoveryFixCount = 0
     private var previousOffRouteDistance: CLLocationDistance?
     private var lastRerouteAt: Date?
+    private var lastRerouteStatusAnnouncementAt: Date?
     private var lastRerouteLocation: CLLocation?
     private var consecutiveRerouteFailures = 0
     private var navigationSessionGeneration = UUID()
@@ -4507,7 +4508,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     activeAutomaticRerouteTask = nil
                 }
             }
-            if settings.voiceGuidance { speak("Die Route wird neu berechnet.", priority: .status) }
+            let statusNow = Date()
+            if settings.voiceGuidance,
+               NavigationRerouteStatusSpeechPolicy.shouldAnnounce(
+                   lastAnnouncement: lastRerouteStatusAnnouncementAt, now: statusNow
+               ), speak("Die Route wird neu berechnet.", priority: .status) {
+                lastRerouteStatusAnnouncementAt = statusNow
+            }
             // Keep the current route, station data and guidance visible while
             // MapKit searches in the background. The Boolean result is the
             // source of truth: a superseded/empty request may intentionally
@@ -4598,6 +4605,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         rerouteGeneration = UUID()
         isRecalculating = false
         lastRerouteAt = nil
+        lastRerouteStatusAnnouncementAt = nil
         lastRerouteLocation = nil
         isManeuverGuidanceReliable = true
         let tripID = activeRouteLock?.id ?? routeLockStore.activeLock?.id

@@ -1110,6 +1110,19 @@ enum NavigationSpeechPriority: Int, Equatable {
     }
 }
 
+enum NavigationRerouteStatusSpeechPolicy {
+    /// Repeated provider failures can start several recovery attempts while
+    /// the visual banner already explains the state. Keep spoken status calm;
+    /// maneuver and critical speech use separate priorities and are unaffected.
+    static let minimumInterval: TimeInterval = 120
+
+    static func shouldAnnounce(lastAnnouncement: Date?, now: Date = Date()) -> Bool {
+        guard let lastAnnouncement else { return true }
+        let elapsed = now.timeIntervalSince(lastAnnouncement)
+        return elapsed < 0 || elapsed >= minimumInterval
+    }
+}
+
 /// Separates speech accepted by AVSpeechSynthesizer from speech that has
 /// actually started. Audio-route changes can cancel a queued utterance; that
 /// maneuver must remain eligible for the next location update.
