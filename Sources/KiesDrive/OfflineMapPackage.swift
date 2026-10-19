@@ -134,6 +134,63 @@ enum OfflineRouteLookaheadPolicy {
     }
 }
 
+enum OfflineRouteCorridorCoveragePolicy {
+    /// Samples the complete route at a calm interval for preflight coverage
+    /// checks. Long sparse polyline segments are interpolated, while the cap
+    /// keeps a continent-scale route from causing unbounded synchronous disk
+    /// reads. When capped, samples stay evenly distributed to retain the
+    /// destination and every major part of the journey.
+    static func coordinates(
+        along route: [CLLocationCoordinate2D],
+        intervalMetres: CLLocationDistance = 10_000,
+        maximumSamples: Int = 240
+    ) -> [CLLocationCoordinate2D] {
+        let route = route.filter {
+            $0.latitude.isFinite && $0.longitude.isFinite &&
+                (-90...90).contains($0.latitude) && (-180...180).contains($0.longitude)
+        }
+        guard let first = route.first else { return [] }
+        guard route.count > 1, maximumSamples > 1 else { return [first] }
+
+        var cumulative = Array(repeating: CLLocationDistance(0), count: route.count)
+        for index in route.indices.dropFirst() {
+            cumulative[index] = cumulative[index - 1] + CLLocation(
+                latitude: route[index - 1].latitude,
+                longitude: route[index - 1].longitude
+            ).distance(from: CLLocation(
+                latitude: route[index].latitude,
+                longitude: route[index].longitude
+            ))
+        }
+        guard let total = cumulative.last, total > 0 else { return [first] }
+        let desiredCount = min(
+            max(2, maximumSamples),
+            max(2, Int(ceil(total / max(1_000, intervalMetres))) + 1)
+        )
+        let spacing = total / Double(desiredCount - 1)
+        var result: [CLLocationCoordinate2D] = []
+        var segment = 1
+        for sampleIndex in 0..<desiredCount {
+            let target = sampleIndex == desiredCount - 1
+                ? total : Double(sampleIndex) * spacing
+            while segment < cumulative.count - 1, cumulative[segment] < target {
+                segment += 1
+            }
+            let startIndex = max(0, segment - 1)
+            let segmentLength = cumulative[segment] - cumulative[startIndex]
+            let fraction = segmentLength > 0
+                ? min(1, max(0, (target - cumulative[startIndex]) / segmentLength)) : 0
+            let start = route[startIndex]
+            let end = route[segment]
+            result.append(.init(
+                latitude: start.latitude + (end.latitude - start.latitude) * fraction,
+                longitude: start.longitude + (end.longitude - start.longitude) * fraction
+            ))
+        }
+        return result
+    }
+}
+
 enum OfflineTileCoordinatePolicy {
     struct Tile: Hashable {
         let z: Int

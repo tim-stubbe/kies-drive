@@ -1579,6 +1579,14 @@ struct DriveContentView: View {
               offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package) else {
             return nil
         }
+        if needsRouteCoverage, !routeCoordinates.isEmpty {
+            let corridor = OfflineRouteCorridorCoveragePolicy.coordinates(
+                along: routeCoordinates
+            )
+            guard offlineMaps.hasNavigationTiles(along: corridor, package: package) else {
+                return nil
+            }
+        }
         if !needsRouteCoverage, let coordinate = location.location?.coordinate {
             let lookahead = OfflineRouteLookaheadPolicy.coordinates(
                 from: coordinate, route: visibleRouteCoordinates,
@@ -1610,6 +1618,9 @@ struct DriveContentView: View {
         case .routeOutsideBounds:
             return "Das Kartenpaket „\(package.manifest.name)“ deckt die angezeigte Route nicht vollständig ab."
         case .available:
+            if isShowingRouteOverview, !routeCoordinates.isEmpty {
+                return "Im Kartenpaket „\(package.manifest.name)“ fehlen Straßenkacheln entlang der Route. Die normale Karte bleibt aktiv."
+            }
             return "Im Kartenpaket „\(package.manifest.name)“ fehlen hier Straßenkacheln. Die normale Karte bleibt aktiv."
         }
     }

@@ -264,6 +264,46 @@ final class OfflineMapPackageTests: XCTestCase {
         }
     }
 
+    func testOfflineCorridorCoverageSamplesEntireSparseRoute() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 10),
+        ]
+        let samples = OfflineRouteCorridorCoveragePolicy.coordinates(
+            along: route, intervalMetres: 10_000, maximumSamples: 240
+        )
+
+        XCTAssertGreaterThan(samples.count, 10)
+        XCTAssertEqual(try XCTUnwrap(samples.first).longitude, 8, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(samples.last).longitude, 10, accuracy: 0.000_001)
+        XCTAssertTrue(samples.contains { $0.longitude > 8.9 && $0.longitude < 9.1 },
+                      "A sparse long segment must still be checked between its vertices")
+    }
+
+    func testOfflineCorridorCoverageCapsWorkWithoutDroppingDestination() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 45, longitude: 5),
+            CLLocationCoordinate2D(latitude: 55, longitude: 20),
+        ]
+        let samples = OfflineRouteCorridorCoveragePolicy.coordinates(
+            along: route, intervalMetres: 1_000, maximumSamples: 12
+        )
+
+        XCTAssertEqual(samples.count, 12)
+        XCTAssertEqual(try XCTUnwrap(samples.first).latitude, 45, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(samples.last).latitude, 55, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(samples.last).longitude, 20, accuracy: 0.000_001)
+    }
+
+    func testOfflineCorridorCoverageRejectsInvalidCoordinates() {
+        let samples = OfflineRouteCorridorCoveragePolicy.coordinates(along: [
+            .init(latitude: .nan, longitude: 8),
+            .init(latitude: 50, longitude: 8),
+        ])
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples[0].latitude, 50)
+    }
+
     func testRuntimeCoverageRequiresRealBaseTiles() throws {
         try writeManifest(id: "runtime-coverage")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
