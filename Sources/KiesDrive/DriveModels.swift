@@ -617,6 +617,7 @@ struct DriveDiagnosticSummary: Equatable {
         let routeRestoreFailures = unresolvedRestoreTimeline.filter {
             $0.kind == .routeRestoreFailed
         }.count
+        let diagnosticEventCount = Set(session.map(\.id) + restoreTimeline.map(\.id)).count
         let offlineDepartures = unresolvedOffline.filter { $0.kind == .offlineRouteDeparture }.count
         let resolved = max(0, totalFailures - failures) +
             max(0, totalOfflineDepartures - offlineDepartures) +
@@ -665,7 +666,7 @@ struct DriveDiagnosticSummary: Equatable {
         let completedBreaks = session.filter { $0.kind == .restBreakCompleted }.count
         let shownFuel = session.filter { $0.kind == .fuelReminderShown }.count
         let spokenFuel = session.filter { $0.kind == .fuelReminderAnnounced }.count
-        return .init(quality: quality, eventCount: session.count,
+        return .init(quality: quality, eventCount: diagnosticEventCount,
                      rerouteRequests: reroutes,
                      rerouteFailures: failures, rejectedLocations: rejected,
                      recoveredLocationGaps: recoveredLocationGaps,
@@ -700,7 +701,18 @@ enum DriveDiagnosticReport {
             events[$0].kind == .navigationStopped || events[$0].kind == .arrivalReached
         })
         let end = terminal ?? events.index(before: events.endIndex)
-        return Array(events[start...end])
+        var selected = Array(events[start...end])
+        // A failed restore is emitted after navigation was deliberately
+        // paused. Include only restore lifecycle events carrying the same
+        // persistent trip ID; unrelated late network callbacks remain
+        // excluded from the completed drive report.
+        if let terminal, let sessionID, terminal < events.index(before: events.endIndex) {
+            selected.append(contentsOf: events[events.index(after: terminal)...].filter {
+                $0.sessionID == sessionID &&
+                    ($0.kind == .routeRestoreFailed || $0.kind == .routeRestoreSucceeded)
+            })
+        }
+        return selected
     }
 
     static func text(events: [DriveDiagnosticEvent], appVersion: String) -> String {

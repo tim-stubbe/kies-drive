@@ -3212,6 +3212,7 @@ final class NavigationPresentationTests: XCTestCase {
 
         let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
         XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.eventCount, 3)
         XCTAssertEqual(summary.routeRestoreFailures, 1)
         XCTAssertTrue(summary.recommendation.contains("fortgesetzt"))
 
@@ -3227,6 +3228,30 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(recoveredSummary.routeRestoreFailures, 0)
         XCTAssertEqual(recoveredSummary.quality, .good)
         XCTAssertEqual(recoveredSummary.resolvedRouteIssues, 1)
+    }
+
+    func testDiagnosticExportIncludesOnlySameTripRestoreAfterPause() {
+        let tripID = UUID()
+        let unrelatedID = UUID()
+        let started = DriveDiagnosticEvent(
+            sessionID: tripID, kind: .navigationStarted, detail: "Urlaubsfahrt"
+        )
+        let stopped = DriveDiagnosticEvent(
+            sessionID: tripID, kind: .navigationStopped, detail: "Pause"
+        )
+        let unrelated = DriveDiagnosticEvent(
+            sessionID: unrelatedID, kind: .rerouteFailed, detail: "Fremde Arbeit"
+        )
+        let restore = DriveDiagnosticEvent(
+            sessionID: tripID, kind: .routeRestoreFailed,
+            detail: "Keine passende Route verfügbar"
+        )
+
+        let selected = DriveDiagnosticReport.latestSessionEvents(
+            in: [started, stopped, unrelated, restore]
+        )
+
+        XCTAssertEqual(selected.map(\.id), [started.id, stopped.id, restore.id])
     }
 
     func testDiagnosticStoreCreatesNewSessionAfterTripFinished() throws {
