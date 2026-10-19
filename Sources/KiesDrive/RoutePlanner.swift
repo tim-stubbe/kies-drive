@@ -3101,6 +3101,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             stage, delivered: completed, pending: pendingStages(for: key)
         ) else { return }
         let following = progress.upcomingInstructions.dropFirst().first
+        let chainsFollowing = NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: stage, followingDistance: progress.followingManeuverDistance,
+            speedMetresPerSecond: guidanceSpeedMps
+        )
         let speech = NavigationManeuverSpeechPolicy.text(
             instruction: progress.instruction,
             distance: progress.distanceToManeuver,
@@ -3109,11 +3113,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             followingDistance: progress.followingManeuverDistance,
             speedMetresPerSecond: guidanceSpeedMps
         )
-        _ = speak(
-            speech, priority: .forAnnouncementStage(stage),
-            maneuverClaim: .init(key: key, stage: stage, instruction: progress.instruction,
-                                 distance: progress.distanceToManeuver, issuedAt: Date())
-        )
+        let issuedAt = Date()
+        var claims = [ManeuverSpeechClaim(
+            key: key, stage: stage, instruction: progress.instruction,
+            distance: progress.distanceToManeuver, issuedAt: issuedAt
+        )]
+        if chainsFollowing, let following, let followingStepIndex = progress.followingManeuverStepIndex,
+           let followingDistance = progress.followingManeuverDistance,
+           let followingKeyInstruction = progress.followingManeuverInstruction {
+            claims.append(.init(
+                key: "offline:\(followingStepIndex):\(followingKeyInstruction)", stage: .early,
+                instruction: following, distance: followingDistance, issuedAt: issuedAt
+            ))
+        }
+        _ = speak(speech, priority: .forAnnouncementStage(stage), maneuverClaims: claims)
     }
 
     private func currentOfflineGuidanceProgress(at location: CLLocation)
@@ -3151,6 +3164,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let totalRemainingTravelTime: TimeInterval
         let upcomingInstructions: [String]
         let followingManeuverDistance: CLLocationDistance?
+        let followingManeuver: LiveRouteStep?
     }
 
     private func resetLiveNavigationProgress() {
@@ -3354,7 +3368,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             totalRemainingTravelTime: routeRemainingTime,
             upcomingInstructions: Array(NavigationInstructionSequencePolicy
                 .removingConsecutiveDuplicates(upcoming).prefix(5)),
-            followingManeuverDistance: followingDistance
+            followingManeuverDistance: followingDistance,
+            followingManeuver: followingIndex.map { steps[$0] }
         )
     }
 
@@ -3518,6 +3533,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // If a sparse GPS update lands directly in the immediate zone, mark
         // earlier stages complete as well so they cannot be spoken afterwards.
         let following = progress.upcomingInstructions.dropFirst().first
+        let chainsFollowing = NavigationChainedManeuverPolicy.shouldIncludeFollowingManeuver(
+            at: stage, followingDistance: progress.followingManeuverDistance,
+            speedMetresPerSecond: guidanceSpeedMps
+        )
         let speech = NavigationManeuverSpeechPolicy.text(
             instruction: progress.maneuver.step.instructions,
             distance: progress.distance,
@@ -3526,13 +3545,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             followingDistance: progress.followingManeuverDistance,
             speedMetresPerSecond: guidanceSpeedMps
         )
-        _ = speak(
-            speech, priority: .forAnnouncementStage(stage),
-            maneuverClaim: .init(
+        let issuedAt = Date()
+        var claims = [ManeuverSpeechClaim(
                 key: key, stage: stage, instruction: progress.maneuver.step.instructions,
-                distance: progress.distance, issuedAt: Date()
-            )
-        )
+                distance: progress.distance, issuedAt: issuedAt
+            )]
+        if chainsFollowing, let following, let followingManeuver = progress.followingManeuver,
+           let followingDistance = progress.followingManeuverDistance {
+            claims.append(.init(
+                key: "\(followingManeuver.legIndex):\(followingManeuver.stepIndex):\(followingManeuver.step.instructions)",
+                stage: .early, instruction: following,
+                distance: followingDistance, issuedAt: issuedAt
+            ))
+        }
+        _ = speak(speech, priority: .forAnnouncementStage(stage), maneuverClaims: claims)
     }
 
     /// Returns true when a final cue for the maneuver just crossed was spoken.

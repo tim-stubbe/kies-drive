@@ -3190,6 +3190,8 @@ struct OfflineGuidanceProgress: Equatable {
     let remainingDistance: CLLocationDistance
     let upcomingInstructions: [String]
     let followingManeuverDistance: CLLocationDistance?
+    let followingManeuverStepIndex: Int?
+    let followingManeuverInstruction: String?
     let distanceFromRoute: CLLocationDistance
     let courseDifferenceDegrees: Double?
 }
@@ -3239,6 +3241,8 @@ enum OfflineGuidanceEngine {
                          distanceToManeuver: routeRemaining, remainingDistance: routeRemaining,
                          upcomingInstructions: ["Dem Straßenverlauf bis zum Ziel folgen"],
                          followingManeuverDistance: nil,
+                         followingManeuverStepIndex: nil,
+                         followingManeuverInstruction: nil,
                          distanceFromRoute: metrics[selected].distanceFromRoute,
                          courseDifferenceDegrees: metrics[selected].courseDifferenceDegrees)
         }
@@ -3260,6 +3264,8 @@ enum OfflineGuidanceEngine {
                      upcomingInstructions: Array(NavigationInstructionSequencePolicy
                         .removingConsecutiveDuplicates(upcoming).prefix(5)),
                      followingManeuverDistance: followingDistance,
+                     followingManeuverStepIndex: followingIndex,
+                     followingManeuverInstruction: followingIndex.map { steps[$0].instruction },
                      distanceFromRoute: metrics[selected].distanceFromRoute,
                      courseDifferenceDegrees: metrics[selected].courseDifferenceDegrees)
     }

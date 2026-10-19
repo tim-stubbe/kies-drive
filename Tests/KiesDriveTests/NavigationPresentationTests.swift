@@ -1849,6 +1849,8 @@ final class NavigationPresentationTests: XCTestCase {
             at: points[0], currentIndex: 0, steps: steps, transitionRadius: 12
         ))
         XCTAssertEqual(progress.followingManeuverDistance ?? -1, 111, accuracy: 0.1)
+        XCTAssertEqual(progress.followingManeuverStepIndex, 2)
+        XCTAssertEqual(progress.followingManeuverInstruction, "Links halten")
     }
 
     func testOfflineGuidanceSkipsEmptyRestoredTransitionGeometry() throws {
