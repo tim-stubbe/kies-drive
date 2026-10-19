@@ -140,6 +140,19 @@ enum TollVariantRoutePolicy {
     }
 }
 
+enum RouteAlternativeInclusionPolicy {
+    /// Opposite toll variants may have nearly identical distance and ETA while
+    /// using different roads. Keep those alternatives visible when their
+    /// geometry materially diverges instead of hiding a valid comparison.
+    static func shouldInclude(distanceDifferenceMetres: CLLocationDistance,
+                              timeDifference: TimeInterval,
+                              maximumGeometrySeparationMetres: CLLocationDistance) -> Bool {
+        abs(distanceDifferenceMetres) > 100 ||
+        abs(timeDifference) > 60 ||
+        maximumGeometrySeparationMetres > 250
+    }
+}
+
 enum TollDestinationLabelPolicy {
     static func label(lockedDestinationName: String?, mapItemName: String?,
                       enteredText: String, placemarkTitle: String?) -> String {

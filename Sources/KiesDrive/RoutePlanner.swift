@@ -4748,7 +4748,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             installedRouteStartProgress: distanceProgress
         )]
         if !isRemainingRoutePlan, let comparisonRoute,
-           abs(comparisonRoute.distance - mainDistance) > 100 || abs(comparisonRoute.expectedTravelTime - mainTime) > 60 {
+           RouteAlternativeInclusionPolicy.shouldInclude(
+               distanceDifferenceMetres: comparisonRoute.distance - mainDistance,
+               timeDifference: comparisonRoute.expectedTravelTime - mainTime,
+               maximumGeometrySeparationMetres: maximumRouteSeparation(
+                   primary: legs, comparison: comparisonRoute
+               )
+           ) {
             let comparisonUnlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
                 points: comparisonSpeedLimitPoints,
                 limits: comparisonSpeedLimits
@@ -4787,6 +4793,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         longTripPlan = RouteComparison(fuelModel: .init(), breakPlanner: .init())
             .compare(routes: inputs, scenarios: scenarios, vehicle: profile,
                      alreadyDrivenSinceBreak: drivingRestState.continuousDriving)
+    }
+
+    private func maximumRouteSeparation(primary: [MKRoute],
+                                        comparison: MKRoute) -> CLLocationDistance {
+        let primarySamples = primary.flatMap { sample($0.polyline, maximum: 48) }
+        let comparisonSamples = sample(comparison.polyline, maximum: 48)
+        let primaryPolylines = primary.map(\.polyline)
+        let primaryToComparison = primarySamples.map {
+            Self.distance(from: $0, to: comparison.polyline)
+        }.max() ?? 0
+        let comparisonToPrimary = comparisonSamples.map { coordinate in
+            primaryPolylines.map { Self.distance(from: coordinate, to: $0) }.min() ?? 0
+        }.max() ?? 0
+        return max(primaryToComparison, comparisonToPrimary)
     }
 
     private func loadTollCost(from start: CLLocationCoordinate2D,

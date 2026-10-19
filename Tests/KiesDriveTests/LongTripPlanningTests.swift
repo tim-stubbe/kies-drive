@@ -615,6 +615,29 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testGeometricallyDifferentTollAlternativeSurvivesSimilarEta() {
+        XCTAssertFalse(RouteAlternativeInclusionPolicy.shouldInclude(
+            distanceDifferenceMetres: 80,
+            timeDifference: 40,
+            maximumGeometrySeparationMetres: 200
+        ))
+        XCTAssertTrue(RouteAlternativeInclusionPolicy.shouldInclude(
+            distanceDifferenceMetres: 80,
+            timeDifference: 40,
+            maximumGeometrySeparationMetres: 900
+        ))
+        XCTAssertTrue(RouteAlternativeInclusionPolicy.shouldInclude(
+            distanceDifferenceMetres: 2_000,
+            timeDifference: 10,
+            maximumGeometrySeparationMetres: 0
+        ))
+        XCTAssertTrue(RouteAlternativeInclusionPolicy.shouldInclude(
+            distanceDifferenceMetres: 0,
+            timeDifference: 120,
+            maximumGeometrySeparationMetres: 0
+        ))
+    }
+
     func testTollLookupPrefersLockedDestinationOverBadPlacemarkMetadata() {
         XCTAssertEqual(TollDestinationLabelPolicy.label(
             lockedDestinationName: "Hochheim am Main",
