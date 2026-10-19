@@ -629,6 +629,15 @@ final class LongTripPlanningTests: XCTestCase {
         )
     }
 
+    func testTollRouteHintsKeepVariantsRoadSpecific() {
+        XCTAssertEqual(TollRouteHintPolicy.hints(from: [
+            "Auf die A 10 Richtung Salzburg fahren",
+            "Der E55 folgen",
+            "Auf A10 bleiben",
+            "Rechts in die Hauptstraße abbiegen",
+        ]), ["A10", "E55"])
+    }
+
     func testTollVariantsBindToTheirActualRouteGeometry() {
         XCTAssertFalse(TollVariantRoutePolicy.usesComparisonRoute(
             requestAvoidsTolls: false, mainRouteAvoidsTolls: false,

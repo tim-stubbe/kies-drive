@@ -132,6 +132,31 @@ enum TollWaypointEvidencePolicy {
     }
 }
 
+enum TollRouteHintPolicy {
+    /// Extract only explicit signed road identifiers. Free-form maneuver text
+    /// contains generic words and town names that can accidentally match an
+    /// unrelated route; A10/E55/SS13-style labels are useful variant evidence.
+    static func hints(from instructions: [String], maximum: Int = 10) -> [String] {
+        guard maximum > 0,
+              let regex = try? NSRegularExpression(
+                pattern: #"(?i)\b(?:SS|[ABDEGHKLMNRS])\s*[0-9]{1,4}[a-z]?\b"#
+              ) else { return [] }
+        var result: [String] = []
+        for instruction in instructions {
+            let matches = regex.matches(
+                in: instruction, range: NSRange(instruction.startIndex..., in: instruction)
+            )
+            for match in matches {
+                guard let range = Range(match.range, in: instruction) else { continue }
+                let hint = instruction[range].replacingOccurrences(of: " ", with: "").uppercased()
+                if !result.contains(hint) { result.append(hint) }
+                if result.count >= maximum { return result }
+            }
+        }
+        return result
+    }
+}
+
 enum TollVariantRoutePolicy {
     static func usesComparisonRoute(requestAvoidsTolls: Bool,
                                     mainRouteAvoidsTolls: Bool,

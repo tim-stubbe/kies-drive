@@ -86,6 +86,8 @@ class TollSearchRequest(BaseModel):
     destination: str
     via: Optional[list[str]] = None
     avoid_tolls: bool = False
+    route_hints: Optional[list[str]] = None
+    distance_km: Optional[float] = None
 
 
 class PasswordResetRequest(BaseModel):
@@ -717,8 +719,22 @@ def explicit_no_toll(text: str) -> bool:
     return any(re.search(pattern, lowered) for pattern in patterns)
 
 
+def route_hint_matches(text: str, hints: list[str]) -> bool:
+    """Require at least one signed road identifier from the actual variant."""
+    if not hints:
+        return True
+    for hint in hints:
+        pieces = re.findall(r"[A-Za-z]+|[0-9]+", hint[:30])
+        if not pieces:
+            continue
+        pattern = r"(?<!\w)" + r"\s*".join(map(re.escape, pieces)) + r"(?!\w)"
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return True
+    return False
+
+
 def toll_source_matches_route(text: str, origin: str, destination: str,
-                              via: list[str]) -> bool:
+                              via: list[str], route_hints: list[str] | None = None) -> bool:
     """Require both route endpoints and every mandatory via point in evidence."""
     haystack_tokens = {
         token.casefold() for token in re.findall(r"[\wÀ-ÿ-]{3,}", text)
@@ -740,8 +756,9 @@ def toll_source_matches_route(text: str, origin: str, destination: str,
             if not token.isdigit() and token.casefold() not in stop_words
         ]
         identities.append(tokens[0] if tokens else None)
-    return bool(identities) and all(identity and identity in haystack_tokens
-                                    for identity in identities)
+    return (bool(identities)
+            and all(identity and identity in haystack_tokens for identity in identities)
+            and route_hint_matches(text, route_hints or []))
 
 
 OFFICIAL_TOLL_HOSTS = ("asfinag.at", "dars.si", "hac.hr", "autostrade.it",
@@ -774,7 +791,8 @@ def independent_source_domain(host: str) -> str:
 
 
 def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
-                           destination: str, via: list[str]) -> tuple[float, str, str, str] | None:
+                           destination: str, via: list[str],
+                           route_hints: list[str] | None = None) -> tuple[float, str, str, str] | None:
     """Accept one official source or two independent corroborating domains."""
     evidence: list[tuple[float, str, str, str, str, bool]] = []
     for source in sources:
@@ -783,7 +801,9 @@ def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
         parsed = urlparse(source["url"])
         host = (parsed.hostname or "").lower()
         if (parsed_amount is None or parsed.scheme != "https" or not host
-                or not toll_source_matches_route(source_text, origin, destination, via)):
+                or not toll_source_matches_route(
+                    source_text, origin, destination, via, route_hints
+                )):
             continue
         amount, currency = parsed_amount
         official = any(host == domain or host.endswith(f".{domain}")
@@ -806,7 +826,8 @@ def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
 
 
 def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
-                              destination: str, via: list[str]) -> tuple[str, str] | None:
+                              destination: str, via: list[str],
+                              route_hints: list[str] | None = None) -> tuple[str, str] | None:
     """Require official evidence or two domains before claiming zero toll."""
     evidence: list[tuple[str, str, str, bool]] = []
     for source in sources:
@@ -814,7 +835,9 @@ def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
         parsed = urlparse(source["url"])
         host = (parsed.hostname or "").lower()
         if (parsed.scheme != "https" or not host or not explicit_no_toll(source_text)
-                or not toll_source_matches_route(source_text, origin, destination, via)):
+                or not toll_source_matches_route(
+                    source_text, origin, destination, via, route_hints
+                )):
             continue
         official = any(host == domain or host.endswith(f".{domain}")
                        for domain in OFFICIAL_TOLL_HOSTS)
@@ -838,13 +861,19 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
     origin = payload.origin.strip()[:180]
     destination = payload.destination.strip()[:180]
     via = [name.strip()[:120] for name in (payload.via or [])[:8] if name.strip()]
+    route_hints = [hint.strip()[:30] for hint in (payload.route_hints or [])[:10]
+                   if hint.strip()]
     if len(origin) < 2 or len(destination) < 2:
         raise HTTPException(422, "Start und Ziel fehlen.")
     via_query = f" über {' '.join(via)}" if via else ""
+    road_query = f" Straßen {' '.join(route_hints)}" if route_hints else ""
+    distance_query = (f" etwa {round(payload.distance_km)} km"
+                      if payload.distance_km is not None
+                      and 0 < payload.distance_km < 20_000 else "")
     if payload.avoid_tolls:
-        query = f"PKW mautfreie Route keine Maut {origin} nach {destination}{via_query} {date.today().year}"
+        query = f"PKW mautfreie Route keine Maut {origin} nach {destination}{via_query}{road_query}{distance_query} {date.today().year}"
     else:
-        query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination}{via_query} {date.today().year}"
+        query = f"PKW Mautkosten Gesamtmaut {origin} nach {destination}{via_query}{road_query}{distance_query} {date.today().year}"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(f"{searxng_url}/search", params={
@@ -865,11 +894,12 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
         "snippet": str(item.get("content") or item.get("snippet") or "")[:1_000],
     } for item in results[:5] if isinstance(item, dict)]
     if payload.avoid_tolls and (evidence := verified_no_toll_evidence(
-            sources, origin, destination, via)):
+            sources, origin, destination, via, route_hints)):
         source_name, source_url = evidence
         return {"status": "no_toll", "amount": 0, "currency": "EUR",
                 "source": source_name, "source_url": source_url, "sources": sources}
-    if evidence := verified_toll_evidence(sources, origin, destination, via):
+    if evidence := verified_toll_evidence(
+            sources, origin, destination, via, route_hints):
         amount, currency, source_name, source_url = evidence
         return {"status": "known", "amount": amount, "currency": currency,
                 "source": source_name, "source_url": source_url, "sources": sources}

@@ -221,6 +221,16 @@ def test_unofficial_toll_evidence_must_be_current():
     ) is None
 
 
+def test_toll_evidence_must_match_actual_route_variant():
+    text = "Split nach Hochheim über Wurzenpass auf der A10, Gesamtmaut 24 EUR 2026"
+    assert main.toll_source_matches_route(
+        text, "Split", "Hochheim", ["Wurzenpass"], ["A10", "E55"]
+    )
+    assert not main.toll_source_matches_route(
+        text, "Split", "Hochheim", ["Wurzenpass"], ["A2", "E59"]
+    )
+
+
 def test_toll_search_rejects_malformed_searxng_json(monkeypatch):
     class FakeResponse:
         def raise_for_status(self):

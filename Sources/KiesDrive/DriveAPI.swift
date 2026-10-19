@@ -295,9 +295,11 @@ enum DriveAPI {
     }
 
     static func tollCost(origin: String, destination: String, via: [String] = [],
-                         avoidTolls: Bool = false) async throws -> TollCost {
+                         avoidTolls: Bool = false, routeHints: [String] = [],
+                         distanceKilometres: Double? = nil) async throws -> TollCost {
         let body = try JSONEncoder().encode(TollSearchRequest(
-            origin: origin, destination: destination, via: via, avoidTolls: avoidTolls
+            origin: origin, destination: destination, via: via, avoidTolls: avoidTolls,
+            routeHints: routeHints, distanceKilometres: distanceKilometres
         ))
         var tollRequest = try request(path: "/api/navigation/toll-search", method: "POST", body: body)
         tollRequest.timeoutInterval = TollLookupRequestPolicy.timeout
@@ -454,9 +456,13 @@ private struct TollSearchRequest: Encodable {
     let destination: String
     let via: [String]
     let avoidTolls: Bool
+    let routeHints: [String]
+    let distanceKilometres: Double?
     enum CodingKeys: String, CodingKey {
         case origin, destination, via
         case avoidTolls = "avoid_tolls"
+        case routeHints = "route_hints"
+        case distanceKilometres = "distance_km"
     }
 }
 private struct TollSearchSource: Decodable { let title: String; let url: String; let snippet: String }

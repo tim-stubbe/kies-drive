@@ -4970,7 +4970,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             request: generation, currentRequest: tollLoadGeneration
         ) else { return }
         var results: [TollLookupBatchItem] = []
-        var requests: [(avoidTolls: Bool, routeIdentity: String)] = []
+        var requests: [(avoidTolls: Bool, routeIdentity: String,
+                        routeHints: [String], distanceKilometres: Double)] = []
         let mainRouteAvoidsTolls = installedDefaultRouteOptions?.avoidTolls ?? settings.avoidTolls
         let requestedVariants = TollLookupBatchPolicy.requestedVariants(
             mainRouteAvoidsTolls: mainRouteAvoidsTolls,
@@ -4984,6 +4985,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
             let variantRoutes = usesComparison ? comparisonRoute.map { [$0] } ?? [] : legs
             let variantDistance = variantRoutes.reduce(0) { $0 + $1.distance }
+            let routeHints = TollRouteHintPolicy.hints(
+                from: variantRoutes.flatMap { $0.steps.map(\.instructions) }
+            )
             let variantAnchors = variantRoutes.flatMap { sample($0.polyline, maximum: 12) }
             let routeIdentity = TollRouteIdentityPolicy.identity(
                 destination: destinationCoordinate,
@@ -4998,7 +5002,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 results.append(.init(avoidTolls: avoidTolls, routeIdentity: routeIdentity,
                                      cost: cached, fetched: false))
             } else {
-                requests.append((avoidTolls, routeIdentity))
+                requests.append((avoidTolls, routeIdentity, routeHints, variantDistance / 1_000))
             }
         }
         var lookupWasSuperseded = false
@@ -5008,7 +5012,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     do {
                         let cost = try await DriveAPI.tollCost(
                             origin: origin, destination: destinationName, via: via,
-                            avoidTolls: request.avoidTolls
+                            avoidTolls: request.avoidTolls,
+                            routeHints: request.routeHints,
+                            distanceKilometres: request.distanceKilometres
                         )
                         return .item(.init(
                             avoidTolls: request.avoidTolls,
