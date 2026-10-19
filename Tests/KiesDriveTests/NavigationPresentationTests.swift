@@ -2444,6 +2444,23 @@ final class NavigationPresentationTests: XCTestCase {
         ]))
     }
 
+    func testOfflineResumeRegistersFirstRemainingManeuverForTransitionRecovery() throws {
+        let seed = try XCTUnwrap(NavigationInitialManeuverDiagnosticPolicy.offlineSeed(
+            steps: [
+                (instruction: "", distance: 350),
+                (instruction: "Ausfahrt Richtung Graz nehmen", distance: 1_100),
+            ],
+            startingStepIndex: 18
+        ))
+
+        XCTAssertEqual(seed.key, "offline:19:Ausfahrt Richtung Graz nehmen")
+        XCTAssertEqual(seed.instruction, "Ausfahrt Richtung Graz nehmen")
+        XCTAssertEqual(seed.distance, 350, accuracy: 0.001)
+        XCTAssertNil(NavigationInitialManeuverDiagnosticPolicy.offlineSeed(
+            steps: [(instruction: "", distance: 100)], startingStepIndex: 18
+        ))
+    }
+
     func testRestoredOfflineRouteSeedsDistanceAndUpcomingFromRemainingStepsOnly() throws {
         let cachedSteps = [
             (instruction: "Alte Abfahrt", distance: 700.0),

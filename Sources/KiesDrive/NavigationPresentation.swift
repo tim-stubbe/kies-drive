@@ -1549,6 +1549,21 @@ enum NavigationInitialManeuverDiagnosticPolicy {
             distance: distance
         )
     }
+
+    static func offlineSeed(
+        steps: [(instruction: String, distance: CLLocationDistance)],
+        startingStepIndex: Int
+    ) -> NavigationManeuverDiagnosticSeed? {
+        guard startingStepIndex >= 0,
+              let maneuver = NavigationInitialManeuverPolicy.seed(steps: steps) else {
+            return nil
+        }
+        return .init(
+            key: "offline:\(startingStepIndex + maneuver.stepIndex):\(maneuver.instruction)",
+            instruction: maneuver.instruction,
+            distance: maneuver.distance
+        )
+    }
 }
 
 enum ManeuverDiagnosticPolicy {
