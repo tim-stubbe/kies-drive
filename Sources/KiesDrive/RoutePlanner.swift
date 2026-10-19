@@ -4995,6 +4995,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Aktuelles Tempolimit für den nächstgelegenen abgetasteten Routenpunkt
     /// zur übergebenen Position (z.B. der aktuelle Standort während der Fahrt).
     func currentSpeedLimit(near coordinate: CLLocationCoordinate2D) -> SpeedLimitResult? {
+        guard SpeedLimitGuidanceAvailabilityPolicy.mayPresent(
+            navigationActive: isNavigating,
+            guidanceReliable: isManeuverGuidanceReliable,
+            recalculating: isRecalculating
+        ) else { return nil }
         let expectedProgress = RouteSearchPolicy.installedRouteProgress(
             totalDistance: totalDistance,
             remainingDistance: remainingDistanceMetres,

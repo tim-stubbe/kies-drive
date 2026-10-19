@@ -3337,6 +3337,16 @@ enum SpeedLimitSelectionPolicy {
     }
 }
 
+enum SpeedLimitGuidanceAvailabilityPolicy {
+    /// A limit belongs to the installed route geometry. Once that geometry is
+    /// known to be wrong, retaining its sign or overspeed warning can mislead
+    /// the driver about the road actually being travelled.
+    static func mayPresent(navigationActive: Bool, guidanceReliable: Bool,
+                           recalculating: Bool) -> Bool {
+        !navigationActive || (guidanceReliable && !recalculating)
+    }
+}
+
 enum SpeedLimitPresentation: Equatable {
     case numeric(Int)
     case unrestricted

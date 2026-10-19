@@ -4869,6 +4869,21 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testSpeedLimitDisappearsWhileInstalledRouteIsUntrustworthy() {
+        XCTAssertTrue(SpeedLimitGuidanceAvailabilityPolicy.mayPresent(
+            navigationActive: false, guidanceReliable: false, recalculating: true
+        ), "A harmless route preview may still inspect its loaded limit data")
+        XCTAssertTrue(SpeedLimitGuidanceAvailabilityPolicy.mayPresent(
+            navigationActive: true, guidanceReliable: true, recalculating: false
+        ))
+        XCTAssertFalse(SpeedLimitGuidanceAvailabilityPolicy.mayPresent(
+            navigationActive: true, guidanceReliable: false, recalculating: false
+        ))
+        XCTAssertFalse(SpeedLimitGuidanceAvailabilityPolicy.mayPresent(
+            navigationActive: true, guidanceReliable: true, recalculating: true
+        ))
+    }
+
     func testSpeedLimitPresentationPrefersNumericEvidenceOverConflict() {
         XCTAssertEqual(SpeedLimitPresentationPolicy.presentation(for: .init(
             maxspeed: 120, unlimited: true
