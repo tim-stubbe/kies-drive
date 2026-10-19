@@ -4114,7 +4114,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             voiceGuidance: settings.voiceGuidance,
             guidanceReliable: isManeuverGuidanceReliable,
             hasUsableLocation: lastAcceptedNavigationLocation != nil
-        ), let location = lastAcceptedNavigationLocation else { return }
+        ), let location = lastAcceptedNavigationLocation,
+           NavigationSpeechRetryLocationPolicy.mayRetry(using: location) else { return }
         let speed = NavigationGuidanceSpeedPolicy.effective(
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,

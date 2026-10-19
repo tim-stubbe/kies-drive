@@ -1262,6 +1262,22 @@ enum NavigationSpeechCancellationPolicy {
     }
 }
 
+enum NavigationSpeechRetryLocationPolicy {
+    /// Replaying a maneuver after a call or Bluetooth interruption needs a
+    /// much fresher fix than ordinary map presentation. At motorway speed a
+    /// twenty-second-old sample can be more than a kilometre behind the car.
+    static let maximumAge: TimeInterval = 5
+    static let maximumHorizontalAccuracy: CLLocationAccuracy = 65
+
+    static func mayRetry(using location: CLLocation, now: Date = Date()) -> Bool {
+        location.horizontalAccuracy >= 0 &&
+            location.horizontalAccuracy <= maximumHorizontalAccuracy &&
+            NavigationLocationPolicy.accepts(
+                location, after: nil, now: now, maximumAge: maximumAge
+            )
+    }
+}
+
 struct NavigationInitialManeuver: Equatable {
     let stepIndex: Int
     let instruction: String

@@ -836,6 +836,29 @@ final class NavigationPresentationTests: XCTestCase {
         ), 33.3, accuracy: 0.01)
     }
 
+    func testSpeechRetryRequiresFreshAccurateLocationAfterInterruption() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let fresh = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 12, verticalAccuracy: 5,
+            course: 90, speed: 25, timestamp: now.addingTimeInterval(-3)
+        )
+        let stale = CLLocation(
+            coordinate: fresh.coordinate, altitude: 0,
+            horizontalAccuracy: 12, verticalAccuracy: 5,
+            course: 90, speed: 25, timestamp: now.addingTimeInterval(-8)
+        )
+        let coarse = CLLocation(
+            coordinate: fresh.coordinate, altitude: 0,
+            horizontalAccuracy: 80, verticalAccuracy: 5,
+            course: 90, speed: 25, timestamp: now.addingTimeInterval(-1)
+        )
+
+        XCTAssertTrue(NavigationSpeechRetryLocationPolicy.mayRetry(using: fresh, now: now))
+        XCTAssertFalse(NavigationSpeechRetryLocationPolicy.mayRetry(using: stale, now: now))
+        XCTAssertFalse(NavigationSpeechRetryLocationPolicy.mayRetry(using: coarse, now: now))
+    }
+
     func testGuidanceSpeedExpiresToSafeCityFallback() {
         let measuredAt = Date(timeIntervalSince1970: 1_000)
         XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
