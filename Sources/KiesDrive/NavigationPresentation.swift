@@ -1308,6 +1308,16 @@ enum NavigationSpeechCancellationPolicy {
     }
 }
 
+enum NavigationVoiceGuidanceTogglePolicy {
+    /// Re-enabling guidance during a drive must immediately reconsider the
+    /// current maneuver. The retry implementation still rejects stale or
+    /// inaccurate positions, so this never speaks from an unsafe old fix.
+    static func shouldRetryCurrentManeuver(enabled: Bool,
+                                           navigationActive: Bool) -> Bool {
+        enabled && navigationActive
+    }
+}
+
 enum NavigationSpeechRetryLocationPolicy {
     /// Replaying a maneuver after a call or Bluetooth interruption needs a
     /// much fresher fix than ordinary map presentation. At motorway speed a

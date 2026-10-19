@@ -2325,6 +2325,18 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testUnmutingRetriesGuidanceOnlyDuringActiveNavigation() {
+        XCTAssertTrue(NavigationVoiceGuidanceTogglePolicy.shouldRetryCurrentManeuver(
+            enabled: true, navigationActive: true
+        ))
+        XCTAssertFalse(NavigationVoiceGuidanceTogglePolicy.shouldRetryCurrentManeuver(
+            enabled: false, navigationActive: true
+        ))
+        XCTAssertFalse(NavigationVoiceGuidanceTogglePolicy.shouldRetryCurrentManeuver(
+            enabled: true, navigationActive: false
+        ))
+    }
+
     func testFinishedSpeechCommitsQueuedClaimWhenStartCallbackWasLost() {
         XCTAssertEqual(
             NavigationAnnouncementDeliveryPolicy.completedClaims(

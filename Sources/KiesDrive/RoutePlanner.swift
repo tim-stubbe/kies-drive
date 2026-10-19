@@ -711,7 +711,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     func setVoiceGuidanceEnabled(_ enabled: Bool) {
-        if !enabled {
+        if enabled {
+            // The driver may unmute immediately before a junction. Do not
+            // wait for the next Core Location callback: the latest accepted
+            // fix is independently freshness-checked by the retry path.
+            if NavigationVoiceGuidanceTogglePolicy.shouldRetryCurrentManeuver(
+                enabled: enabled, navigationActive: isNavigating
+            ) {
+                retryCurrentManeuverAfterSpeechBecomesAvailable()
+            }
+        } else {
             // Clear ownership before stopping AVSpeechSynthesizer. Some audio
             // routes deliver `didCancel` synchronously; the shared safe path
             // prevents a deliberate mute from looking like a failed Bluetooth
