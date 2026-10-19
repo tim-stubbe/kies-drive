@@ -3349,6 +3349,25 @@ enum RouteSearchPolicy {
     }
 }
 
+enum RouteStopInsertionPolicy {
+    /// Search results may use a wider tolerance so GPS jitter does not make a
+    /// nearby POI flicker out of the list. Committing a stop is different: a
+    /// place materially behind the latest progress can force an Autobahn
+    /// return loop. Revalidate with only road-level positioning tolerance.
+    static let maximumBackwardToleranceMetres: CLLocationDistance = 30
+
+    static func isStillAhead(candidateProgress: Double,
+                             currentProgress: Double,
+                             totalRouteDistance: CLLocationDistance) -> Bool {
+        RouteSearchPolicy.isAhead(
+            candidateProgress: candidateProgress,
+            currentProgress: currentProgress,
+            totalRouteDistance: totalRouteDistance,
+            maximumBackwardToleranceMetres: maximumBackwardToleranceMetres
+        )
+    }
+}
+
 enum RouteStopEndpointPolicy {
     static func isValid(_ coordinate: CLLocationCoordinate2D) -> Bool {
         coordinate.latitude.isFinite && coordinate.longitude.isFinite &&

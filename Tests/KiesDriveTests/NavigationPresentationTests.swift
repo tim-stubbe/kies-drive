@@ -5023,6 +5023,21 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A stop selected after driving well past it must not route the car backwards")
     }
 
+    func testRouteStopInsertionUsesStricterFreshProgressThanSearchList() {
+        XCTAssertTrue(RouteSearchPolicy.isAhead(
+            candidateProgress: 0.498, currentProgress: 0.50,
+            totalRouteDistance: 100_000
+        ), "The result may remain visible through small projection jitter")
+        XCTAssertFalse(RouteStopInsertionPolicy.isStillAhead(
+            candidateProgress: 0.498, currentProgress: 0.50,
+            totalRouteDistance: 100_000
+        ), "A stop 200 metres behind must not be committed")
+        XCTAssertTrue(RouteStopInsertionPolicy.isStillAhead(
+            candidateProgress: 0.4998, currentProgress: 0.50,
+            totalRouteDistance: 100_000
+        ), "Road-level GPS drift remains acceptable at commit time")
+    }
+
     func testRouteSearchActionabilityTracksMovementAndRouteReplacement() {
         let generation = UUID()
         XCTAssertTrue(RouteSearchSelectionPolicy.isActionable(

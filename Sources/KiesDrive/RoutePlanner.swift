@@ -1985,7 +1985,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let selectedProgress = knownRouteProgress ?? searchedProgress
         if isNavigating, let selectedProgress {
             let currentProgress = currentInstalledRouteProgress(from: start)
-            guard RouteSearchPolicy.isAhead(
+            guard RouteStopInsertionPolicy.isStillAhead(
                 candidateProgress: selectedProgress,
                 currentProgress: currentProgress,
                 totalRouteDistance: totalDistance
@@ -5889,7 +5889,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guard mayInsertRouteStop(at: station.coordinate) else { return false }
             knownProgress = candidateProgress
             if isNavigating {
-                guard let knownProgress, RouteSearchPolicy.isAhead(
+                guard let knownProgress, RouteStopInsertionPolicy.isStillAhead(
                     candidateProgress: knownProgress,
                     currentProgress: currentInstalledRouteProgress(from: start),
                     totalRouteDistance: totalDistance
@@ -5975,7 +5975,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         guard mayInsertRouteStop(at: candidate.coordinate) else { return false }
-        if isNavigating, !RouteSearchPolicy.isAhead(
+        if isNavigating, !RouteStopInsertionPolicy.isStillAhead(
             candidateProgress: plannedBreak.insertionRouteProgress,
             currentProgress: currentInstalledRouteProgress(from: start),
             totalRouteDistance: totalDistance
