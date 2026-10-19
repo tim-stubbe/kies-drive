@@ -283,6 +283,8 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
 /// a location trail. Accuracy and speed are enough to distinguish a guidance
 /// bug from a weak GPS fix when a real drive is reviewed later.
 enum DriveDiagnosticDetail {
+    private static let maneuverIdentityPrefix = "Manöver-ID "
+
     static func navigationSample(_ description: String, location: CLLocation?) -> String {
         guard let location else { return description }
         let accuracy = location.horizontalAccuracy >= 0
@@ -292,6 +294,30 @@ enum DriveDiagnosticDetail {
             ? "\(Int((location.speed * 3.6).rounded())) km/h"
             : "Geschwindigkeit unbekannt"
         return "\(description) · \(accuracy) · \(speed)"
+    }
+
+    static func maneuver(_ description: String, key: String,
+                         location: CLLocation? = nil) -> String {
+        let identity = Data(key.utf8).base64EncodedString()
+        return navigationSample(
+            "\(maneuverIdentityPrefix)\(identity) · \(description)",
+            location: location
+        )
+    }
+
+    static func maneuverIdentity(in detail: String) -> String? {
+        guard let first = detail.split(separator: "·").first else { return nil }
+        let component = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard component.hasPrefix(maneuverIdentityPrefix) else { return nil }
+        let value = String(component.dropFirst(maneuverIdentityPrefix.count))
+        return value.isEmpty ? nil : value
+    }
+
+    static func removingManeuverIdentity(from detail: String) -> String {
+        guard maneuverIdentity(in: detail) != nil,
+              let separator = detail.range(of: "·") else { return detail }
+        return String(detail[separator.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -440,7 +466,8 @@ struct DriveDiagnosticSummary: Equatable {
     }
 
     private static func speechInstruction(in event: DriveDiagnosticEvent) -> String? {
-        let parts = event.detail.split(separator: "·").map {
+        let detail = DriveDiagnosticDetail.removingManeuverIdentity(from: event.detail)
+        let parts = detail.split(separator: "·").map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let value: String?
@@ -465,9 +492,14 @@ struct DriveDiagnosticSummary: Equatable {
         return indexed.indices.filter { index in
             let failure = indexed[index]
             guard failure.kind == .speechDeliveryFailed else { return false }
+            let failedManeuverID = DriveDiagnosticDetail.maneuverIdentity(in: failure.detail)
             guard let instruction = speechInstruction(in: failure) else { return true }
             return !indexed.indices.dropFirst(index + 1).contains { laterIndex in
                 let later = indexed[laterIndex]
+                if let failedManeuverID {
+                    return later.kind == .maneuverAnnounced &&
+                        DriveDiagnosticDetail.maneuverIdentity(in: later.detail) == failedManeuverID
+                }
                 return (later.kind == .maneuverAnnounced ||
                         later.kind == .breakReminderAnnounced ||
                         later.kind == .fuelReminderAnnounced) &&

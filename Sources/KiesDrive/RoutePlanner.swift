@@ -3707,8 +3707,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             expiredPendingFuel.values.first?.text
         DriveDiagnosticStore.append(
             .speechDeliveryFailed,
-            detail: DriveDiagnosticDetail.navigationSample(
-                claim.map { "\($0.stage) · \($0.instruction)" } ??
+            detail: claim.map {
+                DriveDiagnosticDetail.maneuver(
+                    "\($0.stage) · \($0.instruction)", key: $0.key,
+                    location: lastAcceptedNavigationLocation
+                )
+            } ?? DriveDiagnosticDetail.navigationSample(
                     breakStage.map { "Pausenerinnerung · \($0)" } ??
                     fuelText.map { "Tankhinweis · \($0)" } ?? "Unbekannte Fahransage",
                 location: lastAcceptedNavigationLocation
@@ -3969,7 +3973,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 lastAnnouncement = claim.instruction
                 DriveDiagnosticStore.append(
                     .maneuverAnnounced,
-                    detail: "\(claim.stage) · \(Int(claim.distance)) m · \(claim.instruction)"
+                    detail: DriveDiagnosticDetail.maneuver(
+                        "\(claim.stage) · \(Int(claim.distance)) m · \(claim.instruction)",
+                        key: claim.key
+                    )
                 )
             }
         }
@@ -4034,10 +4041,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         ) else { return }
         DriveDiagnosticStore.append(
             .speechDeliveryFailed,
-            detail: DriveDiagnosticDetail.navigationSample(
-                cancelledManeuverClaim.map {
-                    "\($0.stage) · \($0.instruction)"
-                } ?? "Fahransage unerwartet vom Audiosystem abgebrochen",
+            detail: cancelledManeuverClaim.map {
+                DriveDiagnosticDetail.maneuver(
+                    "\($0.stage) · \($0.instruction)", key: $0.key,
+                    location: lastAcceptedNavigationLocation
+                )
+            } ?? DriveDiagnosticDetail.navigationSample(
+                "Fahransage unerwartet vom Audiosystem abgebrochen",
                 location: lastAcceptedNavigationLocation
             )
         )

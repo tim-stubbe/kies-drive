@@ -3119,6 +3119,50 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
+    func testRepeatedInstructionOnDifferentManeuverDoesNotHideAudioFailure() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: DriveDiagnosticDetail.maneuver(
+                    "now · Rechts abbiegen", key: "0:4:Rechts abbiegen"
+                )
+            ),
+            DriveDiagnosticEvent(
+                kind: .maneuverAnnounced,
+                detail: DriveDiagnosticDetail.maneuver(
+                    "now · 20 m · Rechts abbiegen", key: "0:9:Rechts abbiegen"
+                )
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.speechDeliveryFailures, 1)
+    }
+
+    func testMatchingManeuverIdentityResolvesAudioFailure() throws {
+        let key = "0:4:Rechts abbiegen"
+        let failure = DriveDiagnosticDetail.maneuver("now · Rechts abbiegen", key: key)
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(kind: .speechDeliveryFailed, detail: failure),
+            DriveDiagnosticEvent(
+                kind: .maneuverAnnounced,
+                detail: DriveDiagnosticDetail.maneuver(
+                    "now · 20 m · Rechts abbiegen", key: key
+                )
+            ),
+        ]
+
+        XCTAssertNotNil(DriveDiagnosticDetail.maneuverIdentity(in: failure))
+        XCTAssertFalse(failure.contains(key), "Diagnostic identity must not expose the raw route key")
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.speechDeliveryFailures, 0)
+        XCTAssertEqual(summary.resolvedRouteIssues, 1)
+    }
+
     func testDiagnosticSummaryClearsTransientRouteFailureAfterSuccessfulRecovery() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
