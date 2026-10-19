@@ -901,18 +901,12 @@ struct FuelStopPlanner {
         let departureSafeRange = departureUsableLitres / consumptionLPer100km * 100_000
         let fullSafeRange = fullUsableLitres / consumptionLPer100km * 100_000
         guard fullSafeRange > 0, distanceMetres > departureSafeRange else { return [] }
-        var remaining = candidates.filter { candidate in
-            guard BreakCandidateValidationPolicy.isUsable(candidate) else { return false }
-            let arrival = routeTravelTime.flatMap { travelTime -> TimeInterval? in
-                guard travelTime.isFinite, travelTime >= 0 else { return nil }
-                return (candidate.timeProgress ?? candidate.progress) * travelTime
-            }
-            return candidate.supportsFuel && PlannedStopOpeningStatusPolicy.mayUse(
-                isOpen: candidate.isOpen, secondsUntilArrival: arrival
-            )
+        var remaining = candidates.filter {
+            BreakCandidateValidationPolicy.isUsable($0) && $0.supportsFuel
         }
         var lastStopDistance = 0.0
         var distanceReturningFromPreviousStop = 0.0
+        var accumulatedDetourDrivingTime: TimeInterval = 0
         var currentSafeRange = departureSafeRange
         var result: [PlannedFuelStop] = []
         if departureSafeRange <= 0 {
@@ -939,7 +933,14 @@ struct FuelStopPlanner {
                     candidateDistance - lastStopDistance +
                     FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $0.detourMetres)
                 return candidateDistance > lastStopDistance + distanceMetres * 0.03 &&
-                    legDistance <= currentSafeRange * 0.95
+                    legDistance <= currentSafeRange * 0.95 &&
+                    PlannedStopOpeningStatusPolicy.mayUse(
+                        isOpen: $0.isOpen,
+                        secondsUntilArrival: arrivalTime(
+                            for: $0, routeTravelTime: routeTravelTime,
+                            accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                        )
+                    )
             }
             let window = ahead.filter { abs($0.progress - idealProgress) <= 0.14 }
             let pool = window.isEmpty ? ahead : window
@@ -957,25 +958,71 @@ struct FuelStopPlanner {
                     abs(rhsLeg - currentSafeRange * 0.88) + $1.detourMetres
             }
             if let best { remaining.removeAll { $0.id == best.id } }
-            let progress = best?.progress ?? idealProgress
+            let selected = best.map {
+                candidateByApplyingArrivalOpeningStatus(
+                    $0, routeTravelTime: routeTravelTime,
+                    accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+                )
+            }
+            let progress = selected?.progress ?? idealProgress
             let stopDistance = distanceMetres * progress
             result.append(.init(
-                id: "fuel-\(index)", candidate: best,
+                id: "fuel-\(index)", candidate: selected,
                 afterDistanceMetres: stopDistance, routeProgress: progress,
-                explanation: best.map {
+                explanation: selected.map {
                     "Tankstopp vor der Reserve · \($0.detourIsEstimated ? "ca. " : "")\(Int($0.detourMetres)) m Umweg" +
-                        ($0.isOpen == false ? " · Öffnungsstatus bei Ankunft prüfen." : "")
+                        ($0.isOpen == true ? "" : " · Öffnungsstatus bei Ankunft prüfen.")
                 }
                     ?? "Tankstopp vor der Reserve nötig; konkrete Station noch nicht verifiziert."
             ))
             guard stopDistance > lastStopDistance else { break }
             lastStopDistance = stopDistance
-            distanceReturningFromPreviousStop = best.map {
+            distanceReturningFromPreviousStop = selected.map {
                 FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $0.detourMetres)
+            } ?? 0
+            accumulatedDetourDrivingTime += selected.map {
+                BreakStopDetourTimingPolicy.totalDrivingTime(detourMetres: $0.detourMetres)
             } ?? 0
             currentSafeRange = fullSafeRange
         }
         return result
+    }
+
+    private func arrivalTime(
+        for candidate: BreakCandidate,
+        routeTravelTime: TimeInterval?,
+        accumulatedDetourDrivingTime: TimeInterval
+    ) -> TimeInterval? {
+        guard let routeTravelTime, routeTravelTime.isFinite,
+              routeTravelTime >= 0 else { return nil }
+        let routeTime = (candidate.timeProgress ?? candidate.progress) * routeTravelTime
+        let outbound = BreakStopDetourTimingPolicy.totalDrivingTime(
+            detourMetres: candidate.detourMetres
+        ) / 2
+        return routeTime + accumulatedDetourDrivingTime + outbound
+    }
+
+    private func candidateByApplyingArrivalOpeningStatus(
+        _ candidate: BreakCandidate,
+        routeTravelTime: TimeInterval?,
+        accumulatedDetourDrivingTime: TimeInterval
+    ) -> BreakCandidate {
+        let status = PlannedStopOpeningStatusPolicy.effectiveStatus(
+            isOpen: candidate.isOpen,
+            secondsUntilArrival: arrivalTime(
+                for: candidate, routeTravelTime: routeTravelTime,
+                accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
+            )
+        )
+        return BreakCandidate(
+            id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
+            progress: candidate.progress,
+            installedRouteProgress: candidate.installedRouteProgress,
+            timeProgress: candidate.timeProgress,
+            detourMetres: candidate.detourMetres,
+            detourIsEstimated: candidate.detourIsEstimated,
+            isOpen: status, supportsFuel: candidate.supportsFuel
+        )
     }
 }
 

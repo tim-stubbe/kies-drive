@@ -2416,6 +2416,29 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertNil(near.first?.candidate)
     }
 
+    func testFuelPlannerJudgesOpeningAtStationAfterOutboundDetour() {
+        let candidate = BreakCandidate(
+            id: "detour-fuel", name: "Autohof", coordinate: .init(),
+            progress: 0.48, timeProgress: 0.48,
+            detourMetres: 50_000.0 / 3.0, detourIsEstimated: false,
+            isOpen: true, supportsFuel: true
+        )
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, usableTankFraction: 0.8
+        )
+
+        let stop = FuelStopPlanner().plan(
+            distanceMetres: 700_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: [candidate],
+            routeTravelTime: 80 * 60
+        ).first
+
+        XCTAssertEqual(stop?.candidate?.id, "detour-fuel")
+        XCTAssertNil(stop?.candidate?.isOpen)
+        XCTAssertTrue(stop?.explanation.contains("Öffnungsstatus") == true)
+    }
+
     func testFuelPlannerRejectsNonFiniteTripAndVehicleInputs() {
         let validVehicle = VehicleProfile(
             baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
