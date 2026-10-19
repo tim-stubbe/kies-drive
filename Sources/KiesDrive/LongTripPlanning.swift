@@ -1378,6 +1378,47 @@ enum NavigationCombinedStopReminderTextPolicy {
         let first = rest.last.map { ".!?".contains($0) } == true ? rest : rest + "."
         return "\(first) \(fuel.prefix(1).uppercased())\(fuel.dropFirst())"
     }
+
+    static func text(
+        breakStage: NavigationBreakReminderPolicy.Stage?,
+        breakStopName: String?,
+        breakReminder: String?,
+        fuelStage: NavigationFuelReminderPolicy.Stage,
+        fuelStationName: String?,
+        fuelReminder: String
+    ) -> String {
+        guard let breakStage,
+              breakStage.rawValue == fuelStage.rawValue,
+              let sharedName = matchingStopName(breakStopName, fuelStationName) else {
+            return text(breakReminder: breakReminder, fuelReminder: fuelReminder)
+        }
+        switch breakStage {
+        case .plan:
+            return "In etwa 30 Minuten bei \(sharedName) Pause machen und dort tanken."
+        case .soon:
+            return "In etwa 10 Minuten bei \(sharedName) Pause machen und dort tanken."
+        case .due:
+            return "Jetzt bei \(sharedName) tanken und eine Pause einlegen."
+        }
+    }
+
+    private static func matchingStopName(_ lhs: String?, _ rhs: String?) -> String? {
+        guard let lhs = cleaned(lhs), let rhs = cleaned(rhs) else { return nil }
+        func identity(_ value: String) -> String {
+            let folded = value.folding(
+                options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+            )
+            return String(folded.unicodeScalars.filter {
+                CharacterSet.alphanumerics.contains($0)
+            })
+        }
+        return identity(lhs) == identity(rhs) ? lhs : nil
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        let result = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return result.isEmpty ? nil : result
+    }
 }
 
 enum DrivingFuelPolicy {

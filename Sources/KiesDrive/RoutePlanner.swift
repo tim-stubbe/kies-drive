@@ -2720,12 +2720,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let pendingBreakStage = drivingRestState.pendingSpokenReminderRawValue.flatMap(
             NavigationBreakReminderPolicy.Stage.init(rawValue:)
         )
+        let plannedBreakName = NavigationBreakReminderPolicy.nextPlannedStopName(
+            breaks: result.breaks, currentRouteProgress: currentProgress
+        )
         // Break and fuel planning can become due on the same location update.
         // A second status utterance would cancel the first and CarPlay would
         // replace its alert. One combined claim keeps both safety messages
         // audible and acknowledges neither until the complete text finishes.
         let text = NavigationCombinedStopReminderTextPolicy.text(
+            breakStage: pendingBreakStage,
+            breakStopName: plannedBreakName,
             breakReminder: pendingBreakStage == nil ? nil : breakReminderText,
+            fuelStage: stageToRetry,
+            fuelStationName: stop.candidate?.name,
             fuelReminder: fuelText
         )
         fuelReminderText = text

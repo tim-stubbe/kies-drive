@@ -189,6 +189,39 @@ final class LongTripPlanningTests: XCTestCase {
         )
     }
 
+    func testSameBreakAndFuelStopIsSpokenOnce() {
+        XCTAssertEqual(
+            NavigationCombinedStopReminderTextPolicy.text(
+                breakStage: .soon,
+                breakStopName: "Autohof Spessart",
+                breakReminder: "Bitte in etwa 10 Minuten bei Autohof Spessart Pause einlegen.",
+                fuelStage: .soon,
+                fuelStationName: " autohof spessart ",
+                fuelReminder: "In etwa 10 Kilometern bei Autohof Spessart tanken."
+            ),
+            "In etwa 10 Minuten bei Autohof Spessart Pause machen und dort tanken."
+        )
+    }
+
+    func testDifferentUrgencyOrStopKeepsBothReminderDetails() {
+        let breakText = "Bitte bei der nächsten sicheren Möglichkeit Pause einlegen."
+        let fuelText = "Tankstopp bei Shell in etwa 30 Kilometern."
+        XCTAssertEqual(
+            NavigationCombinedStopReminderTextPolicy.text(
+                breakStage: .due, breakStopName: "Shell", breakReminder: breakText,
+                fuelStage: .plan, fuelStationName: "Shell", fuelReminder: fuelText
+            ),
+            "\(breakText) \(fuelText)"
+        )
+        XCTAssertEqual(
+            NavigationCombinedStopReminderTextPolicy.text(
+                breakStage: .plan, breakStopName: "Autohof", breakReminder: breakText,
+                fuelStage: .plan, fuelStationName: "Shell", fuelReminder: fuelText
+            ),
+            "\(breakText) \(fuelText)"
+        )
+    }
+
     func testPendingSpokenFuelReminderSurvivesStateRoundTrip() throws {
         let state = DrivingFuelState(
             deliveredReminderKeys: ["station:0"],
