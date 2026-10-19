@@ -141,6 +141,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         cancellables.removeAll()
         activeCarPlaySearches.forEach { $0.cancel() }
         activeCarPlaySearches = []
+        carPlaySearchGeneration = UUID()
         carPlaySearchResults = [:]
         carPlayRouteSearchResults = [:]
         cameraMode = CarPlayCameraLifecyclePolicy.modeAfterConnection(previous: cameraMode)
@@ -241,6 +242,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         cancellables.removeAll()
         activeCarPlaySearches.forEach { $0.cancel() }
         activeCarPlaySearches = []
+        carPlaySearchGeneration = UUID()
         carPlaySearchResults = [:]
         carPlayRouteSearchResults = [:]
         hasShownLocationAccessAlert = false
@@ -737,12 +739,22 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 let item = CPListItem(text: title, detailText: "Mit kleinem Umweg suchen",
                                       image: UIImage(systemName: symbol))
                 item.handler = { [weak self] _, completion in
+                    guard let self else {
+                        completion()
+                        return
+                    }
+                    let requestedConnection = self.connectionGeneration
                     Task {
                         let completedCurrentSearch = await planner.searchAlongRoute(query)
                         await MainActor.run {
                             completion()
-                            if completedCurrentSearch {
-                                self?.showSearchResults(title: title)
+                            if completedCurrentSearch,
+                               CarPlayConnectionWorkPolicy.mayPublish(
+                                request: requestedConnection,
+                                current: self.connectionGeneration,
+                                connected: self.interfaceController != nil
+                               ) {
+                                self.showSearchResults(title: title)
                             }
                         }
                     }
@@ -826,6 +838,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             return
         }
         let generation = UUID()
+        let requestedConnection = connectionGeneration
         carPlaySearchGeneration = generation
         // CPSearchTemplate can keep the previous rows visible while a new
         // query is loading. Revoke their action ownership synchronously.
@@ -842,7 +855,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 let completedCurrentSearch = await RoutePlanner.shared.searchAlongRoute(query)
                 guard completedCurrentSearch,
                       generation == self.carPlaySearchGeneration,
-                      self.carPlaySearchPurpose == .routeStop else {
+                      self.carPlaySearchPurpose == .routeStop,
+                      CarPlayConnectionWorkPolicy.mayPublish(
+                        request: requestedConnection,
+                        current: self.connectionGeneration,
+                        connected: self.interfaceController != nil
+                      ) else {
                     finish([])
                     return
                 }
@@ -886,7 +904,8 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             try? await Task.sleep(nanoseconds: NavigationSearchTimeoutPolicy.timeoutNanoseconds)
             guard !Task.isCancelled else { return }
             searches.forEach { $0.cancel() }
-            if generation == self?.carPlaySearchGeneration {
+            if generation == self?.carPlaySearchGeneration,
+               requestedConnection == self?.connectionGeneration {
                 self?.activeCarPlaySearches = []
                 self?.carPlaySearchResults = [:]
             }
@@ -912,7 +931,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             // CarPlay requires every search update to complete. Returning an
             // empty result for a superseded query prevents an old spinner
             // from surviving while the driver is already typing a new query.
-            guard generation == self.carPlaySearchGeneration else {
+            guard generation == self.carPlaySearchGeneration,
+                  CarPlayConnectionWorkPolicy.mayPublish(
+                    request: requestedConnection,
+                    current: self.connectionGeneration,
+                    connected: self.interfaceController != nil
+                  ) else {
                 finish([])
                 return
             }
@@ -973,6 +997,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                currentPurpose: carPlaySearchPurpose
            ) {
             let result = selection.value
+            let requestedConnection = connectionGeneration
             guard let start = LocationService.shared.location?.coordinate else {
                 completionHandler()
                 showFailure("Der aktuelle Standort ist nicht mehr verfügbar.")
@@ -985,10 +1010,16 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                     expectedRouteGeneration: result.routeGeneration
                 )
                 completionHandler()
+                guard let self,
+                      CarPlayConnectionWorkPolicy.mayPublish(
+                        request: requestedConnection,
+                        current: self.connectionGeneration,
+                        connected: self.interfaceController != nil
+                      ) else { return }
                 if succeeded {
-                    self?.interfaceController?.popToRootTemplate(animated: true, completion: nil)
+                    self.interfaceController?.popToRootTemplate(animated: true, completion: nil)
                 } else {
-                    self?.showFailure(
+                    self.showFailure(
                         RoutePlanner.shared.errorMessage ??
                             "Der Zwischenstopp konnte nicht hinzugefügt werden."
                     )
@@ -1009,8 +1040,12 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             return
         }
         let mapItem = selection.value
+        let requestedConnection = connectionGeneration
         Task { [weak self] in
-            await self?.navigate(to: mapItem, from: start)
+            await self?.navigate(
+                to: mapItem, from: start,
+                requestedConnection: requestedConnection
+            )
             completionHandler()
         }
     }
@@ -1022,6 +1057,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func navigateHome(_ address: String) async {
+        let requestedConnection = connectionGeneration
         guard let start = LocationService.shared.location?.coordinate else {
             showFailure("Der aktuelle Standort ist noch nicht verfügbar.")
             return
@@ -1030,6 +1066,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         request.naturalLanguageQuery = address
         request.region = .init(center: start, latitudinalMeters: 500_000, longitudinalMeters: 500_000)
         let outcome = await boundedOneShotSearch(request)
+        guard CarPlayConnectionWorkPolicy.mayPublish(
+            request: requestedConnection, current: connectionGeneration,
+            connected: interfaceController != nil
+        ) else { return }
         guard case .results(let items) = outcome, let item = items.first else {
             if case .timedOut = outcome {
                 showFailure("Die Zuhause-Suche dauert zu lange. Bitte versuche es erneut.")
@@ -1038,7 +1078,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             showFailure("Die Zuhause-Adresse konnte nicht gefunden werden.")
             return
         }
-        await navigate(to: item, from: start)
+        await navigate(to: item, from: start, requestedConnection: requestedConnection)
     }
 
     private func boundedOneShotSearch(_ request: MKLocalSearch.Request) async
@@ -1086,11 +1126,21 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         await navigate(to: item, from: start)
     }
 
-    private func navigate(to item: MKMapItem, from start: CLLocationCoordinate2D) async {
+    private func navigate(to item: MKMapItem, from start: CLLocationCoordinate2D,
+                          requestedConnection: UUID? = nil) async {
+        let requestedConnection = requestedConnection ?? connectionGeneration
         guard await RoutePlanner.shared.activateDestination(item, from: start, settings: .shared) else {
+            guard CarPlayConnectionWorkPolicy.mayPublish(
+                request: requestedConnection, current: connectionGeneration,
+                connected: interfaceController != nil
+            ) else { return }
             showFailure(RoutePlanner.shared.errorMessage ?? "Die Route zu diesem Ziel konnte nicht berechnet werden.")
             return
         }
+        guard CarPlayConnectionWorkPolicy.mayPublish(
+            request: requestedConnection, current: connectionGeneration,
+            connected: interfaceController != nil
+        ) else { return }
         let coordinate = item.placemark.coordinate
         RecentDestinationStore.record(.init(
             name: item.name ?? "Ziel", subtitle: item.placemark.title ?? "",
@@ -1102,6 +1152,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func showSearchResults(title: String) {
         let planner = RoutePlanner.shared
+        let presentedConnection = connectionGeneration
         let items = planner.actionableRouteSearchResults.prefix(10).map { result in
             let mapItem = result.mapItem
             let address = [mapItem.placemark.thoroughfare, mapItem.placemark.locality]
@@ -1127,6 +1178,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                         expectedRouteGeneration: result.routeGeneration
                     )
                     completion()
+                    guard CarPlayConnectionWorkPolicy.mayPublish(
+                        request: presentedConnection,
+                        current: self.connectionGeneration,
+                        connected: self.interfaceController != nil
+                    ) else { return }
                     if succeeded { self.interfaceController?.popToRootTemplate(animated: true, completion: nil) }
                     else { self.showFailure(planner.errorMessage ?? "Der Zwischenstopp konnte nicht hinzugefügt werden.") }
                 }
