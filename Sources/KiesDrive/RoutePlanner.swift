@@ -61,6 +61,10 @@ struct CachedRoute: Codable {
     /// keeps old files decodable, but an untagged cache cannot restore a
     /// locked trip whose constraints it cannot prove it represents.
     let routeConstraintIdentity: String?
+    /// Fingerprint of the exact cached geometry. Optional keeps older caches
+    /// readable, but only matching non-legacy fingerprints may retain their
+    /// navigation cursor during a metadata/enrichment rewrite.
+    let geometryIdentity: String?
     let legs: [Leg]
     let stations: [FuelStation]
     let savedAt: Date
@@ -70,6 +74,7 @@ struct CachedRoute: Codable {
 
     init(destinationName: String, tripID: UUID? = nil,
          destinationCoordinate: DriveCoordinate?, routeConstraintIdentity: String? = nil,
+         geometryIdentity: String? = nil,
          legs: [Leg],
          stations: [FuelStation], savedAt: Date,
          navigationProgress: Double? = nil) {
@@ -77,6 +82,7 @@ struct CachedRoute: Codable {
         self.tripID = tripID
         self.destinationCoordinate = destinationCoordinate
         self.routeConstraintIdentity = routeConstraintIdentity
+        self.geometryIdentity = geometryIdentity
         self.legs = legs
         self.stations = stations
         self.savedAt = savedAt
@@ -88,7 +94,8 @@ struct CachedRoute: Codable {
         return .init(
             destinationName: destinationName, tripID: tripID,
             destinationCoordinate: destinationCoordinate,
-            routeConstraintIdentity: routeConstraintIdentity, legs: legs,
+            routeConstraintIdentity: routeConstraintIdentity,
+            geometryIdentity: geometryIdentity, legs: legs,
             stations: stations, savedAt: savedAt,
             navigationProgress: min(1, max(navigationProgress ?? 0, progress))
         )
@@ -145,8 +152,11 @@ enum OfflineRouteCacheValidationPolicy {
 
 enum OfflineRouteCacheWritePolicy {
     static func progressForWrite(existing: CachedRoute?, currentTripID: UUID?,
+                                 currentGeometryIdentity: String?,
                                  preservingProgress: Bool) -> Double? {
         if preservingProgress, existing?.tripID == currentTripID,
+           let currentGeometryIdentity,
+           existing?.geometryIdentity == currentGeometryIdentity,
            let progress = existing?.navigationProgress {
             return progress
         }
@@ -162,6 +172,30 @@ enum OfflineRouteCacheWritePolicy {
         // A constraint-bound cache owns an independent geometry cursor.
         // Never borrow progress from the differently shaped trip corridor.
         return hasConstraintIdentity ? 0 : legacyTripProgress
+    }
+}
+
+enum OfflineRouteGeometryIdentityPolicy {
+    static func identity(for legs: [CachedRoute.Leg]) -> String? {
+        guard !legs.isEmpty else { return nil }
+        let parts = legs.enumerated().map { index, leg in
+            let coordinates = leg.coordinates ?? leg.steps.flatMap { $0.coordinates ?? [] }
+            let anchors = anchorIndices(count: coordinates.count).map {
+                coordinate(coordinates[$0])
+            }.joined(separator: ";")
+            let distance = Int((max(0, leg.distance) / 100).rounded()) * 100
+            return "\(index):\(distance):\(coordinates.count):\(anchors)"
+        }
+        return parts.joined(separator: "|")
+    }
+
+    private static func anchorIndices(count: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        return Set([0, count / 4, count / 2, count * 3 / 4, count - 1]).sorted()
+    }
+
+    private static func coordinate(_ value: DriveCoordinate) -> String {
+        String(format: "%.4f,%.4f", value.latitude, value.longitude)
     }
 }
 
@@ -2386,9 +2420,22 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let routeConstraintIdentity = routeLockStore.activeLock.map {
             OfflineRouteConstraintIdentityPolicy.identity(for: $0)
         }
+        let cachedLegs = legs.map { leg in
+            CachedRoute.Leg(distance: leg.distance, travelTime: leg.expectedTravelTime,
+                             steps: leg.steps.map { step in
+                                 .init(instructions: step.instructions, distance: step.distance,
+                                       coordinates: sample(step.polyline, maximum: 80).map {
+                                           .init(latitude: $0.latitude, longitude: $0.longitude)
+                                       })
+                             },
+                             coordinates: sample(leg.polyline, maximum: 600).map {
+                                 .init(latitude: $0.latitude, longitude: $0.longitude)
+                             })
+        }
+        let geometryIdentity = OfflineRouteGeometryIdentityPolicy.identity(for: cachedLegs)
         let retainedProgress = OfflineRouteCacheWritePolicy.progressForWrite(
-            existing: offlineRoute,
-            currentTripID: currentTripID,
+            existing: offlineRoute, currentTripID: currentTripID,
+            currentGeometryIdentity: geometryIdentity,
             preservingProgress: preservingProgress
         )
         let cached = CachedRoute(
@@ -2399,18 +2446,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                       longitude: $0.placemark.coordinate.longitude)
             },
             routeConstraintIdentity: routeConstraintIdentity,
-            legs: legs.map { leg in
-                CachedRoute.Leg(distance: leg.distance, travelTime: leg.expectedTravelTime,
-                                 steps: leg.steps.map { step in
-                                     .init(instructions: step.instructions, distance: step.distance,
-                                           coordinates: sample(step.polyline, maximum: 80).map {
-                                               .init(latitude: $0.latitude, longitude: $0.longitude)
-                                           })
-                                 },
-                                 coordinates: sample(leg.polyline, maximum: 600).map {
-                                     .init(latitude: $0.latitude, longitude: $0.longitude)
-                                 })
-            },
+            geometryIdentity: geometryIdentity,
+            legs: cachedLegs,
             stations: stations,
             savedAt: Date(),
             navigationProgress: retainedProgress

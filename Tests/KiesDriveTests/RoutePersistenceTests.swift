@@ -348,21 +348,58 @@ final class RoutePersistenceTests: XCTestCase {
         let route = CachedRoute(
             destinationName: "Ziel", tripID: tripID,
             destinationCoordinate: .init(latitude: 50, longitude: 8),
+            geometryIdentity: "geometry-a",
             legs: [], stations: [], savedAt: Date(), navigationProgress: 0.62
         )
 
         XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
-            existing: route, currentTripID: tripID, preservingProgress: true
+            existing: route, currentTripID: tripID,
+            currentGeometryIdentity: "geometry-a", preservingProgress: true
         ), 0.62)
         XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
-            existing: route, currentTripID: UUID(), preservingProgress: true
+            existing: route, currentTripID: UUID(),
+            currentGeometryIdentity: "geometry-a", preservingProgress: true
         ), 0)
         XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
-            existing: route, currentTripID: tripID, preservingProgress: false
+            existing: route, currentTripID: tripID,
+            currentGeometryIdentity: "geometry-a", preservingProgress: false
         ), 0)
         XCTAssertNil(OfflineRouteCacheWritePolicy.progressForWrite(
-            existing: route, currentTripID: nil, preservingProgress: false
+            existing: route, currentTripID: nil,
+            currentGeometryIdentity: "geometry-a", preservingProgress: false
         ))
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
+            existing: route, currentTripID: tripID,
+            currentGeometryIdentity: "geometry-b", preservingProgress: true
+        ), 0, "A reroute must never inherit progress from the old geometry")
+        XCTAssertEqual(OfflineRouteCacheWritePolicy.progressForWrite(
+            existing: route, currentTripID: tripID,
+            currentGeometryIdentity: nil, preservingProgress: true
+        ), 0, "Legacy geometry without an identity must restart safely")
+    }
+
+    func testOfflineGeometryIdentityChangesWhenRouteShapeChanges() throws {
+        func leg(_ middle: DriveCoordinate) -> CachedRoute.Leg {
+            .init(
+                distance: 10_000, travelTime: 600, steps: [],
+                coordinates: [
+                    .init(latitude: 50, longitude: 8), middle,
+                    .init(latitude: 51, longitude: 9),
+                ]
+            )
+        }
+        let first = try XCTUnwrap(OfflineRouteGeometryIdentityPolicy.identity(
+            for: [leg(.init(latitude: 50.5, longitude: 8.5))]
+        ))
+        let same = try XCTUnwrap(OfflineRouteGeometryIdentityPolicy.identity(
+            for: [leg(.init(latitude: 50.5, longitude: 8.5))]
+        ))
+        let rerouted = try XCTUnwrap(OfflineRouteGeometryIdentityPolicy.identity(
+            for: [leg(.init(latitude: 50.7, longitude: 8.2))]
+        ))
+
+        XCTAssertEqual(first, same)
+        XCTAssertNotEqual(first, rerouted)
     }
 
     func testConstraintBoundOfflineGeometryNeverBorrowsTripCorridorProgress() {
