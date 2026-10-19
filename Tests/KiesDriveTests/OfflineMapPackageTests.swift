@@ -280,6 +280,28 @@ final class OfflineMapPackageTests: XCTestCase {
                       "A sparse long segment must still be checked between its vertices")
     }
 
+    func testOfflineCorridorDefaultIsDenseEnoughForStreetTileNeighbourhoods() {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.3),
+        ]
+        let samples = OfflineRouteCorridorCoveragePolicy.coordinates(along: route)
+        let maximumGap = zip(samples, samples.dropFirst()).map {
+            CLLocation(latitude: $0.0.latitude, longitude: $0.0.longitude).distance(
+                from: CLLocation(latitude: $0.1.latitude, longitude: $0.1.longitude)
+            )
+        }.max() ?? .infinity
+
+        XCTAssertLessThanOrEqual(maximumGap, 2_100)
+    }
+
+    func testLargeOfflineCoverageScanUsesStableCacheWindow() {
+        XCTAssertEqual(OfflineTileCoverageCachePolicy.lifetime(tileCount: 9), 2)
+        XCTAssertEqual(OfflineTileCoverageCachePolicy.lifetime(tileCount: 100), 2)
+        XCTAssertEqual(OfflineTileCoverageCachePolicy.lifetime(tileCount: 101), 60)
+        XCTAssertEqual(OfflineTileCoverageCachePolicy.lifetime(tileCount: 5_000), 60)
+    }
+
     func testOfflineCorridorCoverageCapsWorkWithoutDroppingDestination() throws {
         let route = [
             CLLocationCoordinate2D(latitude: 45, longitude: 5),

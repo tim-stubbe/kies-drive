@@ -142,8 +142,8 @@ enum OfflineRouteCorridorCoveragePolicy {
     /// destination and every major part of the journey.
     static func coordinates(
         along route: [CLLocationCoordinate2D],
-        intervalMetres: CLLocationDistance = 10_000,
-        maximumSamples: Int = 240
+        intervalMetres: CLLocationDistance = 2_000,
+        maximumSamples: Int = 1_200
     ) -> [CLLocationCoordinate2D] {
         let route = route.filter {
             $0.latitude.isFinite && $0.longitude.isFinite &&
@@ -188,6 +188,17 @@ enum OfflineRouteCorridorCoveragePolicy {
             ))
         }
         return result
+    }
+}
+
+enum OfflineTileCoverageCachePolicy {
+    /// The moving look-ahead checks only a handful of tiles and should notice
+    /// file damage almost immediately. A complete holiday-route preflight can
+    /// contain thousands of tiles; repeating that disk scan during every
+    /// SwiftUI refresh would make the map stutter, so retain that immutable
+    /// package result longer. Any package reload still clears the cache.
+    static func lifetime(tileCount: Int) -> TimeInterval {
+        tileCount > 100 ? 60 : 2
     }
 }
 
@@ -362,7 +373,6 @@ final class OfflineMapPackageStore: ObservableObject {
         let checkedAt: Date
     }
     private var tileCoverageCache: [TileCoverageKey: TileCoverageEntry] = [:]
-    private let tileCoverageCacheLifetime: TimeInterval = 2
 
     init(fileManager: FileManager = .default, rootURL: URL? = nil,
          defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
@@ -481,7 +491,9 @@ final class OfflineMapPackageStore: ObservableObject {
             // invalidates the cache's age basis. Recheck disk immediately;
             // otherwise a deleted/corrupt tile could remain "available" for
             // an arbitrarily long time until wall-clock time catches up.
-            if age >= 0, age < tileCoverageCacheLifetime {
+            if age >= 0, age < OfflineTileCoverageCachePolicy.lifetime(
+                tileCount: orderedTiles.count
+            ) {
                 return cached.result
             }
         }
