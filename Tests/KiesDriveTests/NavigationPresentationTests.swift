@@ -2682,7 +2682,9 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testRouteStopMutationGateCoalescesRepeatedTapUntilCalculationFinishes() {
         var gate = RouteStopMutationGate()
+        XCTAssertFalse(gate.isBusy)
         XCTAssertEqual(gate.begin("fuel-1"), .started)
+        XCTAssertTrue(gate.isBusy)
         XCTAssertTrue(gate.isActive("fuel-1"))
         XCTAssertEqual(
             gate.begin("fuel-1"), .coalesced,
@@ -2694,6 +2696,7 @@ final class NavigationPresentationTests: XCTestCase {
         )
 
         gate.finish("fuel-1")
+        XCTAssertFalse(gate.isBusy)
         XCTAssertFalse(gate.isActive("fuel-1"))
         XCTAssertEqual(
             gate.begin("fuel-2"), .started,

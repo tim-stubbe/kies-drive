@@ -433,6 +433,8 @@ enum RouteStopMutationAdmission: Equatable {
 struct RouteStopMutationGate {
     private var activeID: String?
 
+    var isBusy: Bool { activeID != nil }
+
     /// Route-stop edits all replace the same route and persistent lock. They
     /// must therefore be serialized globally, not only per stop identifier.
     /// A repeated tap on the active item is harmless and is coalesced, while a

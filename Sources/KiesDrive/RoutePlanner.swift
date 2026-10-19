@@ -4360,7 +4360,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                   elapsed: now.timeIntervalSince(offRouteSince),
                   consecutiveFixes: offRouteFixCount,
                   speedMetresPerSecond: reliableSpeed
-              ), allowsAutomaticReroute, !isRecalculating else { return }
+              ), allowsAutomaticReroute, !isRecalculating,
+              !routeStopMutationGate.isBusy else { return }
         isManeuverGuidanceReliable = false
         // A confirmed departure invalidates the current maneuver immediately.
         // Do not let a queued or audible instruction from the abandoned road
