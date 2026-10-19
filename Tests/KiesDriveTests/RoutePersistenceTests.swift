@@ -277,6 +277,62 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertTrue(OfflineRouteCacheValidationPolicy.isValid(legacyTextOnly))
     }
 
+    func testOfflineRouteRejectsGeometryThatNoLongerMatchesFingerprint() throws {
+        let originalLegs = [CachedRoute.Leg(
+            distance: 12_000, travelTime: 900,
+            steps: [.init(
+                instructions: "Rechts abbiegen", distance: 12_000,
+                coordinates: [.init(latitude: 50, longitude: 8),
+                              .init(latitude: 50.01, longitude: 8.1)]
+            )],
+            coordinates: [.init(latitude: 50, longitude: 8),
+                          .init(latitude: 50.01, longitude: 8.1)]
+        )]
+        let identity = try XCTUnwrap(OfflineRouteGeometryIdentityPolicy.identity(for: originalLegs))
+        let valid = CachedRoute(
+            destinationName: "Hochheim", tripID: UUID(),
+            destinationCoordinate: .init(latitude: 50.01, longitude: 8.35),
+            routeConstraintIdentity: "constraints", geometryIdentity: identity,
+            legs: originalLegs, stations: [], savedAt: Date()
+        )
+        XCTAssertTrue(OfflineRouteCacheValidationPolicy.isValid(valid))
+
+        let changedLegs = [CachedRoute.Leg(
+            distance: 12_000, travelTime: 900,
+            steps: [.init(
+                instructions: "Rechts abbiegen", distance: 12_000,
+                coordinates: [.init(latitude: 50, longitude: 8),
+                              .init(latitude: 51, longitude: 9)]
+            )],
+            coordinates: [.init(latitude: 50, longitude: 8),
+                          .init(latitude: 51, longitude: 9)]
+        )]
+        let altered = CachedRoute(
+            destinationName: valid.destinationName, tripID: valid.tripID,
+            destinationCoordinate: valid.destinationCoordinate,
+            routeConstraintIdentity: valid.routeConstraintIdentity,
+            geometryIdentity: identity, legs: changedLegs,
+            stations: [], savedAt: valid.savedAt
+        )
+        XCTAssertFalse(
+            OfflineRouteCacheValidationPolicy.isValid(altered),
+            "Readable but altered geometry must not inherit the original offline cursor"
+        )
+    }
+
+    func testOfflineRouteRejectsEmptyGeometryFingerprint() {
+        let legs = [CachedRoute.Leg(
+            distance: 1_000, travelTime: 60,
+            steps: [.init(instructions: "Geradeaus", distance: 1_000)],
+            coordinates: nil
+        )]
+        let route = CachedRoute(
+            destinationName: "Ziel", destinationCoordinate: nil,
+            geometryIdentity: "   ", legs: legs, stations: [], savedAt: Date()
+        )
+        XCTAssertFalse(OfflineRouteCacheValidationPolicy.isValid(route))
+    }
+
     func testOfflineRouteStoreRejectsInvalidProgressFromReadableJSON() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KiesDriveInvalidOfflineProgress-\(UUID().uuidString)",

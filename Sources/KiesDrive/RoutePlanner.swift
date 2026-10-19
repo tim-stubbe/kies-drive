@@ -113,6 +113,11 @@ enum OfflineRouteCacheValidationPolicy {
               route.legs.contains(where: { $0.distance > 0 }),
               route.stations.allSatisfy(isValid)
         else { return false }
+        if let geometryIdentity = route.geometryIdentity {
+            guard !geometryIdentity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  geometryIdentity == OfflineRouteGeometryIdentityPolicy.identity(for: route.legs)
+            else { return false }
+        }
         return true
     }
 
