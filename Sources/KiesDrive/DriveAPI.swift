@@ -488,7 +488,8 @@ enum TollEvidenceValidator {
                          source: String, sourceURL: String?,
                          corroboratingSourceURLs: [String]? = nil,
                          corroboratingSourceTexts: [String]? = nil,
-                         corroboratingSources: [SourceReference]? = nil) -> Evidence? {
+                         corroboratingSources: [SourceReference]? = nil,
+                         referenceYear: Int = Calendar.current.component(.year, from: Date())) -> Evidence? {
         let normalizedCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
         guard status == "known", let amount, amount.isFinite, amount > 0, amount <= 5_000,
@@ -497,6 +498,14 @@ enum TollEvidenceValidator {
               let sourceURL, let url = URL(string: sourceURL), url.scheme?.lowercased() == "https",
               url.host != nil,
               sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs),
+              evidenceIsNotExplicitlyStale(
+                sourceURL: sourceURL,
+                texts: evidenceTexts(
+                    for: sourceURL, references: corroboratingSources,
+                    legacyTexts: corroboratingSourceTexts
+                ),
+                referenceYear: referenceYear
+              ),
               textCorroboratesAmount(
                 amount, currency: normalizedCurrency,
                 texts: evidenceTexts(
@@ -511,17 +520,48 @@ enum TollEvidenceValidator {
     static func validatesNoToll(status: String, source: String, sourceURL: String?,
                                 corroboratingSourceURLs: [String]? = nil,
                                 corroboratingSourceTexts: [String]? = nil,
-                                corroboratingSources: [SourceReference]? = nil) -> Bool {
+                                corroboratingSources: [SourceReference]? = nil,
+                                referenceYear: Int = Calendar.current.component(.year, from: Date())) -> Bool {
         guard status == "no_toll",
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let sourceURL, let url = URL(string: sourceURL),
               url.scheme?.lowercased() == "https", url.host != nil,
               sourceIsCorroborated(sourceURL, by: corroboratingSourceURLs),
+              evidenceIsNotExplicitlyStale(
+                sourceURL: sourceURL,
+                texts: evidenceTexts(
+                    for: sourceURL, references: corroboratingSources,
+                    legacyTexts: corroboratingSourceTexts
+                ),
+                referenceYear: referenceYear
+              ),
               textCorroboratesNoToll(evidenceTexts(
                 for: sourceURL, references: corroboratingSources,
                 legacyTexts: corroboratingSourceTexts
               )) else { return false }
         return true
+    }
+
+    /// Search engines can retain old annual vignette and tunnel prices long
+    /// after a tariff changes. If every explicit year in the claimed page and
+    /// its matching snippet is older than the current year, the evidence is
+    /// unambiguously stale and must stay unknown. Pages without a year remain
+    /// eligible because many official live tariff pages are intentionally
+    /// yearless.
+    private static func evidenceIsNotExplicitlyStale(
+        sourceURL: String, texts: [String]?, referenceYear: Int
+    ) -> Bool {
+        let material = ([sourceURL] + (texts ?? [])).joined(separator: " ")
+        guard let expression = try? NSRegularExpression(pattern: "(?<![0-9])(?:19|20)[0-9]{2}(?![0-9])") else {
+            return false
+        }
+        let range = NSRange(material.startIndex..., in: material)
+        let years = expression.matches(in: material, range: range).compactMap { match -> Int? in
+            guard let swiftRange = Range(match.range, in: material) else { return nil }
+            return Int(material[swiftRange])
+        }
+        guard !years.isEmpty else { return true }
+        return years.contains { $0 >= referenceYear }
     }
 
     private static func evidenceTexts(

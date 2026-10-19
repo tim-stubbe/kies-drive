@@ -2297,6 +2297,30 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollEvidenceRejectsExplicitlyStaleTariffYear() {
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://example.test/tolls/2025",
+            corroboratingSourceURLs: ["https://example.test/tolls/2025"],
+            corroboratingSourceTexts: ["Pkw-Gesamtmaut 2025: 27,40 EUR"],
+            referenceYear: 2026
+        ))
+        XCTAssertNotNil(TollEvidenceValidator.validate(
+            status: "known", amount: 27.4, currency: "EUR",
+            source: "Official provider", sourceURL: "https://example.test/tolls/2026",
+            corroboratingSourceURLs: ["https://example.test/tolls/2026"],
+            corroboratingSourceTexts: ["Pkw-Gesamtmaut 2026: 27,40 EUR"],
+            referenceYear: 2026
+        ))
+        XCTAssertFalse(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free/2024",
+            corroboratingSourceURLs: ["https://example.test/toll-free/2024"],
+            corroboratingSourceTexts: ["Im Jahr 2024 war diese Strecke für Pkw mautfrei."],
+            referenceYear: 2026
+        ))
+    }
+
     func testShortTripDoesNotAddBreak() {
         XCTAssertTrue(BreakPlanner().plan(drivingTime: 90 * 60, candidates: []).isEmpty)
     }
