@@ -2083,6 +2083,7 @@ enum NavigationStepSelectionPolicy {
         }
 
         var selected = current
+        var crossedManeuverBoundary = false
         while metrics.indices.contains(selected + 1) {
             let active = metrics[selected]
             var successorIndex = selected + 1
@@ -2098,6 +2099,15 @@ enum NavigationStepSelectionPolicy {
             }
             guard metrics.indices.contains(successorIndex) else { break }
             let next = metrics[successorIndex]
+            // One ordinary Core Location fix must not consume two real turns.
+            // At compact junctions both short outgoing geometries can be within
+            // the same 8–15 metre transition radius; advancing across both
+            // would replace the second banner and spoken cue before the driver
+            // has received it. Buffered fixes are processed individually, and
+            // the explicit recovery branches above still catch up after a
+            // tunnel or long suspension.
+            if crossedManeuverBoundary && next.hasManeuverInstruction &&
+                !allowsFullRecovery { break }
             let headingMatches = NavigationCourseMatchingPolicy.isPlausible(
                 next.courseDifferenceDegrees
             )
@@ -2122,6 +2132,7 @@ enum NavigationStepSelectionPolicy {
                     outgoingHeadingMatches
                 if reachedInstructionOnlyJunction {
                     selected = outgoingIndex
+                    crossedManeuverBoundary = true
                     continue
                 }
             }
@@ -2147,6 +2158,7 @@ enum NavigationStepSelectionPolicy {
                 !active.hasManeuverInstruction &&
                 next.distanceFromRoute <= max(45, radius * 1.5) && headingMatches
             guard reachedJunction || clearlyPastStep || unusableTransition else { break }
+            if next.hasManeuverInstruction { crossedManeuverBoundary = true }
             selected = unusableTransition ? successorIndex : selected + 1
         }
         return selected

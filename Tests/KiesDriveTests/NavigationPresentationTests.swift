@@ -3711,6 +3711,30 @@ final class NavigationPresentationTests: XCTestCase {
                                                                     transitionRadius: 10), 1)
     }
 
+    func testStepSelectionDoesNotConsumeTwoCloseManeuversFromOneLiveFix() {
+        let compactJunction = [
+            NavigationStepMetric(
+                distanceFromRoute: 5, remainingOnStep: 4, stepDistance: 180
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: 4, remainingOnStep: 6, stepDistance: 10,
+                hasManeuverInstruction: true
+            ),
+            NavigationStepMetric(
+                distanceFromRoute: 5, remainingOnStep: 450, stepDistance: 450,
+                hasManeuverInstruction: true
+            ),
+        ]
+
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: compactJunction, transitionRadius: 10
+        ), 1, "The second close turn must remain the next visible and audible maneuver")
+        XCTAssertEqual(NavigationStepSelectionPolicy.selectedIndex(
+            current: 0, metrics: compactJunction, transitionRadius: 10,
+            allowsFullRecovery: true
+        ), 2, "Explicit recovery may catch up when the car is already beyond both turns")
+    }
+
     func testStepSelectionSkipsOnlyPlausibleEmptyMapKitTransition() {
         let usableSuccessor = [
             NavigationStepMetric(
