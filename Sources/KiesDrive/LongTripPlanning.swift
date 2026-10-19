@@ -1993,6 +1993,13 @@ struct SpeedScenarioComparison: Equatable {
 }
 
 enum SpeedScenarioComparisonPolicy {
+    /// Very short unrestricted samples are not a useful high-speed scenario:
+    /// acceleration, deceleration and the next limit would dominate them.
+    /// They also commonly represent a short provider/map transition. Keep the
+    /// underlying route result, but do not present a precise 150/200 km/h
+    /// saving until there is a meaningful amount of eligible road.
+    static let minimumEligibleDistanceMetres = 1_000.0
+
     /// Finds two speed scenarios for the same physical route. A tolerance is
     /// intentional: settings can later come from sliders, remote commands or
     /// decoded server values and must not disappear because of floating-point
@@ -2017,7 +2024,13 @@ enum SpeedScenarioComparisonPolicy {
                       abs($0.scenario.targetSpeedKmh - comparisonSpeed) <= tolerance
               }),
               baseline.id != alternative.id else { return nil }
-        return .init(baseline: baseline, alternative: alternative)
+        let comparison = SpeedScenarioComparison(
+            baseline: baseline, alternative: alternative
+        )
+        guard comparison.eligibleDistanceMetres >= minimumEligibleDistanceMetres else {
+            return nil
+        }
+        return comparison
     }
 }
 

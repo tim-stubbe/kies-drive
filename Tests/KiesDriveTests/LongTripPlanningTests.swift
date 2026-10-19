@@ -952,6 +952,32 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(comparison?.alternative.scenario.targetSpeedKmh ?? 0, 150, accuracy: 0.1)
     }
 
+    func testSpeedComparisonSuppressesTinyOrUnknownUnlimitedShare() {
+        func plan(distance: Double, unlimitedFraction: Double) -> LongTripPlan {
+            let route = RoutePlanningInput(
+                id: "route", title: "Route", distanceMetres: distance,
+                mapKitExpectedTravelTime: 3_600,
+                unlimitedMotorwayFraction: unlimitedFraction,
+                typicalUnlimitedSpeedKmh: 130,
+                toll: .unknown(reason: "test"), breakCandidates: []
+            )
+            return RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
+                routes: [route], scenarios: SpeedScenarioPolicy.scenarios(configuredSpeed: 150),
+                vehicle: .init()
+            )
+        }
+
+        XCTAssertNil(SpeedScenarioComparisonPolicy.comparison(
+            in: plan(distance: 100_000, unlimitedFraction: 0), configuredSpeed: 150
+        ), "Missing unrestricted-road evidence must not produce a fake 150/200 comparison")
+        XCTAssertNil(SpeedScenarioComparisonPolicy.comparison(
+            in: plan(distance: 100_000, unlimitedFraction: 0.005), configuredSpeed: 150
+        ), "A 500 metre transition is too short for a meaningful high-speed scenario")
+        XCTAssertNotNil(SpeedScenarioComparisonPolicy.comparison(
+            in: plan(distance: 100_000, unlimitedFraction: 0.02), configuredSpeed: 150
+        ))
+    }
+
     func testScenarioMatchingSanitizesConfiguredAndDecodedSpeedValues() {
         XCTAssertTrue(SpeedScenarioPolicy.matchesTarget(
             scenarioSpeed: 199.999_99, configuredSpeed: 200
