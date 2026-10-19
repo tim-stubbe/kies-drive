@@ -1521,6 +1521,36 @@ enum NavigationInitialManeuverPolicy {
     }
 }
 
+struct NavigationManeuverDiagnosticSeed: Equatable {
+    let key: String
+    let instruction: String
+    let distance: CLLocationDistance
+}
+
+enum NavigationInitialManeuverDiagnosticPolicy {
+    /// Registers the first real turn before Core Location supplies its first
+    /// driving fix. If that fix arrives at or just beyond the junction, the
+    /// normal transition recovery can still deliver the decisive cue instead
+    /// of treating the following turn as the first maneuver ever observed.
+    static func seed(
+        steps: [(legIndex: Int, stepIndex: Int, instruction: String,
+                 distance: CLLocationDistance)]
+    ) -> NavigationManeuverDiagnosticSeed? {
+        guard let maneuverIndex = steps.indices.first(where: {
+            !steps[$0].instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else { return nil }
+        let maneuver = steps[maneuverIndex]
+        let distance = steps[..<maneuverIndex].reduce(0) {
+            $0 + max(0, $1.distance.isFinite ? $1.distance : 0)
+        }
+        return .init(
+            key: "\(maneuver.legIndex):\(maneuver.stepIndex):\(maneuver.instruction)",
+            instruction: maneuver.instruction,
+            distance: distance
+        )
+    }
+}
+
 enum ManeuverDiagnosticPolicy {
     enum ClosureReason {
         case routeTransition

@@ -2415,6 +2415,23 @@ final class NavigationPresentationTests: XCTestCase {
         ]))
     }
 
+    func testNavigationStartRegistersFirstManeuverForTransitionRecovery() throws {
+        let seed = try XCTUnwrap(NavigationInitialManeuverDiagnosticPolicy.seed(steps: [
+            (legIndex: 0, stepIndex: 0, instruction: "", distance: 420),
+            (legIndex: 0, stepIndex: 1,
+             instruction: "Rechts auf die A 66 fahren", distance: 1_200),
+            (legIndex: 0, stepIndex: 2,
+             instruction: "Links halten Richtung Wiesbaden", distance: 800),
+        ]))
+
+        XCTAssertEqual(seed.key, "0:1:Rechts auf die A 66 fahren")
+        XCTAssertEqual(seed.instruction, "Rechts auf die A 66 fahren")
+        XCTAssertEqual(seed.distance, 420, accuracy: 0.001)
+        XCTAssertNil(NavigationInitialManeuverDiagnosticPolicy.seed(steps: [
+            (legIndex: 0, stepIndex: 0, instruction: "", distance: 500),
+        ]))
+    }
+
     func testRestoredOfflineRouteSeedsDistanceAndUpcomingFromRemainingStepsOnly() throws {
         let cachedSteps = [
             (instruction: "Alte Abfahrt", distance: 700.0),

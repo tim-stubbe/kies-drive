@@ -662,6 +662,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         isNavigating = true
         hasArrived = false
         resetLiveNavigationProgress()
+        seedInitialManeuverDiagnosticIfNavigating()
         lastAnnouncement = nextInstruction ?? "Route gestartet"
         let opening = lastAnnouncement.map { "Route gestartet. \(NavigationSpeechFormatter.spokenText($0))" }
             ?? "Route gestartet."
@@ -3430,6 +3431,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         nextManeuverInstruction = seed.instruction
         nextManeuverDistance = seed.distance
         upcomingManeuverInstructions = seed.upcomingInstructions
+        seedInitialManeuverDiagnosticIfNavigating()
+    }
+
+    private func seedInitialManeuverDiagnosticIfNavigating() {
+        guard isNavigating else { return }
+        let values = routeSteps().map {
+            (legIndex: $0.legIndex, stepIndex: $0.stepIndex,
+             instruction: $0.step.instructions, distance: $0.step.distance)
+        }
+        guard let seed = NavigationInitialManeuverDiagnosticPolicy.seed(steps: values) else {
+            return
+        }
+        diagnosticManeuverKey = seed.key
+        diagnosticManeuverInstruction = seed.instruction
+        diagnosticManeuverDistance = seed.distance
     }
 
     @discardableResult
