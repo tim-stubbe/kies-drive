@@ -836,22 +836,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let options = LockedRouteOptions(avoidTolls: DriveSettings.shared.avoidTolls,
                                          avoidHighways: DriveSettings.shared.avoidHighways)
         let existing = routeLockStore.activeLock
-        let waypoints: [LockedWaypoint]
-        if let existing, existing.isActive {
-            waypoints = existing.waypoints
-        } else {
-            waypoints = viaStations.map(RouteStopWaypointFactory.fuelStation)
-        }
-        let lock = ActiveRouteLock(
-            id: existing?.id ?? UUID(), title: existing?.title ?? (destination.name ?? destinationText),
+        let lock = ActiveRouteLockRefreshPolicy.refreshed(
+            existing: existing,
+            title: destination.name ?? destinationText,
             destinationName: destination.name ?? destinationText,
             destination: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
-            waypoints: waypoints, defaultOptions: existing?.defaultOptions ?? options,
-            corridorWidthMetres: existing?.corridorWidthMetres ?? 5_000,
-            corridorPoints: existing?.corridorPoints ?? legs.flatMap { sample($0.polyline, maximum: 120) }
-                .map { .init(latitude: $0.latitude, longitude: $0.longitude) },
-            visitedWaypointIDs: existing?.visitedWaypointIDs ?? [],
-            status: .active, createdAt: existing?.createdAt ?? Date(), updatedAt: Date()
+            fallbackWaypoints: viaStations.map(RouteStopWaypointFactory.fuelStation),
+            fallbackOptions: options,
+            fallbackCorridorWidthMetres: 5_000,
+            fallbackCorridorPoints: legs.flatMap { sample($0.polyline, maximum: 120) }
+                .map { .init(latitude: $0.latitude, longitude: $0.longitude) }
         )
         routeLockStore.save(lock)
         activeRouteLock = lock

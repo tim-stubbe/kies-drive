@@ -318,6 +318,48 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRefreshingActiveTripPreservesProgressWaypointsAndSegmentRules() {
+        let createdAt = Date(timeIntervalSince1970: 1_000)
+        let existing = ActiveRouteLock(
+            id: UUID(), title: "Kroatien", destinationName: "Split",
+            destination: .init(latitude: 43.5, longitude: 16.4),
+            waypoints: [
+                .init(
+                    id: "slovenia", name: "Slowenien",
+                    coordinate: .init(latitude: 46.5, longitude: 15.6),
+                    required: true,
+                    optionsAfter: .init(avoidTolls: true, avoidHighways: true)
+                )
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: [
+                .init(latitude: 46.6, longitude: 15.6),
+                .init(latitude: 45.6, longitude: 15.7),
+            ],
+            visitedWaypointIDs: ["slovenia"], lastRouteProgress: 0.63,
+            status: .active, createdAt: createdAt, updatedAt: createdAt
+        )
+        let refreshedAt = Date(timeIntervalSince1970: 2_000)
+
+        let refreshed = ActiveRouteLockRefreshPolicy.refreshed(
+            existing: existing, title: "ignored", destinationName: "Split",
+            destination: existing.destination, fallbackWaypoints: [],
+            fallbackOptions: .init(avoidTolls: true, avoidHighways: false),
+            fallbackCorridorWidthMetres: 5_000, fallbackCorridorPoints: [],
+            now: refreshedAt
+        )
+
+        XCTAssertEqual(refreshed.id, existing.id)
+        XCTAssertEqual(refreshed.waypoints, existing.waypoints)
+        XCTAssertEqual(refreshed.defaultOptions, existing.defaultOptions)
+        XCTAssertEqual(refreshed.corridorPoints, existing.corridorPoints)
+        XCTAssertEqual(refreshed.visitedWaypointIDs, ["slovenia"])
+        XCTAssertEqual(refreshed.lastRouteProgress, 0.63)
+        XCTAssertEqual(refreshed.createdAt, createdAt)
+        XCTAssertEqual(refreshed.updatedAt, refreshedAt)
+    }
+
     func testSpeechRetriesCurrentManeuverImmediatelyAfterInterruptionEnds() {
         XCTAssertTrue(NavigationSpeechInterruptionPolicy.shouldRetryImmediately(
             systemAllowsResume: true

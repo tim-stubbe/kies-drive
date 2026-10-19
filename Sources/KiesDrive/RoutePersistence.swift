@@ -279,6 +279,38 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var isActive: Bool { status == .active }
 }
 
+enum ActiveRouteLockRefreshPolicy {
+    /// Re-saving an already active trip when guidance starts must retain the
+    /// monotonic corridor progress. Dropping it makes a later app restart
+    /// ambiguous at loops and repeated motorway junctions and can send route
+    /// restoration back to an earlier occurrence of the same road.
+    static func refreshed(
+        existing: ActiveRouteLock?, title: String,
+        destinationName: String, destination: DriveCoordinate,
+        fallbackWaypoints: [LockedWaypoint],
+        fallbackOptions: LockedRouteOptions,
+        fallbackCorridorWidthMetres: Double,
+        fallbackCorridorPoints: [DriveCoordinate],
+        now: Date = Date()
+    ) -> ActiveRouteLock {
+        ActiveRouteLock(
+            id: existing?.id ?? UUID(),
+            title: existing?.title ?? title,
+            destinationName: destinationName,
+            destination: destination,
+            waypoints: existing?.waypoints ?? fallbackWaypoints,
+            defaultOptions: existing?.defaultOptions ?? fallbackOptions,
+            corridorWidthMetres: existing?.corridorWidthMetres ?? fallbackCorridorWidthMetres,
+            corridorPoints: existing?.corridorPoints ?? fallbackCorridorPoints,
+            visitedWaypointIDs: existing?.visitedWaypointIDs ?? [],
+            lastRouteProgress: existing?.lastRouteProgress,
+            status: .active,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+        )
+    }
+}
+
 enum RouteOptionRollbackPolicy {
     /// Restores only route-option fields while retaining live progress,
     /// visited waypoints, corridor checkpoints and timestamps written during
