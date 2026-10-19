@@ -549,6 +549,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance()
+        )
         #endif
         offlineRoute = Self.loadCache()
         // Never install a personal preset on a fresh device. Public builds
@@ -4227,6 +4233,34 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         @unknown default:
             audioSessionInterrupted = true
             cancelCurrentSpeechWork()
+        }
+    }
+
+    @objc private func handleAudioRouteChange(_ notification: Notification) {
+        guard let rawValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: rawValue) else { return }
+        let outputMayHaveChanged: Bool
+        switch reason {
+        case .newDeviceAvailable, .oldDeviceUnavailable, .override, .routeConfigurationChange:
+            outputMayHaveChanged = true
+        case .unknown, .categoryChange, .wakeFromSleep, .noSuitableRouteForCategory:
+            outputMayHaveChanged = false
+        @unknown default:
+            outputMayHaveChanged = false
+        }
+        guard NavigationAudioRouteChangeRetryPolicy.shouldRetry(
+            outputMayHaveChanged: outputMayHaveChanged,
+            hasActiveSpeechWork: hasSpeechWork,
+            navigationActive: isNavigating,
+            voiceGuidance: DriveSettings.shared.voiceGuidance,
+            guidanceReliable: isManeuverGuidanceReliable,
+            hasUsableLocation: lastAcceptedNavigationLocation != nil
+        ) else { return }
+        // Let the system finish publishing its new output route before asking
+        // AVSpeechSynthesizer to activate spoken-audio mode on that route.
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            self?.retryCurrentManeuverAfterSpeechBecomesAvailable()
         }
     }
     #endif

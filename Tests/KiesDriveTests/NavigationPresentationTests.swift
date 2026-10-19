@@ -1434,6 +1434,34 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testAudioOutputChangeRetriesOnlyIdleReliableGuidance() {
+        XCTAssertTrue(NavigationAudioRouteChangeRetryPolicy.shouldRetry(
+            outputMayHaveChanged: true, hasActiveSpeechWork: false,
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+        XCTAssertFalse(NavigationAudioRouteChangeRetryPolicy.shouldRetry(
+            outputMayHaveChanged: true, hasActiveSpeechWork: true,
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ), "An in-flight sentence must not be duplicated across an output change")
+        XCTAssertFalse(NavigationAudioRouteChangeRetryPolicy.shouldRetry(
+            outputMayHaveChanged: false, hasActiveSpeechWork: false,
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+        XCTAssertFalse(NavigationAudioRouteChangeRetryPolicy.shouldRetry(
+            outputMayHaveChanged: true, hasActiveSpeechWork: false,
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: false, hasUsableLocation: true
+        ), "A device connection must never revive stale turn guidance")
+        XCTAssertFalse(NavigationAudioRouteChangeRetryPolicy.shouldRetry(
+            outputMayHaveChanged: true, hasActiveSpeechWork: false,
+            navigationActive: true, voiceGuidance: false,
+            guidanceReliable: true, hasUsableLocation: true
+        ))
+    }
+
     func testRerouteWatchdogEndsOnlyAfterBoundedWait() {
         let startedAt = Date(timeIntervalSince1970: 10_000)
         XCTAssertFalse(NavigationRerouteWatchdogPolicy.hasTimedOut(

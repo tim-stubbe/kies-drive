@@ -1334,6 +1334,27 @@ enum NavigationSpeechRetryLocationPolicy {
     }
 }
 
+enum NavigationAudioRouteChangeRetryPolicy {
+    /// Connecting or disconnecting Bluetooth/CarPlay can change the audible
+    /// output without producing an audio interruption. Re-evaluate guidance
+    /// only while the synthesizer is idle; an utterance already in progress
+    /// either continues on the new route or reports cancellation separately.
+    static func shouldRetry(outputMayHaveChanged: Bool,
+                            hasActiveSpeechWork: Bool,
+                            navigationActive: Bool,
+                            voiceGuidance: Bool,
+                            guidanceReliable: Bool,
+                            hasUsableLocation: Bool) -> Bool {
+        outputMayHaveChanged && !hasActiveSpeechWork &&
+            NavigationSpeechInterruptionPolicy.shouldRetryManeuverAfterInterruption(
+                navigationActive: navigationActive,
+                voiceGuidance: voiceGuidance,
+                guidanceReliable: guidanceReliable,
+                hasUsableLocation: hasUsableLocation
+            )
+    }
+}
+
 struct NavigationInitialManeuver: Equatable {
     let stepIndex: Int
     let instruction: String
