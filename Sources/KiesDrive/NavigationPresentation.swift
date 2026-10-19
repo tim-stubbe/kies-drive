@@ -818,9 +818,19 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     case final
     case now
 
-    static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
+    static func stage(distance: CLLocationDistance, speedKmh: Double,
+                      horizontalAccuracy: CLLocationAccuracy = 0) -> Self? {
         guard distance.isFinite, distance >= 0 else { return nil }
         let speedMetresPerSecond = max(0, speedKmh) / 3.6
+        // Route projection and GPS error can point in opposite directions. A
+        // driver shown as 480 m from an exit with ±60 m accuracy may already
+        // be only 420 m away. Use that conservative edge for stage selection,
+        // but cap the allowance so one coarse fix cannot trigger guidance
+        // kilometres early. The spoken distance remains the displayed route
+        // distance and is therefore never fabricated.
+        let accuracyAllowance = horizontalAccuracy.isFinite
+            ? min(65, max(0, horizontalAccuracy)) : 0
+        let safetyDistance = max(0, distance - accuracyAllowance)
         // Account for audio-session activation, Bluetooth latency and the
         // spoken sentence itself. The old three/six-second horizons could
         // begin a motorway instruction only after the driver had to commit to
@@ -828,13 +838,13 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
         // hard cap, while the preceding distance cue provides real reaction
         // time at speed.
         let nowDistance = min(180, max(30, speedMetresPerSecond * 3.5))
-        if distance <= nowDistance { return .now }
+        if safetyDistance <= nowDistance { return .now }
         let finalDistance = min(450, max(70, speedMetresPerSecond * 7.5))
-        if distance <= finalDistance { return .final }
+        if safetyDistance <= finalDistance { return .final }
         let prepareDistance = min(1_200, max(250, speedMetresPerSecond * 18))
-        if distance <= prepareDistance { return .prepare }
+        if safetyDistance <= prepareDistance { return .prepare }
         let earlyDistance = min(3_000, max(500, speedMetresPerSecond * 45))
-        if distance <= earlyDistance { return .early }
+        if safetyDistance <= earlyDistance { return .early }
         return nil
     }
 }

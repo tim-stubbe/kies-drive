@@ -2532,6 +2532,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                ) {
                 announce(
                     progress, guidanceSpeedMps: guidanceSpeed,
+                    horizontalAccuracy: location.horizontalAccuracy,
                     recoveredAfterLocationGap: recoveredLocationGap != nil
                 )
             }
@@ -3039,6 +3040,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard settings.voiceGuidance else { return }
         announceOfflineManeuver(
             progress, guidanceSpeedMps: guidanceSpeedMps,
+            horizontalAccuracy: location.horizontalAccuracy,
             recoveredAfterLocationGap: recoveredAfterLocationGap
         )
     }
@@ -3046,6 +3048,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func announceOfflineManeuver(
         _ progress: OfflineGuidanceProgress,
         guidanceSpeedMps: Double,
+        horizontalAccuracy: CLLocationAccuracy = 0,
         recoveredAfterLocationGap: Bool = false
     ) {
         let key = "offline:\(progress.maneuverStepIndex):\(progress.instruction)"
@@ -3059,7 +3062,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard
               let stage = NavigationAnnouncementStage.stage(
                 distance: progress.distanceToManeuver,
-                speedKmh: guidanceSpeedMps * 3.6
+                speedKmh: guidanceSpeedMps * 3.6,
+                horizontalAccuracy: horizontalAccuracy
               ) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard NavigationAnnouncementDeliveryPolicy.shouldAttempt(
@@ -3460,6 +3464,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func announce(_ progress: LiveNavigationProgress, guidanceSpeedMps: Double,
+                          horizontalAccuracy: CLLocationAccuracy = 0,
                           recoveredAfterLocationGap: Bool = false) {
         let speedKmh = guidanceSpeedMps * 3.6
         let key = "\(progress.maneuver.legIndex):\(progress.maneuver.stepIndex):\(progress.maneuver.step.instructions)"
@@ -3470,7 +3475,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             guidanceSpeedMps: guidanceSpeedMps,
             recoveredAfterLocationGap: recoveredAfterLocationGap
         ) { return }
-        guard let stage = NavigationAnnouncementStage.stage(distance: progress.distance, speedKmh: speedKmh) else { return }
+        guard let stage = NavigationAnnouncementStage.stage(
+            distance: progress.distance, speedKmh: speedKmh,
+            horizontalAccuracy: horizontalAccuracy
+        ) else { return }
         let completed = announcedManeuverStages[key] ?? []
         guard NavigationAnnouncementDeliveryPolicy.shouldAttempt(
             stage, delivered: completed, pending: pendingStages(for: key)
@@ -3883,12 +3891,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         if isUsingOfflineGuidance {
             guard let progress = currentOfflineGuidanceProgress(at: location) else { return }
-            announceOfflineManeuver(progress, guidanceSpeedMps: speed)
+            announceOfflineManeuver(
+                progress, guidanceSpeedMps: speed,
+                horizontalAccuracy: location.horizontalAccuracy
+            )
             return
         }
         guard let progress = liveNavigationProgress(at: location) else { return }
         updateNextManeuver(using: progress)
-        announce(progress, guidanceSpeedMps: speed)
+        announce(
+            progress, guidanceSpeedMps: speed,
+            horizontalAccuracy: location.horizontalAccuracy
+        )
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
@@ -4295,12 +4309,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             now: location.timestamp
         )
         guard NavigationAnnouncementStage.stage(
-            distance: progress.distance, speedKmh: speed * 3.6
+            distance: progress.distance, speedKmh: speed * 3.6,
+            horizontalAccuracy: location.horizontalAccuracy
         ) != nil else {
             _ = speak("Die neue Route ist bereit.", priority: .status)
             return
         }
-        announce(progress, guidanceSpeedMps: speed)
+        announce(
+            progress, guidanceSpeedMps: speed,
+            horizontalAccuracy: location.horizontalAccuracy
+        )
     }
 
     private func resetDeviationTracking(keepingDistance distance: CLLocationDistance? = nil) {

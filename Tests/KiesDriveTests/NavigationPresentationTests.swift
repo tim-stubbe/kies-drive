@@ -2546,6 +2546,30 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 110, speedKmh: 50), .prepare)
     }
 
+    func testManeuverStageUsesBoundedGPSAccuracySafetyMargin() {
+        XCTAssertEqual(
+            NavigationAnnouncementStage.stage(
+                distance: 470, speedKmh: 200, horizontalAccuracy: 60
+            ),
+            .final,
+            "A plausible GPS error must not postpone the decisive motorway cue"
+        )
+        XCTAssertEqual(
+            NavigationAnnouncementStage.stage(
+                distance: 540, speedKmh: 200, horizontalAccuracy: 500
+            ),
+            .prepare,
+            "A coarse fix must not move the announcement horizon without limit"
+        )
+        XCTAssertEqual(
+            NavigationAnnouncementStage.stage(
+                distance: 110, speedKmh: 50, horizontalAccuracy: -1
+            ),
+            .prepare,
+            "Invalid Core Location accuracy must contribute no safety margin"
+        )
+    }
+
     func testActiveNavigationKeepsFullBackgroundLocationConfiguration() {
         let browsing = NavigationLocationRuntimePolicy.configuration(navigationActive: false)
         XCTAssertEqual(browsing.desiredAccuracy, kCLLocationAccuracyNearestTenMeters)
