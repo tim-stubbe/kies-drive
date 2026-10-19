@@ -2128,14 +2128,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // not start a second mutation against the half-updated route.
         switch routeStopMutationGate.begin(id) {
         case .started:
+            routeStopMutationOutcomes.begin(id)
             break
         case .coalesced:
-            return true
+            return await waitForRouteStopMutationOutcome(id: id)
         case .busy:
             errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
             return false
         }
-        defer { routeStopMutationGate.finish(id) }
+        var mutationSucceeded = false
+        defer {
+            recordRouteStopMutationOutcome(mutationSucceeded, id: id)
+            routeStopMutationGate.finish(id)
+        }
         guard routeLockStore.activeLock?.waypoints.contains(where: {
             $0.id == id && $0.isRemovableComfortStop
         }) == true else {
@@ -2184,6 +2189,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             isSearchingAlongRoute = false
             return false
         }
+        mutationSucceeded = true
         return true
     }
 
@@ -5808,14 +5814,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // second call would otherwise interpret the same tap as "remove".
         switch routeStopMutationGate.begin(station.id) {
         case .started:
+            routeStopMutationOutcomes.begin(station.id)
             break
         case .coalesced:
-            return true
+            return await waitForRouteStopMutationOutcome(id: station.id)
         case .busy:
             errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
             return false
         }
-        defer { routeStopMutationGate.finish(station.id) }
+        var mutationSucceeded = false
+        defer {
+            recordRouteStopMutationOutcome(mutationSucceeded, id: station.id)
+            routeStopMutationGate.finish(station.id)
+        }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let wasSelected = RouteStopSelectionPolicy.contains(
             stopID: station.id,
@@ -5912,6 +5923,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             isSearchingAlongRoute = false
             return false
         }
+        mutationSucceeded = true
         return true
     }
 
@@ -5945,14 +5957,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             ) else { return true }
             switch routeStopMutationGate.begin(station.id) {
             case .started:
+                routeStopMutationOutcomes.begin(station.id)
                 break
             case .coalesced:
-                return true
+                return await waitForRouteStopMutationOutcome(id: station.id)
             case .busy:
                 errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
                 return false
             }
-            defer { routeStopMutationGate.finish(station.id) }
+            var mutationSucceeded = false
+            defer {
+                recordRouteStopMutationOutcome(mutationSucceeded, id: station.id)
+                routeStopMutationGate.finish(station.id)
+            }
             let navigationSession = isNavigating ? navigationSessionGeneration : nil
             let mutationGeneration = UUID()
             routeStopMutationGeneration = mutationGeneration
@@ -6010,6 +6027,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 isSearchingAlongRoute = false
                 return false
             }
+            mutationSucceeded = true
             return true
         } else {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
