@@ -1832,23 +1832,31 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         _ request: MKDirections.Request, timeout: TimeInterval
     ) async throws -> [MKRoute] {
         let directions = MKDirections(request: request)
-        return try await withThrowingTaskGroup(of: [MKRoute].self) { group in
-            group.addTask { try await directions.calculate().routes }
-            group.addTask {
-                try await Task.sleep(
-                    nanoseconds: NavigationDirectionsTimeoutPolicy.nanoseconds(for: timeout)
-                )
-                directions.cancel()
-                throw NavigationDirectionsTimeoutError()
+        return try await withTaskCancellationHandler {
+            try await withThrowingTaskGroup(of: [MKRoute].self) { group in
+                group.addTask { try await directions.calculate().routes }
+                group.addTask {
+                    try await Task.sleep(
+                        nanoseconds: NavigationDirectionsTimeoutPolicy.nanoseconds(for: timeout)
+                    )
+                    directions.cancel()
+                    throw NavigationDirectionsTimeoutError()
+                }
+                defer {
+                    group.cancelAll()
+                    directions.cancel()
+                }
+                guard let first = try await group.next() else {
+                    throw DriveAPIError.invalidData
+                }
+                return first
             }
-            defer {
-                group.cancelAll()
-                directions.cancel()
-            }
-            guard let first = try await group.next() else {
-                throw DriveAPIError.invalidData
-            }
-            return first
+        } onCancel: {
+            // Cancelling a stale POI batch or a superseded reroute must reach
+            // MapKit immediately. Cancelling only the surrounding Swift task
+            // can otherwise leave its network request alive until timeout and
+            // starve the next, safety-relevant route calculation.
+            directions.cancel()
         }
     }
 
