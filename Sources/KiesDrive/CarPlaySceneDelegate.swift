@@ -4,6 +4,64 @@ import Combine
 import MapKit
 import UIKit
 
+private final class CarPlaySpeedLimitBadgeView: UIView {
+    private let label = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isHidden = true
+        isUserInteractionEnabled = false
+        backgroundColor = .white
+        layer.cornerRadius = 34
+        layer.borderWidth = 6
+        layer.borderColor = UIColor.systemRed.cgColor
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = 0.25
+        layer.shadowRadius = 5
+        layer.shadowOffset = .init(width: 0, height: 2)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textAlignment = .center
+        label.textColor = .black
+        label.font = .systemFont(ofSize: 25, weight: .black)
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.7
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func update(_ state: CarPlaySpeedLimitBadgePolicy.State) {
+        switch state {
+        case .hidden:
+            isHidden = true
+            accessibilityLabel = nil
+        case .numeric(let value, let warning):
+            isHidden = false
+            label.text = String(value)
+            label.font = .systemFont(ofSize: 25, weight: .black)
+            backgroundColor = warning ? UIColor.systemRed.withAlphaComponent(0.18) : .white
+            layer.borderColor = UIColor.systemRed.cgColor
+            layer.borderWidth = warning ? 8 : 6
+            accessibilityLabel = warning
+                ? "Zu schnell. Tempolimit \(value) Kilometer pro Stunde"
+                : "Tempolimit \(value) Kilometer pro Stunde"
+        case .unrestricted:
+            isHidden = false
+            label.text = "∞"
+            label.font = .systemFont(ofSize: 32, weight: .bold)
+            backgroundColor = .white
+            layer.borderColor = UIColor.systemGray.cgColor
+            layer.borderWidth = 5
+            accessibilityLabel = "Keine streckenbezogene Geschwindigkeitsbeschränkung"
+        }
+    }
+}
+
 /// Native CarPlay navigation surface. Navigation remains local in Kies Drive;
 /// CarPlay is only another presentation and control surface for the shared trip.
 @MainActor
@@ -17,6 +75,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var interfaceController: CPInterfaceController?
     private var carWindow: CPWindow?
     private var mapView: MKMapView?
+    private var speedLimitBadgeView: CarPlaySpeedLimitBadgeView?
     private var mapTemplate: CPMapTemplate?
     private var audioMapButton: CPMapButton?
     private var navigationSession: CPNavigationSession?
@@ -96,15 +155,27 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             map.userTrackingMode = .followWithHeading
             map.delegate = self
             controller.view.addSubview(map)
+            let speedBadge = CarPlaySpeedLimitBadgeView()
+            speedBadge.translatesAutoresizingMaskIntoConstraints = false
+            controller.view.addSubview(speedBadge)
             NSLayoutConstraint.activate([
                 map.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor),
                 map.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor),
                 map.topAnchor.constraint(equalTo: controller.view.topAnchor),
-                map.bottomAnchor.constraint(equalTo: controller.view.bottomAnchor)
+                map.bottomAnchor.constraint(equalTo: controller.view.bottomAnchor),
+                speedBadge.leadingAnchor.constraint(
+                    equalTo: controller.view.safeAreaLayoutGuide.leadingAnchor, constant: 22
+                ),
+                speedBadge.bottomAnchor.constraint(
+                    equalTo: controller.view.safeAreaLayoutGuide.bottomAnchor, constant: -22
+                ),
+                speedBadge.widthAnchor.constraint(equalToConstant: 68),
+                speedBadge.heightAnchor.constraint(equalToConstant: 68),
             ])
             window.rootViewController = controller
             window.isHidden = false
             mapView = map
+            speedLimitBadgeView = speedBadge
         }
 
         let template = CPMapTemplate()
@@ -132,6 +203,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         interfaceController = nil
         carWindow = nil
         mapView = nil
+        speedLimitBadgeView = nil
         mapTemplate = nil
         audioMapButton = nil
         navigationSession = nil
@@ -236,6 +308,15 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             }
             .store(in: &cancellables)
 
+        planner.$speedWarning
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let location = LocationService.shared.location else { return }
+                self?.updateSpeedLimitBadge(for: location)
+            }
+            .store(in: &cancellables)
+
         DriveSettings.shared.$voiceGuidance
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -260,6 +341,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             .receive(on: DispatchQueue.main)
             .sink { [weak self] location in
                 self?.updateCamera(for: location)
+                self?.updateSpeedLimitBadge(for: location)
                 self?.updateGuidanceEstimates()
                 self?.restoreLockedTripIfNeeded(at: location)
             }
@@ -297,6 +379,15 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
                 )
             }
             .store(in: &cancellables)
+    }
+
+    private func updateSpeedLimitBadge(for location: CLLocation) {
+        let planner = RoutePlanner.shared
+        speedLimitBadgeView?.update(CarPlaySpeedLimitBadgePolicy.state(
+            limit: planner.currentSpeedLimit(near: location.coordinate),
+            speedWarning: planner.speedWarning,
+            navigationActive: planner.isNavigating
+        ))
     }
 
     private func restoreLockedTripIfNeeded(at suppliedLocation: CLLocation? = nil) {

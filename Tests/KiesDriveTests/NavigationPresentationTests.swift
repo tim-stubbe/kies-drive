@@ -248,6 +248,29 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(CarPlayTripStartPolicy.shouldStartNavigation(isNavigating: true))
     }
 
+    func testCarPlaySpeedLimitBadgeUsesOnlyVerifiedRouteEvidence() {
+        XCTAssertEqual(CarPlaySpeedLimitBadgePolicy.state(
+            limit: .init(maxspeed: 80, unlimited: false),
+            speedWarning: false, navigationActive: true
+        ), .numeric(value: 80, warning: false))
+        XCTAssertEqual(CarPlaySpeedLimitBadgePolicy.state(
+            limit: .init(maxspeed: 80, unlimited: false),
+            speedWarning: true, navigationActive: true
+        ), .numeric(value: 80, warning: true))
+        XCTAssertEqual(CarPlaySpeedLimitBadgePolicy.state(
+            limit: .init(maxspeed: nil, unlimited: true),
+            speedWarning: false, navigationActive: true
+        ), .unrestricted)
+        XCTAssertEqual(CarPlaySpeedLimitBadgePolicy.state(
+            limit: .init(maxspeed: nil, unlimited: false),
+            speedWarning: false, navigationActive: true
+        ), .hidden)
+        XCTAssertEqual(CarPlaySpeedLimitBadgePolicy.state(
+            limit: .init(maxspeed: 50, unlimited: false),
+            speedWarning: true, navigationActive: false
+        ), .hidden)
+    }
+
     func testCarPlayReconnectRejectsOldRouteRestoreCompletion() {
         let oldConnection = UUID()
         let currentConnection = UUID()

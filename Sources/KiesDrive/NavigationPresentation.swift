@@ -200,6 +200,27 @@ enum CarPlayListPriorityPolicy {
     }
 }
 
+enum CarPlaySpeedLimitBadgePolicy {
+    enum State: Equatable {
+        case hidden
+        case numeric(value: Int, warning: Bool)
+        case unrestricted
+    }
+
+    static func state(limit: SpeedLimitResult?, speedWarning: Bool,
+                      navigationActive: Bool) -> State {
+        guard navigationActive, let limit else { return .hidden }
+        switch SpeedLimitPresentationPolicy.presentation(for: limit) {
+        case .numeric(let value):
+            return .numeric(value: value, warning: speedWarning)
+        case .unrestricted:
+            return .unrestricted
+        case .unavailable:
+            return .hidden
+        }
+    }
+}
+
 enum CarPlayRouteOptionPresentationPolicy {
     static func detail(enabled: Bool) -> String {
         enabled ? "Aktiv · antippen zum Ausschalten" : "Aus · antippen zum Einschalten"
