@@ -1351,7 +1351,13 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         let requiredCoordinates = needsRouteCoverage
             ? routeCoordinates : [location?.coordinate].compactMap { $0 }
         guard !requiredCoordinates.isEmpty,
-              store.hasBaseTiles(covering: requiredCoordinates, package: package) else {
+              store.hasBaseTiles(covering: requiredCoordinates, package: package),
+              store.hasZoomPyramidTiles(
+                covering: OfflineRouteCorridorCoveragePolicy.coordinates(
+                    along: requiredCoordinates, maximumSamples: 240
+                ),
+                package: package
+              ) else {
             return nil
         }
         if needsRouteCoverage, !routeCoordinates.isEmpty {

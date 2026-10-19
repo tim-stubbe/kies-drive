@@ -458,6 +458,28 @@ final class OfflineMapPackageStore: ObservableObject {
         return hasTiles(requiredTiles, package: package)
     }
 
+    /// Verifies the complete zoom pyramid used while transitioning between a
+    /// route overview and the street-level driving camera. Checking only the
+    /// minimum and navigation zooms can incorrectly advertise a sparse package
+    /// as offline-ready even though intermediate zoom gestures reveal the
+    /// online basemap or blank areas.
+    func hasZoomPyramidTiles(covering coordinates: [CLLocationCoordinate2D],
+                             package: InstalledOfflineMapPackage) -> Bool {
+        guard !coordinates.isEmpty else { return false }
+        let streetZoom = min(package.manifest.maximumZoom,
+                             max(package.manifest.minimumZoom, 14))
+        var requiredTiles = Set<OfflineTileCoordinatePolicy.Tile>()
+        for zoom in package.manifest.minimumZoom...streetZoom {
+            for coordinate in coordinates {
+                guard let tile = OfflineTileCoordinatePolicy.tile(
+                    containing: coordinate, zoom: zoom
+                ) else { return false }
+                requiredTiles.insert(tile)
+            }
+        }
+        return !requiredTiles.isEmpty && hasTiles(requiredTiles, package: package)
+    }
+
     /// The driving camera operates around street-level zoom. A package with
     /// only its coarse overview tile is not an offline navigation map and must
     /// not be labelled as one. Require the current tile plus its neighbours at

@@ -378,6 +378,51 @@ final class OfflineMapPackageTests: XCTestCase {
         ))
     }
 
+    func testRuntimeCoverageRequiresCompleteZoomPyramid() throws {
+        try writeManifest(id: "zoom-pyramid")
+        let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+        let base = try XCTUnwrap(OfflineTileCoordinatePolicy.tile(
+            containing: coordinate, zoom: 8
+        ))
+        try validPNG().write(to: source.appendingPathComponent(
+            "tiles/\(base.z)/\(base.x)/\(base.y).png"
+        ))
+        var store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        var package = try store.install(from: source)
+
+        XCTAssertFalse(store.hasZoomPyramidTiles(covering: [coordinate], package: package),
+                       "A coarse tile alone must not be advertised as a zoomable offline map")
+
+        try FileManager.default.removeItem(at: root)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for zoom in 9...14 {
+            let tile = try XCTUnwrap(OfflineTileCoordinatePolicy.tile(
+                containing: coordinate, zoom: zoom
+            ))
+            let directory = source.appendingPathComponent(
+                "tiles/\(tile.z)/\(tile.x)", isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try validPNG().write(to: directory.appendingPathComponent("\(tile.y).png"))
+        }
+        store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        package = try store.install(from: source)
+        XCTAssertTrue(store.hasZoomPyramidTiles(covering: [coordinate], package: package))
+
+        let middle = try XCTUnwrap(OfflineTileCoordinatePolicy.tile(
+            containing: coordinate, zoom: 11
+        ))
+        let installedMiddle = try XCTUnwrap(store.tileURL(
+            z: middle.z, x: middle.x, y: middle.y, package: package
+        ))
+        try FileManager.default.removeItem(at: installedMiddle)
+        let refreshedStore = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let refreshedPackage = try XCTUnwrap(refreshedStore.activePackage)
+        XCTAssertFalse(refreshedStore.hasZoomPyramidTiles(
+            covering: [coordinate], package: refreshedPackage
+        ))
+    }
+
     func testRuntimeCoverageCacheExpiresAndDetectsRemovedTile() throws {
         try writeManifest(id: "runtime-expiry")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))

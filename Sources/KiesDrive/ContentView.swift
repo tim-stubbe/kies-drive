@@ -1586,7 +1586,13 @@ struct DriveContentView: View {
             ? routeCoordinates
             : [location.location?.coordinate].compactMap { $0 }
         guard !requiredCoordinates.isEmpty,
-              offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package) else {
+              offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package),
+              offlineMaps.hasZoomPyramidTiles(
+                covering: OfflineRouteCorridorCoveragePolicy.coordinates(
+                    along: requiredCoordinates, maximumSamples: 240
+                ),
+                package: package
+              ) else {
             return nil
         }
         if needsRouteCoverage, !routeCoordinates.isEmpty {
