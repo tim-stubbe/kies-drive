@@ -2286,6 +2286,31 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(stops.first?.candidate?.id, "fuel")
     }
 
+    func testFuelPlannerCountsStationAccessBeforeAndAfterRefill() {
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 50, usableTankFraction: 0.8,
+            initialFuelFraction: 1
+        )
+        let beyondSafeRangeAfterExit = BreakCandidate(
+            id: "late", name: "Abgelegene Tankstelle", coordinate: .init(),
+            progress: 0.625, detourMetres: 20_000, isOpen: true, supportsFuel: true
+        )
+        let safelyEarlier = BreakCandidate(
+            id: "safe", name: "Frühere Tankstelle", coordinate: .init(),
+            progress: 0.60, detourMetres: 2_000, isOpen: true, supportsFuel: true
+        )
+
+        let stops = FuelStopPlanner().plan(
+            distanceMetres: 600_000, consumptionLPer100km: 10,
+            vehicle: vehicle, candidates: [beyondSafeRangeAfterExit, safelyEarlier]
+        )
+
+        XCTAssertEqual(stops.first?.candidate?.id, "safe")
+        XCTAssertFalse(stops.contains { $0.candidate?.id == "late" })
+        XCTAssertEqual(FuelStopDetourRangePolicy.oneWayDistance(detourMetres: 20_000), 10_000)
+    }
+
     func testComparisonCombinesBreakWithNearbyPlannedFuelStop() {
         let restArea = BreakCandidate(id: "rest", name: "Rastplatz", coordinate: .init(),
                                       progress: 0.4, detourMetres: 50, isOpen: true)

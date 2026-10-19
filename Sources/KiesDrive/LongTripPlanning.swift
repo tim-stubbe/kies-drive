@@ -819,6 +819,16 @@ enum PlannedStopOpeningStatusPolicy {
     }
 }
 
+enum FuelStopDetourRangePolicy {
+    /// Provider detour distance describes leaving the route, visiting the
+    /// station and returning. Half is conservatively assigned before the
+    /// refill and half after it for the following tank leg.
+    static func oneWayDistance(detourMetres: CLLocationDistance) -> CLLocationDistance {
+        guard detourMetres.isFinite, detourMetres > 0 else { return 0 }
+        return detourMetres / 2
+    }
+}
+
 struct FuelStopPlanner {
     /// Respects the configured departure level and reserves the profile's
     /// unusable fraction. Stops are placed before the reserve, never at the
@@ -850,6 +860,7 @@ struct FuelStopPlanner {
             )
         }
         var lastStopDistance = 0.0
+        var distanceReturningFromPreviousStop = 0.0
         var currentSafeRange = departureSafeRange
         var result: [PlannedFuelStop] = []
         if departureSafeRange <= 0 {
@@ -863,21 +874,32 @@ struct FuelStopPlanner {
         // Each leg is checked from the actual previous stop, not from a fixed
         // whole-trip grid. This prevents a slightly late first station from
         // making the following leg silently exceed the safe tank range.
-        while distanceMetres - lastStopDistance > currentSafeRange {
+        while distanceReturningFromPreviousStop + distanceMetres - lastStopDistance > currentSafeRange {
             let index = result.count + 1
-            let idealDistance = min(distanceMetres * 0.95, lastStopDistance + currentSafeRange * 0.88)
-            let latestSafeDistance = min(distanceMetres, lastStopDistance + currentSafeRange * 0.95)
+            let idealDistance = min(
+                distanceMetres * 0.95,
+                lastStopDistance + max(0, currentSafeRange * 0.88 - distanceReturningFromPreviousStop)
+            )
             let idealProgress = idealDistance / distanceMetres
             let ahead = remaining.filter {
                 let candidateDistance = $0.progress * distanceMetres
+                let legDistance = distanceReturningFromPreviousStop +
+                    candidateDistance - lastStopDistance +
+                    FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $0.detourMetres)
                 return candidateDistance > lastStopDistance + distanceMetres * 0.03 &&
-                    candidateDistance <= latestSafeDistance
+                    legDistance <= currentSafeRange * 0.95
             }
             let window = ahead.filter { abs($0.progress - idealProgress) <= 0.14 }
             let pool = window.isEmpty ? ahead : window
             let best = pool.min {
-                abs($0.progress - idealProgress) + $0.detourMetres / 100_000 <
-                abs($1.progress - idealProgress) + $1.detourMetres / 100_000
+                let lhsLeg = distanceReturningFromPreviousStop +
+                    $0.progress * distanceMetres - lastStopDistance +
+                    FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $0.detourMetres)
+                let rhsLeg = distanceReturningFromPreviousStop +
+                    $1.progress * distanceMetres - lastStopDistance +
+                    FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $1.detourMetres)
+                return abs(lhsLeg - currentSafeRange * 0.88) + $0.detourMetres <
+                    abs(rhsLeg - currentSafeRange * 0.88) + $1.detourMetres
             }
             if let best { remaining.removeAll { $0.id == best.id } }
             let progress = best?.progress ?? idealProgress
@@ -893,6 +915,9 @@ struct FuelStopPlanner {
             ))
             guard stopDistance > lastStopDistance else { break }
             lastStopDistance = stopDistance
+            distanceReturningFromPreviousStop = best.map {
+                FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $0.detourMetres)
+            } ?? 0
             currentSafeRange = fullSafeRange
         }
         return result
