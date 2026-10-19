@@ -2202,6 +2202,12 @@ final class LongTripPlanningTests: XCTestCase {
             corroboratingSourceURLs: ["https://example.com/toll"],
             corroboratingSourceTexts: ["Gesamtpreis für die Strecke: 126 EUR"]
         ))
+        XCTAssertNil(TollEvidenceValidator.validate(
+            status: "known", amount: 26, currency: "EUR",
+            source: "Offizielle Mautseite", sourceURL: "https://example.com/toll",
+            corroboratingSourceURLs: ["https://example.com/toll"],
+            corroboratingSourceTexts: ["Gesamtpreis für die Strecke: 26,50 EUR"]
+        ))
         XCTAssertNotNil(TollEvidenceValidator.validate(
             status: "known", amount: 26, currency: "EUR",
             source: "Offizielle Mautseite", sourceURL: "https://example.com/toll",
@@ -2222,6 +2228,18 @@ final class LongTripPlanningTests: XCTestCase {
             sourceURL: "https://example.test/toll-free",
             corroboratingSourceURLs: ["https://example.test/toll-free"],
             corroboratingSourceTexts: ["Aktuelle Informationen zur Autobahn"]
+        ))
+        XCTAssertFalse(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free",
+            corroboratingSourceURLs: ["https://example.test/toll-free"],
+            corroboratingSourceTexts: ["Diese Autobahn ist nicht mautfrei."]
+        ))
+        XCTAssertFalse(TollEvidenceValidator.validatesNoToll(
+            status: "no_toll", source: "Official provider",
+            sourceURL: "https://example.test/toll-free",
+            corroboratingSourceURLs: ["https://example.test/toll-free"],
+            corroboratingSourceTexts: ["Der Abschnitt ist mautpflichtig."]
         ))
     }
 

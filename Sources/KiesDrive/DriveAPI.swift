@@ -561,7 +561,9 @@ enum TollEvidenceValidator {
     private static func containsDelimitedAmount(_ token: String, in text: String) -> Bool {
         let escaped = NSRegularExpression.escapedPattern(for: token)
         guard let expression = try? NSRegularExpression(
-            pattern: "(?<![0-9])\(escaped)(?![0-9])"
+            // Decimal and thousands separators are part of the surrounding
+            // numeric token. Thus 26 cannot corroborate 26,50 or 26.000.
+            pattern: "(?<![0-9.,])\(escaped)(?![0-9.,])"
         ) else { return false }
         return expression.firstMatch(
             in: text, range: NSRange(text.startIndex..., in: text)
@@ -573,6 +575,12 @@ enum TollEvidenceValidator {
         let joined = texts.joined(separator: " ").folding(
             options: [.caseInsensitive, .diacriticInsensitive], locale: .current
         )
+        let contradictions = [
+            "nicht mautfrei", "nicht ohne maut", "mautpflichtig",
+            "maut erforderlich", "toll required", "not toll-free",
+            "not toll free", "toll applies",
+        ]
+        guard !contradictions.contains(where: joined.contains) else { return false }
         return ["mautfrei", "keine maut", "ohne maut", "toll-free", "no toll"]
             .contains(where: joined.contains)
     }
