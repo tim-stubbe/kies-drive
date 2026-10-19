@@ -31,6 +31,15 @@ enum NavigationSearchBatchPolicy {
     static let timeoutNanoseconds: UInt64 = 8_000_000_000
     static let maximumConcurrentRouteSearches = 5
     static let maximumConcurrentAmenitySearches = 8
+    static let usefulResultCount = 8
+    static let minimumCompletedSearches = 2
+
+    static func shouldFinishEarly(resultCount: Int, completedSearches: Int,
+                                  totalSearches: Int) -> Bool {
+        totalSearches > completedSearches &&
+            completedSearches >= minimumCompletedSearches &&
+            resultCount >= usefulResultCount
+    }
 }
 
 enum DestinationSearchCompletionPolicy {

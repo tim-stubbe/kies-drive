@@ -5286,7 +5286,23 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 group.addTask { (try? await search.start().mapItems) ?? [] }
             }
             var results: [MKMapItem] = []
-            for await items in group { results.append(contentsOf: items) }
+            var completedSearches = 0
+            for await items in group {
+                completedSearches += 1
+                results.append(contentsOf: items)
+                if NavigationSearchBatchPolicy.shouldFinishEarly(
+                    resultCount: results.count,
+                    completedSearches: completedSearches,
+                    totalSearches: searches.count
+                ) {
+                    // At least two route regions already supplied a useful
+                    // result set. Cancel stragglers instead of making a driver
+                    // wait for every distant MapKit region to time out.
+                    searches.forEach { $0.cancel() }
+                    group.cancelAll()
+                    break
+                }
+            }
             return results
         }
     }

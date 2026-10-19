@@ -4553,6 +4553,18 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(NavigationSearchBatchPolicy.timeoutNanoseconds, 8_000_000_000)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentRouteSearches, 5)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches, 8)
+        XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
+            resultCount: 20, completedSearches: 1, totalSearches: 5
+        ), "One region is not enough geographic coverage")
+        XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
+            resultCount: 7, completedSearches: 2, totalSearches: 5
+        ))
+        XCTAssertTrue(NavigationSearchBatchPolicy.shouldFinishEarly(
+            resultCount: 8, completedSearches: 2, totalSearches: 5
+        ))
+        XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
+            resultCount: 20, completedSearches: 5, totalSearches: 5
+        ), "A completed batch does not need an early-cancellation path")
     }
 
     func testDirectionsDeadlinePrecedesRerouteWatchdog() {
