@@ -474,6 +474,32 @@ struct RouteStopMutationGate {
     }
 }
 
+struct RouteStopMutationOutcomeCache {
+    private let maximumCount: Int
+    private var values: [String: Bool] = [:]
+    private var order: [String] = []
+
+    init(maximumCount: Int = 20) {
+        self.maximumCount = max(1, maximumCount)
+    }
+
+    mutating func begin(_ id: String) {
+        values.removeValue(forKey: id)
+        order.removeAll { $0 == id }
+    }
+
+    mutating func record(_ succeeded: Bool, for id: String) {
+        values[id] = succeeded
+        order.removeAll { $0 == id }
+        order.append(id)
+        while order.count > maximumCount {
+            values.removeValue(forKey: order.removeFirst())
+        }
+    }
+
+    func outcome(for id: String) -> Bool? { values[id] }
+}
+
 enum CarPlayPlannedStopPolicy {
     /// CarPlay must remain short and glanceable. Prefer the earliest remaining
     /// stop from the currently selected scenario, combine fuel and rest at the

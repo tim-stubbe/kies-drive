@@ -2882,6 +2882,24 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRouteStopMutationOutcomeCacheNeverReusesPendingOrOldSuccess() {
+        var outcomes = RouteStopMutationOutcomeCache(maximumCount: 2)
+        outcomes.record(true, for: "first")
+        XCTAssertEqual(outcomes.outcome(for: "first"), true)
+
+        outcomes.begin("first")
+        XCTAssertNil(outcomes.outcome(for: "first"),
+                     "A new in-flight mutation must not inherit an earlier success")
+        outcomes.record(false, for: "first")
+        XCTAssertEqual(outcomes.outcome(for: "first"), false)
+
+        outcomes.record(true, for: "second")
+        outcomes.record(true, for: "third")
+        XCTAssertNil(outcomes.outcome(for: "first"), "Old outcomes stay bounded")
+        XCTAssertEqual(outcomes.outcome(for: "second"), true)
+        XCTAssertEqual(outcomes.outcome(for: "third"), true)
+    }
+
     func testRouteStopMutationGateUsesStablePOIIdentity() {
         let first = RouteStopMutationGate.itemIdentifier(
             name: " McDonald's ", latitude: 50.0123454, longitude: 8.5432104

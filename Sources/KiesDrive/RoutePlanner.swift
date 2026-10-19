@@ -452,6 +452,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let searchResultsQuery: String?
     }
     private var routeStopMutationGeneration = UUID()
+    private var routeStopMutationOutcomes = RouteStopMutationOutcomeCache()
     private var routeStopMutationSnapshot: RouteStopMutationSnapshot?
     private var routeStopMutationGate = RouteStopMutationGate()
     /// Volatile identity for MapKit route objects. Unlike the offline cache,
@@ -1936,14 +1937,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         switch routeStopMutationGate.begin(mutationID) {
         case .started:
+            routeStopMutationOutcomes.begin(mutationID)
             break
         case .coalesced:
-            return true
+            return await waitForRouteStopMutationOutcome(id: mutationID)
         case .busy:
             errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
             return false
         }
-        defer { routeStopMutationGate.finish(mutationID) }
+        var mutationSucceeded = false
+        defer {
+            recordRouteStopMutationOutcome(mutationSucceeded, id: mutationID)
+            routeStopMutationGate.finish(mutationID)
+        }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let candidateRollback = RouteStopMutationSnapshot(
             lock: routeLockStore.activeLock,
@@ -2048,7 +2054,27 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // seamlessly without a second "Route gestartet" announcement or an
         // unnecessary second navigation reset.
         DriveDiagnosticStore.append(.routeStopAdded, detail: stopName)
+        mutationSucceeded = true
         return true
+    }
+
+    /// An identical phone/CarPlay/MCP action can arrive while MapKit is still
+    /// calculating the first one. Do not acknowledge that duplicate before
+    /// the authoritative mutation has actually committed or rolled back.
+    private func waitForRouteStopMutationOutcome(
+        id: String, timeout: TimeInterval = 45
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while routeStopMutationGate.isActive(id), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if Task.isCancelled { return false }
+        }
+        return !routeStopMutationGate.isActive(id) &&
+            routeStopMutationOutcomes.outcome(for: id) == true
+    }
+
+    private func recordRouteStopMutationOutcome(_ succeeded: Bool, id: String) {
+        routeStopMutationOutcomes.record(succeeded, for: id)
     }
 
     /// Reconciles map matching and distance remaining for every UI path that
