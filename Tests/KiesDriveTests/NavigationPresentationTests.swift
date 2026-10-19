@@ -2536,12 +2536,14 @@ final class NavigationPresentationTests: XCTestCase {
     }
 
     func testFinalCueHasEnoughHighSpeedReactionTime() {
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 320, speedKmh: 200), .final)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 200), .prepare)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 190, speedKmh: 120), .final)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 210, speedKmh: 120), .prepare)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 80, speedKmh: 50), .final)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 90, speedKmh: 50), .prepare)
+        // The final cue must start early enough to survive Bluetooth/audio
+        // latency and still leave time to change lanes safely.
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 410, speedKmh: 200), .final)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 430, speedKmh: 200), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 240, speedKmh: 120), .final)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 270, speedKmh: 120), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 100, speedKmh: 50), .final)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 110, speedKmh: 50), .prepare)
     }
 
     func testActiveNavigationKeepsFullBackgroundLocationConfiguration() {

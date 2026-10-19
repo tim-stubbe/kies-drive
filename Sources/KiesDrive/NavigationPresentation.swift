@@ -821,14 +821,17 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
     static func stage(distance: CLLocationDistance, speedKmh: Double) -> Self? {
         guard distance.isFinite, distance >= 0 else { return nil }
         let speedMetresPerSecond = max(0, speedKmh) / 3.6
-        // Keep the actual "Jetzt" cue close to the junction. A separate final
-        // distance cue below retains the full six-second safety horizon at
-        // motorway speed without saying "Jetzt" hundreds of metres early.
-        let nowDistance = min(180, max(25, speedMetresPerSecond * 3))
+        // Account for audio-session activation, Bluetooth latency and the
+        // spoken sentence itself. The old three/six-second horizons could
+        // begin a motorway instruction only after the driver had to commit to
+        // the exit. Keep "Jetzt" visually close to the junction through a
+        // hard cap, while the preceding distance cue provides real reaction
+        // time at speed.
+        let nowDistance = min(180, max(30, speedMetresPerSecond * 3.5))
         if distance <= nowDistance { return .now }
-        let finalDistance = min(350, max(60, speedMetresPerSecond * 6))
+        let finalDistance = min(450, max(70, speedMetresPerSecond * 7.5))
         if distance <= finalDistance { return .final }
-        let prepareDistance = min(1_100, max(220, speedMetresPerSecond * 15))
+        let prepareDistance = min(1_200, max(250, speedMetresPerSecond * 18))
         if distance <= prepareDistance { return .prepare }
         let earlyDistance = min(3_000, max(500, speedMetresPerSecond * 45))
         if distance <= earlyDistance { return .early }
