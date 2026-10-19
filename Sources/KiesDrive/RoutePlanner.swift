@@ -360,6 +360,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var diagnosticManeuverInstruction: String?
     private var diagnosticManeuverDistance: CLLocationDistance?
     private var offRouteSince: Date?
+    private var lastOffRouteFixAt: Date?
     private var offRouteFixCount = 0
     private var onRouteRecoveryFixCount = 0
     private var previousOffRouteDistance: CLLocationDistance?
@@ -2978,12 +2979,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if isOutsideCorridor {
             onRouteRecoveryFixCount = 0
             if isDeparting {
-                if offRouteSince == nil {
+                if NavigationDeviationSequencePolicy.shouldRestart(
+                    previousFixAt: lastOffRouteFixAt,
+                    currentFixAt: location.timestamp
+                ) {
                     offRouteSince = location.timestamp
                     offRouteFixCount = 1
                 } else {
                     offRouteFixCount += 1
                 }
+                lastOffRouteFixAt = location.timestamp
                 if let offRouteSince,
                    NavigationDeviationPolicy.isConfirmed(
                     elapsed: location.timestamp.timeIntervalSince(offRouteSince),
@@ -4200,12 +4205,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return
         }
         let now = location.timestamp
-        if offRouteSince == nil {
+        if NavigationDeviationSequencePolicy.shouldRestart(
+            previousFixAt: lastOffRouteFixAt,
+            currentFixAt: now
+        ) {
             offRouteSince = now
             offRouteFixCount = 1
         } else {
             offRouteFixCount += 1
         }
+        lastOffRouteFixAt = now
         guard let offRouteSince,
               NavigationDeviationPolicy.isConfirmed(
                 elapsed: now.timeIntervalSince(offRouteSince),
@@ -4359,6 +4368,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func resetDeviationTracking(keepingDistance distance: CLLocationDistance? = nil) {
         offRouteSince = nil
+        lastOffRouteFixAt = nil
         offRouteFixCount = 0
         previousOffRouteDistance = distance
     }

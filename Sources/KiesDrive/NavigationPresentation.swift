@@ -2195,6 +2195,19 @@ enum NavigationDeviationPolicy {
     }
 }
 
+enum NavigationDeviationSequencePolicy {
+    /// Location delivery can pause in tunnels, while the app is backgrounded,
+    /// or while Core Location recovers. Fixes separated by such a gap are not
+    /// evidence of one sustained departure and must start a fresh sequence.
+    static let maximumFixGap: TimeInterval = 12
+
+    static func shouldRestart(previousFixAt: Date?, currentFixAt: Date) -> Bool {
+        guard let previousFixAt else { return true }
+        let gap = currentFixAt.timeIntervalSince(previousFixAt)
+        return gap < 0 || gap > maximumFixGap
+    }
+}
+
 enum NavigationWrongWayPolicy {
     /// Detect driving against the installed route while still sitting directly
     /// on its geometry. A high angular threshold plus a meaningful speed keeps

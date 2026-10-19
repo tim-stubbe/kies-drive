@@ -882,6 +882,22 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testDeviationSequenceDoesNotBridgeLocationDeliveryGaps() {
+        let first = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(NavigationDeviationSequencePolicy.shouldRestart(
+            previousFixAt: nil, currentFixAt: first
+        ))
+        XCTAssertFalse(NavigationDeviationSequencePolicy.shouldRestart(
+            previousFixAt: first, currentFixAt: first.addingTimeInterval(12)
+        ))
+        XCTAssertTrue(NavigationDeviationSequencePolicy.shouldRestart(
+            previousFixAt: first, currentFixAt: first.addingTimeInterval(12.01)
+        ), "A fix after a tunnel or background gap must start fresh confirmation")
+        XCTAssertTrue(NavigationDeviationSequencePolicy.shouldRestart(
+            previousFixAt: first, currentFixAt: first.addingTimeInterval(-1)
+        ), "A clock rollback must not continue an old departure sequence")
+    }
+
     func testWrongWayOnSameRoadRequiresStrongReliableCourseEvidence() {
         XCTAssertTrue(NavigationWrongWayPolicy.isOpposing(
             courseDifferenceDegrees: 172, distanceFromRoute: 8,
