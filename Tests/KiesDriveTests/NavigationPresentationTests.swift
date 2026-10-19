@@ -2682,14 +2682,37 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testRouteStopMutationGateCoalescesRepeatedTapUntilCalculationFinishes() {
         var gate = RouteStopMutationGate()
-        XCTAssertTrue(gate.begin("fuel-1"))
+        XCTAssertEqual(gate.begin("fuel-1"), .started)
         XCTAssertTrue(gate.isActive("fuel-1"))
-        XCTAssertFalse(gate.begin("fuel-1"), "A repeated tap must not invert an in-flight toggle")
-        XCTAssertTrue(gate.begin("fuel-2"), "Unrelated stop actions remain independent")
+        XCTAssertEqual(
+            gate.begin("fuel-1"), .coalesced,
+            "A repeated tap must not invert an in-flight toggle"
+        )
+        XCTAssertEqual(
+            gate.begin("fuel-2"), .busy,
+            "Different stop edits share one route and must not calculate concurrently"
+        )
 
         gate.finish("fuel-1")
         XCTAssertFalse(gate.isActive("fuel-1"))
-        XCTAssertTrue(gate.begin("fuel-1"), "The stop becomes actionable again after completion")
+        XCTAssertEqual(
+            gate.begin("fuel-2"), .started,
+            "A different stop becomes actionable after the first calculation completes"
+        )
+    }
+
+    func testRouteStopMutationGateUsesStablePOIIdentity() {
+        let first = RouteStopMutationGate.itemIdentifier(
+            name: " McDonald's ", latitude: 50.0123454, longitude: 8.5432104
+        )
+        let same = RouteStopMutationGate.itemIdentifier(
+            name: "mcDONALD'S", latitude: 50.01234549, longitude: 8.54321049
+        )
+        let other = RouteStopMutationGate.itemIdentifier(
+            name: "McDonald's", latitude: 50.012347, longitude: 8.5432104
+        )
+        XCTAssertEqual(first, same)
+        XCTAssertNotEqual(first, other)
     }
 
     func testNamedRouteSearchPrefersRelevantBrandOverTinyUnrelatedDetour() {

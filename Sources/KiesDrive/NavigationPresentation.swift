@@ -424,19 +424,41 @@ enum PlannedStopSelectionPolicy {
     }
 }
 
-struct RouteStopMutationGate {
-    private var activeIDs = Set<String>()
+enum RouteStopMutationAdmission: Equatable {
+    case started
+    case coalesced
+    case busy
+}
 
-    mutating func begin(_ id: String) -> Bool {
-        activeIDs.insert(id).inserted
+struct RouteStopMutationGate {
+    private var activeID: String?
+
+    /// Route-stop edits all replace the same route and persistent lock. They
+    /// must therefore be serialized globally, not only per stop identifier.
+    /// A repeated tap on the active item is harmless and is coalesced, while a
+    /// different edit is rejected until the authoritative calculation ends.
+    mutating func begin(_ id: String) -> RouteStopMutationAdmission {
+        guard let activeID else {
+            self.activeID = id
+            return .started
+        }
+        return activeID == id ? .coalesced : .busy
     }
 
     mutating func finish(_ id: String) {
-        activeIDs.remove(id)
+        guard activeID == id else { return }
+        activeID = nil
     }
 
     func isActive(_ id: String) -> Bool {
-        activeIDs.contains(id)
+        activeID == id
+    }
+
+    static func itemIdentifier(name: String, latitude: Double, longitude: Double) -> String {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let latitudeMicrodegrees = Int((latitude * 1_000_000).rounded())
+        let longitudeMicrodegrees = Int((longitude * 1_000_000).rounded())
+        return "poi:\(normalizedName):\(latitudeMicrodegrees):\(longitudeMicrodegrees)"
     }
 }
 

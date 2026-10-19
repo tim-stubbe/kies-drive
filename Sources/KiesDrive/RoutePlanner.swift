@@ -1886,6 +1886,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             errorMessage = "Die Route wurde inzwischen neu berechnet. Bitte suche den Zwischenstopp erneut."
             return false
         }
+        let coordinate = item.placemark.coordinate
+        let stopName = item.name ?? "Zwischenstopp"
+        let mutationID = RouteStopMutationGate.itemIdentifier(
+            name: stopName, latitude: coordinate.latitude, longitude: coordinate.longitude
+        )
+        switch routeStopMutationGate.begin(mutationID) {
+        case .started:
+            break
+        case .coalesced:
+            return true
+        case .busy:
+            errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
+            return false
+        }
+        defer { routeStopMutationGate.finish(mutationID) }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let candidateRollback = RouteStopMutationSnapshot(
             lock: routeLockStore.activeLock,
@@ -1902,8 +1917,6 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             errorMessage = "Zwischenstopp konnte nicht gespeichert werden."
             return false
         }
-        let coordinate = item.placemark.coordinate
-        let stopName = item.name ?? "Zwischenstopp"
         guard mayInsertRouteStop(at: coordinate) else { return false }
         if routeLockStore.activeLock?.containsEquivalentStop(
             name: stopName, coordinate: coordinate
@@ -2044,7 +2057,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                          settings: DriveSettings) async -> Bool {
         // A repeated CarPlay/phone tap while MapKit is still calculating must
         // not start a second mutation against the half-updated route.
-        guard routeStopMutationGate.begin(id) else { return true }
+        switch routeStopMutationGate.begin(id) {
+        case .started:
+            break
+        case .coalesced:
+            return true
+        case .busy:
+            errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
+            return false
+        }
         defer { routeStopMutationGate.finish(id) }
         guard routeLockStore.activeLock?.waypoints.contains(where: {
             $0.id == id && $0.isRemovableComfortStop
@@ -5602,7 +5623,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // `toggle` is especially vulnerable to double taps: the first call
         // inserts synchronously before awaiting MapKit, so an overlapping
         // second call would otherwise interpret the same tap as "remove".
-        guard routeStopMutationGate.begin(station.id) else { return true }
+        switch routeStopMutationGate.begin(station.id) {
+        case .started:
+            break
+        case .coalesced:
+            return true
+        case .busy:
+            errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
+            return false
+        }
         defer { routeStopMutationGate.finish(station.id) }
         let navigationSession = isNavigating ? navigationSessionGeneration : nil
         let wasSelected = RouteStopSelectionPolicy.contains(
@@ -5727,7 +5756,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 transientStationIDs: viaStations.map(\.id),
                 lockedWaypoints: routeLockStore.activeLock?.waypoints ?? []
             ) else { return true }
-            guard routeStopMutationGate.begin(station.id) else { return true }
+            switch routeStopMutationGate.begin(station.id) {
+            case .started:
+                break
+            case .coalesced:
+                return true
+            case .busy:
+                errorMessage = "Ein anderer Zwischenstopp wird gerade berechnet. Bitte gleich erneut versuchen."
+                return false
+            }
             defer { routeStopMutationGate.finish(station.id) }
             let navigationSession = isNavigating ? navigationSessionGeneration : nil
             let mutationGeneration = UUID()
