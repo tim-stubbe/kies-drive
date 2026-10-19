@@ -3199,6 +3199,36 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.resolvedRouteIssues, 1)
     }
 
+    func testDiagnosticSummarySurfacesRestoreFailureAfterNavigationPause() throws {
+        let tripID = UUID()
+        let events = [
+            DriveDiagnosticEvent(sessionID: tripID, kind: .navigationStarted,
+                                 detail: "Urlaubsfahrt"),
+            DriveDiagnosticEvent(sessionID: tripID, kind: .navigationStopped,
+                                 detail: "Pause"),
+            DriveDiagnosticEvent(sessionID: tripID, kind: .routeRestoreFailed,
+                                 detail: "Keine passende Route verfügbar"),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertEqual(summary.routeRestoreFailures, 1)
+        XCTAssertTrue(summary.recommendation.contains("fortgesetzt"))
+
+        let recovered = events + [
+            DriveDiagnosticEvent(sessionID: tripID, kind: .navigationStarted,
+                                 detail: "Offline fortgesetzt"),
+            DriveDiagnosticEvent(sessionID: tripID, kind: .routeRestoreSucceeded,
+                                 detail: "Offline-Cache verwendet"),
+        ]
+        let recoveredSummary = try XCTUnwrap(
+            DriveDiagnosticSummary.latestSession(in: recovered)
+        )
+        XCTAssertEqual(recoveredSummary.routeRestoreFailures, 0)
+        XCTAssertEqual(recoveredSummary.quality, .good)
+        XCTAssertEqual(recoveredSummary.resolvedRouteIssues, 1)
+    }
+
     func testDiagnosticStoreCreatesNewSessionAfterTripFinished() throws {
         let suite = "DriveDiagnosticFinishedSessionTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

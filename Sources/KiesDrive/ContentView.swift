@@ -2329,12 +2329,13 @@ struct DriveSettingsView: View {
                             LabeledContent("Automatisch behoben", value: "\(latestSummary.resolvedRouteIssues)")
                         }
                         if latestSummary.quality != .good {
-                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.routeStopFailures) nicht berechenbare Zwischenstopps, \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
+                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.routeRestoreFailures) fehlgeschlagene Wiederherstellung(en), \(latestSummary.routeStopFailures) nicht berechenbare Zwischenstopps, \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         LabeledContent("Ereignisse dieser Fahrt", value: "\(latestSummary.eventCount)")
                         LabeledContent("Neuberechnungen", value: "\(latestSummary.rerouteRequests)")
                         LabeledContent("Fehlgeschlagen", value: "\(latestSummary.rerouteFailures)")
+                        LabeledContent("Wiederherstellung fehlgeschlagen", value: "\(latestSummary.routeRestoreFailures)")
                         LabeledContent("Zwischenstopp fehlgeschlagen", value: "\(latestSummary.routeStopFailures)")
                         LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
                         LabeledContent("GPS-Unterbrechungen", value: "\(latestSummary.recoveredLocationGaps)")

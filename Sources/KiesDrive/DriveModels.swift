@@ -457,6 +457,7 @@ struct DriveDiagnosticSummary: Equatable {
     let speechDeliveryFailures: Int
     let offlineRouteDepartures: Int
     let routeStopFailures: Int
+    let routeRestoreFailures: Int
     let resolvedRouteIssues: Int
     let recommendation: String
 
@@ -593,15 +594,40 @@ struct DriveDiagnosticSummary: Equatable {
         let speechFailures = unresolvedSpeechFailures(in: session)
         let totalRouteStopFailures = session.filter { $0.kind == .routeStopFailed }.count
         let routeStopFailures = unresolvedRouteStopFailures(in: session)
+        let restoreTimeline: [DriveDiagnosticEvent]
+        if let sessionID {
+            restoreTimeline = events[start...].filter {
+                $0.sessionID == sessionID &&
+                    ($0.kind == .routeRestoreFailed || $0.kind == .routeRestoreSucceeded)
+            }
+        } else {
+            restoreTimeline = session.filter {
+                $0.kind == .routeRestoreFailed || $0.kind == .routeRestoreSucceeded
+            }
+        }
+        let totalRestoreFailures = restoreTimeline.filter {
+            $0.kind == .routeRestoreFailed
+        }.count
+        let lastRestoreSuccess = restoreTimeline.lastIndex {
+            $0.kind == .routeRestoreSucceeded
+        }
+        let unresolvedRestoreTimeline = lastRestoreSuccess.map {
+            restoreTimeline.dropFirst($0 + 1)
+        } ?? restoreTimeline[...]
+        let routeRestoreFailures = unresolvedRestoreTimeline.filter {
+            $0.kind == .routeRestoreFailed
+        }.count
         let offlineDepartures = unresolvedOffline.filter { $0.kind == .offlineRouteDeparture }.count
         let resolved = max(0, totalFailures - failures) +
             max(0, totalOfflineDepartures - offlineDepartures) +
             max(0, totalSpeechFailures - speechFailures) +
-            max(0, totalRouteStopFailures - routeStopFailures)
+            max(0, totalRouteStopFailures - routeStopFailures) +
+            max(0, totalRestoreFailures - routeRestoreFailures)
         let reroutes = session.filter { $0.kind == .rerouteRequested }.count
         let quality: Quality
         let recommendation: String
-        if failures > 0 || missed > 0 || offlineDepartures > 0 || speechFailures > 0 {
+        if failures > 0 || routeRestoreFailures > 0 || missed > 0 ||
+            offlineDepartures > 0 || speechFailures > 0 {
             quality = .critical
             if missed > 0 {
                 recommendation = "Fahrhinweise prüfen; mindestens eine letzte Abbiegeansage fehlte."
@@ -609,6 +635,8 @@ struct DriveDiagnosticSummary: Equatable {
                 recommendation = "Die letzte Fahransage wurde vom Audiosystem nicht beendet; Bluetooth- und Lautstärkeeinstellungen prüfen."
             } else if offlineDepartures > 0 {
                 recommendation = "Die gespeicherte Route wurde verlassen und noch nicht online ersetzt."
+            } else if routeRestoreFailures > 0 {
+                recommendation = "Die gespeicherte Reise konnte noch nicht fortgesetzt werden; Verbindung und Offlinekarte prüfen."
             } else {
                 recommendation = "Die letzte Neuberechnung ist noch fehlgeschlagen; die alte Route blieb aktiv."
             }
@@ -650,6 +678,7 @@ struct DriveDiagnosticSummary: Equatable {
                      missedFinalCues: missed, speechDeliveryFailures: speechFailures,
                      offlineRouteDepartures: offlineDepartures,
                      routeStopFailures: routeStopFailures,
+                     routeRestoreFailures: routeRestoreFailures,
                      resolvedRouteIssues: resolved, recommendation: recommendation)
     }
 }
