@@ -977,6 +977,18 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(comparison?.alternative.scenario.targetSpeedKmh ?? 0, 150, accuracy: 0.1)
     }
 
+    func testFractionalScenarioSpeedsDoNotCollideOrSuppressComparison() {
+        let configured = SpeedScenario.target(200.9)
+        let reference = SpeedScenario.target(200)
+        XCTAssertNotEqual(configured.id, reference.id)
+        XCTAssertEqual(configured.name, "Zieltempo 201 km/h")
+
+        let scenarios = SpeedScenarioPolicy.scenarios(configuredSpeed: 200.9)
+        XCTAssertEqual(scenarios.count, 2)
+        XCTAssertEqual(scenarios[0].targetSpeedKmh, 200.9, accuracy: 0.001)
+        XCTAssertEqual(scenarios[1].targetSpeedKmh, 200, accuracy: 0.001)
+    }
+
     func testSpeedComparisonSuppressesTinyOrUnknownUnlimitedShare() {
         func plan(distance: Double, unlimitedFraction: Double) -> LongTripPlan {
             let route = RoutePlanningInput(

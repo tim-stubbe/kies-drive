@@ -41,8 +41,13 @@ struct SpeedScenario: Codable, Identifiable, Equatable {
 
     static func target(_ speed: Double) -> Self {
         let safeSpeed = speed.isFinite ? min(220, max(80, speed)) : 150
-        return .init(id: "target-\(Int(safeSpeed))",
-                     name: "Zieltempo \(Int(safeSpeed)) km/h",
+        // Remote commands and decoded settings are not guaranteed to arrive
+        // as whole numbers. Keep tenths in the identity so distinct scenarios
+        // cannot overwrite one another merely because `Int` truncated both
+        // values to the same kilometre per hour.
+        let identityTenths = Int((safeSpeed * 10).rounded())
+        return .init(id: "target-\(identityTenths)",
+                     name: "Zieltempo \(Int(safeSpeed.rounded())) km/h",
                      targetSpeedKmh: safeSpeed)
     }
 }
@@ -346,7 +351,8 @@ enum SpeedScenarioPolicy {
             referenceSpeed: referenceSpeed,
             fallbackSpeed: fallbackSpeed
         ))
-        return configured.id == comparison.id ? [configured] : [configured, comparison]
+        return abs(configured.targetSpeedKmh - comparison.targetSpeedKmh) <= 0.1
+            ? [configured] : [configured, comparison]
     }
 
     static func matchesTarget(
