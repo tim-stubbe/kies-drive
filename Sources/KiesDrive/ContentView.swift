@@ -305,14 +305,6 @@ struct DriveContentView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .alert("Pause nicht bestätigt", isPresented: Binding(
-            get: { restConfirmationError != nil },
-            set: { if !$0 { restConfirmationError = nil } }
-        )) {
-            Button("OK", role: .cancel) { restConfirmationError = nil }
-        } message: {
-            Text(restConfirmationError ?? "Bitte prüfe, ob das Fahrzeug sicher steht.")
-        }
     }
 
     private var locationPermissionCard: some View {
@@ -392,6 +384,14 @@ struct DriveContentView: View {
         }
         .background(Color.kiesCanvas.ignoresSafeArea())
         .sheet(item: $selectedStation) { station in stationDetailSheet(station) }
+        .alert("Pause nicht bestätigt", isPresented: Binding(
+            get: { restConfirmationError != nil },
+            set: { if !$0 { restConfirmationError = nil } }
+        )) {
+            Button("OK", role: .cancel) { restConfirmationError = nil }
+        } message: {
+            Text(restConfirmationError ?? "Bitte prüfe, ob das Fahrzeug sicher steht.")
+        }
     }
 
     private var routeSearchCard: some View {
@@ -467,10 +467,7 @@ struct DriveContentView: View {
                 Divider().frame(height: 36)
                 routeOverviewMetric(formatTime(routePreviewTravelTime), "Fahrzeit")
                 Divider().frame(height: 36)
-                routeOverviewMetric(
-                    planner.longTripPlan.flatMap(\.results.first).map { "\($0.breaks.count)" } ?? "…",
-                    planner.longTripPlan == nil ? "Pausen werden geplant" : "Pausen"
-                )
+                routeOverviewBreakMetric
             }
         }
         .driveCard()
@@ -481,6 +478,26 @@ struct DriveContentView: View {
             Text(value).font(.headline).monospacedDigit()
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var routeOverviewBreakMetric: some View {
+        if let count = planner.longTripPlan?.results.first?.breaks.count {
+            routeOverviewMetric("\(count)", "Pausen")
+        } else {
+            #if targetEnvironment(simulator)
+            if hasSimulatorPlannedRoutePreview && planner.legs.isEmpty {
+                let previewCount = BreakPlanner().plan(
+                    drivingTime: routePreviewTravelTime, candidates: []
+                ).count
+                routeOverviewMetric("\(previewCount)", "Pausen · Vorschau")
+            } else {
+                routeOverviewMetric("…", "Pausenplanung")
+            }
+            #else
+            routeOverviewMetric("…", "Pausenplanung")
+            #endif
+        }
     }
 
     private func longTripCards(_ plan: LongTripPlan) -> some View {
