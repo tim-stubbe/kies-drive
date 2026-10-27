@@ -1785,18 +1785,30 @@ struct DriveContentView: View {
             }
             if isSimulatorNavigationPreview {
                 MapPolyline(simulatorPreviewPolyline)
-                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .stroke(.white.opacity(0.9), style: StrokeStyle(
+                        lineWidth: NavigationRouteLinePolicy.outlineWidth(isOverview: isShowingRouteOverview),
+                        lineCap: .round, lineJoin: .round
+                    ))
                     .mapOverlayLevel(level: .aboveLabels)
                 MapPolyline(simulatorPreviewPolyline)
-                    .stroke(Color.kiesRouteBlue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    .stroke(Color.kiesRouteBlue, style: StrokeStyle(
+                        lineWidth: NavigationRouteLinePolicy.width(isOverview: isShowingRouteOverview),
+                        lineCap: .round, lineJoin: .round
+                    ))
                     .mapOverlayLevel(level: .aboveLabels)
             }
             if hasSimulatorPlannedRoutePreview {
                 MapPolyline(simulatorPlannedRoutePolyline)
-                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .stroke(.white.opacity(0.9), style: StrokeStyle(
+                        lineWidth: NavigationRouteLinePolicy.outlineWidth(isOverview: isShowingRouteOverview),
+                        lineCap: .round, lineJoin: .round
+                    ))
                     .mapOverlayLevel(level: .aboveLabels)
                 MapPolyline(simulatorPlannedRoutePolyline)
-                    .stroke(Color.kiesRouteBlue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    .stroke(Color.kiesRouteBlue, style: StrokeStyle(
+                        lineWidth: NavigationRouteLinePolicy.width(isOverview: isShowingRouteOverview),
+                        lineCap: .round, lineJoin: .round
+                    ))
                     .mapOverlayLevel(level: .aboveLabels)
             }
             #else
@@ -1817,19 +1829,31 @@ struct DriveContentView: View {
             if let destination = planner.destination { Marker(item: destination) }
             ForEach(Array(planner.legs.enumerated()), id: \.offset) { _, leg in
                 MapPolyline(leg.polyline)
-                    .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .stroke(.white.opacity(0.9), style: StrokeStyle(
+                        lineWidth: NavigationRouteLinePolicy.outlineWidth(isOverview: isShowingRouteOverview),
+                        lineCap: .round, lineJoin: .round
+                    ))
                     .mapOverlayLevel(level: .aboveLabels)
                 MapPolyline(leg.polyline)
-                    .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    .stroke(.blue, style: StrokeStyle(
+                        lineWidth: NavigationRouteLinePolicy.width(isOverview: isShowingRouteOverview),
+                        lineCap: .round, lineJoin: .round
+                    ))
                     .mapOverlayLevel(level: .aboveLabels)
             }
             if planner.legs.isEmpty {
                 ForEach(Array(planner.offlinePolylines.enumerated()), id: \.offset) { _, polyline in
                     MapPolyline(polyline)
-                        .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                        .stroke(.white.opacity(0.9), style: StrokeStyle(
+                            lineWidth: NavigationRouteLinePolicy.outlineWidth(isOverview: isShowingRouteOverview),
+                            lineCap: .round, lineJoin: .round
+                        ))
                         .mapOverlayLevel(level: .aboveLabels)
                     MapPolyline(polyline)
-                        .stroke(Color.kiesRouteBlue.opacity(0.8), style: StrokeStyle(lineWidth: 5, dash: [8, 5]))
+                        .stroke(Color.kiesRouteBlue.opacity(0.8), style: StrokeStyle(
+                            lineWidth: NavigationRouteLinePolicy.width(isOverview: isShowingRouteOverview),
+                            dash: [8, 5]
+                        ))
                         .mapOverlayLevel(level: .aboveLabels)
                 }
             }

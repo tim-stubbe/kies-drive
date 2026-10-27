@@ -1933,6 +1933,19 @@ enum CarPlayRouteLinePolicy {
     }
 }
 
+enum NavigationRouteLinePolicy {
+    /// Keep the route easy to follow at the driving scale, but reduce its
+    /// footprint in a full-trip overview where a fixed-width casing can hide
+    /// junctions and nearby roads.
+    static func width(isOverview: Bool) -> CGFloat {
+        isOverview ? 3 : 4.5
+    }
+
+    static func outlineWidth(isOverview: Bool) -> CGFloat {
+        width(isOverview: isOverview) + (isOverview ? 1.8 : 2)
+    }
+}
+
 enum CarPlayRouteOverviewPolicy {
     static func mapRect(routeRects: [MKMapRect],
                         vehicleCoordinate: CLLocationCoordinate2D?) -> MKMapRect? {

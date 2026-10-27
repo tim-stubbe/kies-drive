@@ -652,6 +652,17 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testPhoneRouteOverviewUsesThinnerLineAndCasing() {
+        XCTAssertEqual(NavigationRouteLinePolicy.width(isOverview: false), 4.5)
+        XCTAssertEqual(NavigationRouteLinePolicy.width(isOverview: true), 3)
+        XCTAssertEqual(NavigationRouteLinePolicy.outlineWidth(isOverview: false), 6.5)
+        XCTAssertEqual(NavigationRouteLinePolicy.outlineWidth(isOverview: true), 4.8, accuracy: 0.001)
+        XCTAssertLessThan(
+            NavigationRouteLinePolicy.outlineWidth(isOverview: true),
+            NavigationRouteLinePolicy.outlineWidth(isOverview: false)
+        )
+    }
+
     func testCarPlayOverviewIncludesPlausibleVehicleButRejectsDisplacedFix() throws {
         let start = MKMapPoint(CLLocationCoordinate2D(latitude: 50.0, longitude: 8.0))
         let end = MKMapPoint(CLLocationCoordinate2D(latitude: 50.1, longitude: 8.1))
