@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Kies Drive",
+  "short_name": "Kies Drive",
+  "description": "Deine Route und Fahrtenübersicht auf deinem TrueNAS.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f2e8",
+  "theme_color": "#102f27",
+  "lang": "de",
+  "icons": [
+    { "src": "/web/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/web/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

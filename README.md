@@ -14,7 +14,11 @@ nur noch optionale Zusatzdienste wie Jarvis und Tankpreise.
   Anmeldung mit demselben Konto und optionaler Authenticator-2FA. Es zeigt nur
   frische Live-Telemetrie und den persistenten Trip-Lock. Ziel-, Stopp- und
   Wiederherstellungsaktionen werden sicher an die native App übergeben; die
-  eigentliche Navigation bleibt lokal auf dem iPhone/macOS.
+  eigentliche Navigation bleibt lokal auf dem iPhone/macOS. Die Web-App lässt
+  sich bei HTTPS als PWA zum Home-Bildschirm hinzufügen. Offline wird nur die
+  statische Oberfläche bereitgestellt; Konten, Live-Daten und Aktionen werden
+  niemals vom Service Worker gespeichert. Fahrstatistiken zeigen die lokal
+  gezählten Gesamt-/Letzte-Fahrt-Kilometer und Fahrzeit, ohne Positionsverlauf.
 - MCP: `https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive/mcp`; ChatGPT entdeckt dort
   automatisch die Browser-Anmeldung mit OAuth 2.1/PKCE. Es muss kein Token
   kopiert oder im Container hinterlegt werden.

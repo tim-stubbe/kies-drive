@@ -454,8 +454,18 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     assert "Kies Drive" in page.text
     assert 'href="web/style.css"' in page.text
     assert 'src="web/app.js"' in page.text
+    assert 'rel="manifest" href="manifest.webmanifest"' in page.text
     assert page.headers["content-security-policy"].startswith("default-src 'self'")
     assert client.get("/web/app.js").status_code == 200
+    manifest = client.get("/manifest.webmanifest")
+    assert manifest.status_code == 200
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    assert manifest.json()["display"] == "standalone"
+    worker = client.get("/service-worker.js")
+    assert worker.status_code == 200
+    assert worker.headers["service-worker-allowed"] == "/"
+    assert "Never store account data" in worker.text
+    assert client.get("/web/icon-192.png").status_code == 200
     assert client.get("/api/web/state").status_code == 401
     assert client.post("/api/web/commands", json={
         "command": "set_destination", "arguments": {"query": "Hochheim"}
@@ -475,6 +485,14 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
             "active_route": {"destination": "Hochheim", "distance_metres": 12000},
             "route_lock": {"title": "Urlaubsfahrt", "waypoints": []},
             "next_maneuver": {"instruction": "Rechts abbiegen", "distance_metres": 400},
+            "usage_statistics": {
+                "total_distance_metres": 25_000,
+                "total_moving_time_seconds": 3_900,
+                "completed_navigations": 4,
+                "last_trip_distance_metres": 8_000,
+                "last_trip_moving_time_seconds": 1_200,
+                "last_trip_ended_at": "2026-10-26T18:45:00Z",
+            },
             "navigation_active": True,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -488,6 +506,8 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     assert state["heading"]["direction"] == "Ost"
     assert state["next_maneuver"]["instruction"] == "Rechts abbiegen"
     assert state["route_lock"]["title"] == "Urlaubsfahrt"
+    assert state["usage_statistics"]["total_distance_metres"] == 25_000
+    assert state["usage_statistics"]["completed_navigations"] == 4
 
     invalid = client.post("/api/web/commands", headers=headers, json={
         "command": "delete_account", "arguments": {}
@@ -516,6 +536,7 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     assert stale["speed_kmh"] is None
     assert stale["next_maneuver"] is None
     assert stale["route_lock"]["title"] == "Urlaubsfahrt"
+    assert stale["usage_statistics"]["total_distance_metres"] == 25_000
 
 
 def test_mcp_reports_remote_command_completion(tmp_path, monkeypatch):

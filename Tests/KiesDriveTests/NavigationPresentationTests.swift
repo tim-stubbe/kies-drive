@@ -1778,6 +1778,35 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertNil(object["headingDegrees"])
     }
 
+    func testRemoteStateCanIncludeLocationFreeDriveUsageTotals() throws {
+        var state = DriveRemoteState(
+            location: nil, headingDegrees: nil, speedKmh: nil,
+            activeRoute: nil, nextManeuver: nil, routeLock: nil,
+            navigationActive: false, onRoute: nil, rerouting: false,
+            offlineGuidanceActive: false, recordedAt: Date(timeIntervalSince1970: 10)
+        )
+        state.usageStatistics = .init(
+            totalDistanceMetres: 42_500,
+            totalMovingTimeSeconds: 7_200,
+            completedNavigations: 8,
+            lastTripDistanceMetres: 1_500,
+            lastTripMovingTimeSeconds: 300,
+            lastTripEndedAt: Date(timeIntervalSince1970: 9)
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(state)) as? [String: Any])
+        let usage = try XCTUnwrap(object["usage_statistics"] as? [String: Any])
+        XCTAssertEqual(usage["total_distance_metres"] as? Double, 42_500)
+        XCTAssertEqual(usage["total_moving_time_seconds"] as? Double, 7_200)
+        XCTAssertEqual(usage["completed_navigations"] as? Int, 8)
+        XCTAssertEqual(usage["last_trip_distance_metres"] as? Double, 1_500)
+        XCTAssertNotNil(usage["last_trip_ended_at"] as? String)
+        XCTAssertNil(usage["location"])
+    }
+
     func testRemoteTripLockOmitsDenseLocalCorridorButKeepsMandatoryRules() throws {
         let waypoint = LockedWaypoint(
             id: "slovenia", name: "Slowenien ohne Autobahn",

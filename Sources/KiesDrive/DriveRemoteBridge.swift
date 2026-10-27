@@ -14,6 +14,14 @@ struct DriveRemoteState: Encodable {
             case distanceMetres = "distance_metres"
         }
     }
+    struct UsageStatistics: Encodable {
+        let totalDistanceMetres: Double
+        let totalMovingTimeSeconds: Double
+        let completedNavigations: Int
+        let lastTripDistanceMetres: Double
+        let lastTripMovingTimeSeconds: Double
+        let lastTripEndedAt: Date?
+    }
     /// Public trip-lock view for MCP. The dense corridor polyline remains
     /// local because it is navigation implementation data, not useful remote
     /// context. Omitting it keeps holiday-route updates small and reliable on
@@ -57,6 +65,7 @@ struct DriveRemoteState: Encodable {
     let rerouting: Bool
     let offlineGuidanceActive: Bool
     let recordedAt: Date
+    var usageStatistics: UsageStatistics? = nil
 
     enum CodingKeys: String, CodingKey {
         case location
@@ -69,6 +78,7 @@ struct DriveRemoteState: Encodable {
         case onRoute = "on_route"
         case rerouting
         case offlineGuidanceActive = "offline_guidance_active"
+        case usageStatistics = "usage_statistics"
         case recordedAt = "recorded_at"
     }
 }
@@ -257,7 +267,7 @@ final class DriveRemoteBridge {
             liveLegCount: planner.legs.count,
             offlineGuidanceActive: planner.isUsingOfflineGuidance
         )
-        let state = DriveRemoteState(
+        var state = DriveRemoteState(
             location: .init(latitude: location.coordinate.latitude,
                             longitude: location.coordinate.longitude,
                             accuracyMetres: location.horizontalAccuracy),
@@ -278,6 +288,15 @@ final class DriveRemoteBridge {
             rerouting: planner.isRecalculating,
             offlineGuidanceActive: planner.isUsingOfflineGuidance,
             recordedAt: Date()
+        )
+        let usage = DriveUsageStatisticsStore.load()
+        state.usageStatistics = .init(
+            totalDistanceMetres: usage.totalDistanceMetres,
+            totalMovingTimeSeconds: usage.totalMovingTime,
+            completedNavigations: usage.completedNavigations,
+            lastTripDistanceMetres: usage.lastTripDistanceMetres,
+            lastTripMovingTimeSeconds: usage.lastTripMovingTime,
+            lastTripEndedAt: usage.lastTripEndedAt
         )
         do {
             try await DriveAPI.publishRemoteState(state)

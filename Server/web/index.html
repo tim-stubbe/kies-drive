@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#102f27">
     <meta name="description" content="Kies Drive – deine Route und dein Fahrzeugstatus, sicher gehostet auf deinem TrueNAS.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Kies Drive">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="web/icon-180.png">
     <title>Kies Drive</title>
     <link rel="stylesheet" href="web/style.css">
     <script src="web/app.js" defer></script>
@@ -26,6 +31,7 @@
           </form>
           <button id="auth-switch" class="button quiet auth-switch" type="button">Neu bei Kies Drive? Konto erstellen</button>
           <p class="auth-foot">Deine Daten bleiben in deinem Kies-Drive-Dienst auf TrueNAS.</p>
+          <button id="install-app-auth" class="button install-button" type="button">Zum Home-Bildschirm hinzufügen</button>
         </div>
         <p class="footer-note">Kies Drive Web · Die native App bleibt für Navigation und Standort zuständig.</p>
       </section>
@@ -33,7 +39,7 @@
       <section id="dashboard-view" class="hidden">
         <header class="topbar">
           <a class="brand-lockup compact" href="./"><span class="brand-mark">K</span><div><span class="eyebrow">DEIN FAHRBEGLEITER</span><h1>Kies Drive</h1></div></a>
-          <div class="top-actions"><span id="account-email" class="account-email"></span><button id="logout" class="button quiet">Abmelden</button></div>
+          <div class="top-actions"><span id="account-email" class="account-email"></span><button id="install-app" class="button secondary install-button" type="button">Installieren</button><button id="logout" class="button quiet">Abmelden</button></div>
         </header>
 
         <section class="welcome-row">
@@ -45,6 +51,16 @@
           <article class="metric-card"><span class="metric-label">GESCHWINDIGKEIT</span><div class="metric-value"><span id="speed">—</span><small>km/h</small></div><span id="road-status" class="metric-note">Warte auf Kies Drive</span></article>
           <article class="metric-card"><span class="metric-label">FAHRTRICHTUNG</span><div class="metric-value"><span id="heading">—</span></div><span class="metric-note">Kompassrichtung</span></article>
           <article class="metric-card"><span class="metric-label">POSITION</span><div class="metric-value coordinate-value" id="location">—</div><span id="updated" class="metric-note">Noch keine Live-Daten</span></article>
+        </section>
+
+        <section class="statistics-panel" aria-label="Deine Fahrstatistik">
+          <div class="statistics-heading"><div><p class="eyebrow">DEINE FAHRTEN</p><h3>Seit du Kies Drive nutzt</h3></div><span id="statistics-source" class="statistics-note">Nur Navigation in Kies Drive</span></div>
+          <div class="statistics-grid">
+            <article><span>Gefahren</span><strong id="total-distance">—</strong></article>
+            <article><span>Fahrzeit</span><strong id="total-time">—</strong></article>
+            <article><span>Navigationen</span><strong id="trip-count">—</strong></article>
+            <article><span>Letzte Fahrt</span><strong id="last-trip">—</strong></article>
+          </div>
         </section>
 
         <div class="content-grid">

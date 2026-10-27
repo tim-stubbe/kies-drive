@@ -44,6 +44,19 @@ def web_app():
     return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def web_manifest():
+    return FileResponse(WEB_DIR / "manifest.webmanifest", media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/service-worker.js", include_in_schema=False)
+def web_service_worker():
+    # Serve at the site root so the worker can cache the installable shell.
+    return FileResponse(WEB_DIR / "service-worker.js", media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Keep account responses private and browser-based auth tightly scoped."""
@@ -672,6 +685,9 @@ def web_state(authorization: str | None = Header(None)):
         "recorded_at": observed_at,
         "age_seconds": age,
         "live": live,
+        # Usage totals are user-scoped, contain no location history, and are
+        # safe to retain when live telemetry becomes stale.
+        "usage_statistics": state.get("usage_statistics"),
     }
     return view
 

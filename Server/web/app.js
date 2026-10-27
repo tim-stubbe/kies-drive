@@ -10,6 +10,33 @@
   let refreshTimer;
   let toastTimer;
   let connectionWarningShown = false;
+  let installPrompt = null;
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
+  }
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    document.querySelectorAll('.install-button').forEach((button) => button.classList.add('ready'));
+  });
+
+  async function installApp() {
+    if (!window.isSecureContext) {
+      toast('Für Installation und Offline-Start bitte die konfigurierte HTTPS-Adresse öffnen.');
+      return;
+    }
+    if (installPrompt) {
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      return;
+    }
+    toast(/iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? 'In Safari: Teilen antippen und „Zum Home-Bildschirm“ wählen.'
+      : 'Nutze das Installieren-Symbol in der Adressleiste deines Browsers.');
+  }
 
   function message(text, success = false) {
     const node = $('auth-message');
@@ -93,6 +120,8 @@
       ? state.rerouting ? 'Route wird angepasst' : state.on_route === false ? 'Route wird geprüft' : state.navigation_active ? 'Auf deiner Route' : 'Kies Drive ist bereit'
       : 'App öffnen, um zu verbinden';
 
+    renderStatistics(state.usage_statistics);
+
     const route = state.active_route;
     const lock = state.route_lock;
     $('route-title').textContent = lock?.title || route?.destination || 'Keine aktive Route';
@@ -135,6 +164,27 @@
         list.append(row);
       });
     }
+  }
+
+  function renderStatistics(stats) {
+    const valid = stats && Number.isFinite(stats.total_distance_metres)
+      && Number.isFinite(stats.total_moving_time_seconds);
+    $('total-distance').textContent = valid
+      ? `${(stats.total_distance_metres / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km` : 'Noch keine Daten';
+    if (!valid) {
+      $('total-time').textContent = '—';
+      $('trip-count').textContent = '—';
+      $('last-trip').textContent = '—';
+      return;
+    }
+    const minutes = Math.floor(stats.total_moving_time_seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    $('total-time').textContent = hours > 0 ? `${hours} Std. ${minutes % 60} Min.` : `${minutes} Min.`;
+    $('trip-count').textContent = Number.isFinite(stats.completed_navigations) ? `${stats.completed_navigations}` : '—';
+    const lastDistance = Number.isFinite(stats.last_trip_distance_metres)
+      ? `${(stats.last_trip_distance_metres / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km` : '';
+    const lastDate = stats.last_trip_ended_at ? new Date(stats.last_trip_ended_at).toLocaleDateString('de-DE') : '';
+    $('last-trip').textContent = [lastDistance, lastDate].filter(Boolean).join(' · ') || '—';
   }
 
   async function refresh() {
@@ -218,6 +268,8 @@
     try { await api('/auth/logout', { method: 'POST' }); } catch (_) { /* clear locally regardless */ }
     clearSession();
   });
+  $('install-app').addEventListener('click', installApp);
+  $('install-app-auth').addEventListener('click', installApp);
   $('refresh').addEventListener('click', refresh);
   $('restore-route').addEventListener('click', () => sendCommand('restore_route', {}));
   $('destination-form').addEventListener('submit', (event) => {

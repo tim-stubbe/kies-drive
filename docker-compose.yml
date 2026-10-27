@@ -1,6 +1,7 @@
 services:
   kies-drive:
     image: ghcr.io/tim-stubbe/kies-drive:latest
+    pull_policy: always
     container_name: kies-drive
     restart: unless-stopped
     ports:
