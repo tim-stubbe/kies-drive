@@ -1662,7 +1662,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return MKLocalSearch(request: request)
         }
         activeRouteSearches = searches
-        for item in await boundedMapSearchResults(searches) {
+        for item in await boundedMapSearchResults(searches, shouldContinue: { [weak self] in
+            guard let self else { return false }
+            return RouteSearchCompletionPolicy.disposition(
+                request: generation, currentRequest: self.routeSearchGeneration,
+                routeGeneration: routeGeneration,
+                currentRouteGeneration: self.routeCalculationGeneration,
+                query: cleanQuery, currentQuery: self.routeSearchQuery
+            ) == .publish
+        }) {
             let c = item.placemark.coordinate
             // Overlapping search regions commonly return the same chain or
             // service-area POI with a few metres of coordinate drift. Merge
@@ -5712,7 +5720,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
         }
         activeAmenitySearches = searches
-        for item in await boundedMapSearchResults(searches) {
+        for item in await boundedMapSearchResults(searches, shouldContinue: { [weak self] in
+            guard let self else { return false }
+            return RouteEnrichmentPublicationPolicy.isCurrent(
+                route: routeGeneration, currentRoute: self.routeCalculationGeneration,
+                request: generation, currentRequest: self.breakCandidateLoadGeneration
+            )
+        }) {
             let coordinate = item.placemark.coordinate
             matches["\(item.name ?? "Halt"):\(coordinate.latitude):\(coordinate.longitude)"] = item
         }
@@ -5742,7 +5756,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// searches in the same batch have already completed. Cancel the exact
     /// batch after a short deadline so route search, break planning and their
     /// loading indicators always return control to the driver.
-    private func boundedMapSearchResults(_ searches: [MKLocalSearch]) async -> [MKMapItem] {
+    private func boundedMapSearchResults(
+        _ searches: [MKLocalSearch], shouldContinue: () -> Bool
+    ) async -> [MKMapItem] {
         guard !searches.isEmpty else { return [] }
         let timeout = Task {
             try? await Task.sleep(nanoseconds: NavigationSearchBatchPolicy.timeoutNanoseconds)
@@ -5751,6 +5767,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         defer { timeout.cancel() }
         return await withTaskGroup(of: [MKMapItem].self, returning: [MKMapItem].self) { group in
+            guard shouldContinue() else {
+                searches.forEach { $0.cancel() }
+                return []
+            }
             var nextSearchIndex = 0
             func enqueueNextSearch() {
                 guard nextSearchIndex < searches.count else { return }
@@ -5765,6 +5785,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             var results: [MKMapItem] = []
             var completedSearches = 0
             while let items = await group.next() {
+                guard shouldContinue() else {
+                    searches.forEach { $0.cancel() }
+                    group.cancelAll()
+                    return []
+                }
                 completedSearches += 1
                 results.append(contentsOf: items)
                 let uniqueResultCount = NavigationSearchBatchPolicy.uniqueResultCount(
@@ -5790,7 +5815,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     group.cancelAll()
                     break
                 }
-                enqueueNextSearch()
+                if shouldContinue() {
+                    enqueueNextSearch()
+                } else {
+                    searches.forEach { $0.cancel() }
+                    group.cancelAll()
+                    return []
+                }
             }
             return results
         }
