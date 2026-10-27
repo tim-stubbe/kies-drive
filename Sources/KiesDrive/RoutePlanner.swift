@@ -5818,13 +5818,21 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         var unique: [String: FuelStation] = [:]
         var loadWasSuperseded = false
         await withTaskGroup(of: FuelStationLoadOutcome.self) { group in
-            for point in points {
+            var nextPointIndex = 0
+            func enqueueNextRequest() {
+                guard nextPointIndex < points.count else { return }
+                let point = points[nextPointIndex]
+                nextPointIndex += 1
                 group.addTask {
                     .batch((try? await DriveAPI.stations(
                         near: point, fuel: fuel, radiusKm: 8
                     )) ?? [])
                 }
             }
+            let initialRequestCount = min(
+                points.count, FuelStationQueryPolicy.maximumConcurrentRequests
+            )
+            for _ in 0..<initialRequestCount { enqueueNextRequest() }
             if !points.isEmpty {
                 group.addTask { [weak self] in
                     while !Task.isCancelled {
@@ -5850,6 +5858,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     for station in batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample) {
                         unique[station.id] = station
                     }
+                    // Refill one slot only after a lookup finishes, so a
+                    // continental trip never launches every region at once.
+                    enqueueNextRequest()
                 case .superseded:
                     loadWasSuperseded = true
                     group.cancelAll()

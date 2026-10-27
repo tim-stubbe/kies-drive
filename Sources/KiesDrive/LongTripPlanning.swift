@@ -654,6 +654,10 @@ enum FuelStationDistributionPolicy {
 
 enum FuelStationQueryPolicy {
     static let maximumSampleCount = 6
+    /// Keep long-route lookups from arriving at the TrueNAS price service as
+    /// one burst. The sample count still covers the entire route; only the
+    /// number of simultaneous requests is bounded.
+    static let maximumConcurrentRequests = 2
     static let maximumResultsPerSample = 24
     static let requestTimeout: TimeInterval = 8
 

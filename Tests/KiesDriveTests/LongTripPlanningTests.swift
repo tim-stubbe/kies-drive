@@ -498,6 +498,7 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 2_000_000), 6)
         XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: .infinity), 2)
         XCTAssertEqual(FuelStationQueryPolicy.maximumSampleCount, 6)
+        XCTAssertEqual(FuelStationQueryPolicy.maximumConcurrentRequests, 2)
         XCTAssertEqual(FuelStationQueryPolicy.maximumResultsPerSample, 24)
         XCTAssertEqual(FuelStationQueryPolicy.requestTimeout, 8)
         XCTAssertEqual(SpeedLimitQueryPolicy.requestTimeout, 10)
