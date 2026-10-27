@@ -31,6 +31,7 @@ struct DriveContentView: View {
     @State private var showFavorites = false
     @State private var favorites = DriveFavoriteStore.load()
     @State private var recentDestinations = RecentDestinationStore.load()
+    @State private var restConfirmationError: String?
 
     private var isSimulatorNavigationPreview: Bool {
         #if targetEnvironment(simulator)
@@ -304,6 +305,14 @@ struct DriveContentView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .alert("Pause nicht bestätigt", isPresented: Binding(
+            get: { restConfirmationError != nil },
+            set: { if !$0 { restConfirmationError = nil } }
+        )) {
+            Button("OK", role: .cancel) { restConfirmationError = nil }
+        } message: {
+            Text(restConfirmationError ?? "Bitte prüfe, ob das Fahrzeug sicher steht.")
+        }
     }
 
     private var locationPermissionCard: some View {
@@ -458,7 +467,10 @@ struct DriveContentView: View {
                 Divider().frame(height: 36)
                 routeOverviewMetric(formatTime(routePreviewTravelTime), "Fahrzeit")
                 Divider().frame(height: 36)
-                routeOverviewMetric("\(planner.longTripPlan?.results.first?.breaks.count ?? 0)", "Pausen")
+                routeOverviewMetric(
+                    planner.longTripPlan.flatMap(\.results.first).map { "\($0.breaks.count)" } ?? "…",
+                    planner.longTripPlan == nil ? "Pausen werden geplant" : "Pausen"
+                )
             }
         }
         .driveCard()
@@ -574,7 +586,14 @@ struct DriveContentView: View {
         .accessibilityHint("Setzt die Tankplanung ab dem aktuellen Standort auf hundert Prozent")
 
         Button {
-            planner.confirmRestBreak(settings: settings)
+            if planner.confirmRestBreak(settings: settings) {
+                #if os(iOS)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                #endif
+            } else {
+                restConfirmationError = planner.errorMessage ??
+                    "Die Pause kann nur bei einem aktuellen, sicheren Stillstand bestätigt werden."
+            }
         } label: {
             Label("Pause beendet", systemImage: "cup.and.saucer.fill")
                 .font(.caption.weight(.semibold))
