@@ -982,8 +982,9 @@ struct FuelStopPlanner {
                 let rhsLeg = distanceReturningFromPreviousStop +
                     $1.progress * distanceMetres - lastStopDistance +
                     FuelStopDetourRangePolicy.oneWayDistance(detourMetres: $1.detourMetres)
-                return abs(lhsLeg - currentSafeRange * 0.88) + $0.detourMetres <
-                    abs(rhsLeg - currentSafeRange * 0.88) + $1.detourMetres
+                let lhsScore = abs(lhsLeg - currentSafeRange * 0.88) + $0.detourMetres
+                let rhsScore = abs(rhsLeg - currentSafeRange * 0.88) + $1.detourMetres
+                return lhsScore == rhsScore ? $0.id < $1.id : lhsScore < rhsScore
             }
             if let best { remaining.removeAll { $0.id == best.id } }
             let selected = best.map {
@@ -1864,15 +1865,17 @@ struct BreakPlanner {
                     let lhsPreferred = preferredCandidateIDs.contains($0.id)
                     let rhsPreferred = preferredCandidateIDs.contains($1.id)
                     if lhsPreferred != rhsPreferred { return lhsPreferred }
-                    return score(
+                let lhsScore = score(
                         $0, idealDrivingTime: idealDrivingTime,
                         drivingTime: drivingTime,
                         accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
-                    ) < score(
+                )
+                let rhsScore = score(
                         $1, idealDrivingTime: idealDrivingTime,
                         drivingTime: drivingTime,
                         accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
-                    )
+                )
+                return lhsScore == rhsScore ? $0.id < $1.id : lhsScore < rhsScore
                 }
             }
             if let best {

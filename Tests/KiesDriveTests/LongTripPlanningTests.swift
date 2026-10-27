@@ -1059,6 +1059,27 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.candidate?.id, "existing")
     }
 
+    func testBreakPlannerTieBreakIsStableAcrossProviderResultOrder() {
+        let first = BreakCandidate(
+            id: "z-stop", name: "Raststätte Z", coordinate: .init(latitude: 50, longitude: 8),
+            progress: 0.49, detourMetres: 500, isOpen: true
+        )
+        let second = BreakCandidate(
+            id: "a-stop", name: "Raststätte A", coordinate: .init(latitude: 50, longitude: 8),
+            progress: 0.49, detourMetres: 500, isOpen: true
+        )
+
+        let forward = BreakPlanner().plan(
+            drivingTime: 4 * 60 * 60, candidates: [first, second]
+        )
+        let reversed = BreakPlanner().plan(
+            drivingTime: 4 * 60 * 60, candidates: [second, first]
+        )
+
+        XCTAssertEqual(forward.first?.candidate?.id, "a-stop")
+        XCTAssertEqual(reversed.first?.candidate?.id, "a-stop")
+    }
+
     func testBreakPlannerDropsExistingStopOutsideSafeWindow() {
         let candidates = [
             BreakCandidate(id: "existing", name: "Existing", coordinate: .init(latitude: 0, longitude: 0), progress: 0.65, detourMetres: 100, isOpen: true),
