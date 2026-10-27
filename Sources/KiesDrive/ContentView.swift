@@ -609,7 +609,7 @@ struct DriveContentView: View {
                 #endif
             } else {
                 restConfirmationError = planner.errorMessage ??
-                    "Die Pause kann nur bei einem aktuellen, sicheren Stillstand bestätigt werden."
+                    "Die Pause kann erst nach mindestens 20 Minuten bestätigtem Stillstand beendet werden."
             }
         } label: {
             Label("Pause beendet", systemImage: "cup.and.saucer.fill")
@@ -617,7 +617,7 @@ struct DriveContentView: View {
         }
         .buttonStyle(.bordered)
         .tint(Color.kiesForest)
-        .accessibilityHint("Setzt die ununterbrochene Fahrzeit zurück und plant spätere Pausen neu")
+        .accessibilityHint("Bestätigt nach mindestens 20 Minuten Stillstand die Pause und plant spätere Pausen neu")
     }
 
     private var routeFuelCard: some View {

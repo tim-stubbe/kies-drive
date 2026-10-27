@@ -903,9 +903,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard DrivingRestConfirmationPolicy.mayConfirm(
             sampleAt: lastAcceptedNavigationLocation?.timestamp,
             reliableSpeedMetresPerSecond: reliableSpeed,
-            now: date
+            now: date,
+            stationarySince: drivingRestState.stationarySince,
+            minimumStationaryDuration: DrivingRestPolicy.restResetDuration
         ) else {
-            errorMessage = "Die Pause kann erst bei einem aktuellen Stillstand bestätigt werden."
+            errorMessage = "Die Pause kann erst nach mindestens 20 Minuten bestätigtem Stillstand beendet werden."
             return false
         }
         drivingRestState = DrivingRestPolicy.confirmedBreak(

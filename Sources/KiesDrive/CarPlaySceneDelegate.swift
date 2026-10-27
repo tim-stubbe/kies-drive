@@ -669,7 +669,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
             let completedBreak = CPListItem(
                 text: "Pause beendet",
-                detailText: "Fahrzeit zurücksetzen und weitere Pausen neu planen",
+                detailText: "Nach 20 Min. Stillstand bestätigen",
                 image: UIImage(systemName: "cup.and.saucer.fill")
             )
             completedBreak.handler = { [weak self] _, completion in

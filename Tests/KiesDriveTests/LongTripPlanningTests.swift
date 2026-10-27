@@ -1410,6 +1410,41 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testManualBreakCompletionRequiresTwentyObservedStationaryMinutes() {
+        let now = Date(timeIntervalSince1970: 20_000)
+        let requiredDuration = DrivingRestPolicy.restResetDuration
+        let freshStationaryFix = now.addingTimeInterval(-5)
+
+        XCTAssertTrue(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: freshStationaryFix,
+            reliableSpeedMetresPerSecond: 0,
+            now: now,
+            stationarySince: now.addingTimeInterval(-requiredDuration),
+            minimumStationaryDuration: requiredDuration
+        ))
+        XCTAssertFalse(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: freshStationaryFix,
+            reliableSpeedMetresPerSecond: 0,
+            now: now,
+            stationarySince: now.addingTimeInterval(-requiredDuration + 1),
+            minimumStationaryDuration: requiredDuration
+        ), "A traffic light or short fuel stop must not reset the fatigue clock")
+        XCTAssertFalse(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: freshStationaryFix,
+            reliableSpeedMetresPerSecond: 0,
+            now: now,
+            stationarySince: nil,
+            minimumStationaryDuration: requiredDuration
+        ), "A fresh zero-speed fix alone is not evidence of a completed break")
+        XCTAssertFalse(DrivingRestConfirmationPolicy.mayConfirm(
+            sampleAt: freshStationaryFix,
+            reliableSpeedMetresPerSecond: 0,
+            now: now,
+            stationarySince: now.addingTimeInterval(1),
+            minimumStationaryDuration: requiredDuration
+        ), "Future timestamps cannot prove a stationary break")
+    }
+
     func testStoppingGuidanceSeedsRestOnlyFromRecentStationaryEvidence() {
         let now = Date(timeIntervalSince1970: 10_000)
         XCTAssertEqual(DrivingRestPauseSeedPolicy.stationarySpeed(

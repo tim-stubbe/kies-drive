@@ -1195,12 +1195,20 @@ enum DrivingRestConfirmationPolicy {
     /// sample; a missing or old zero-speed fix is not evidence that the car
     /// is still parked.
     static func mayConfirm(sampleAt: Date?, reliableSpeedMetresPerSecond: Double?,
-                           now: Date, maximumAge: TimeInterval = maximumLocationAge) -> Bool {
+                           now: Date, maximumAge: TimeInterval = maximumLocationAge,
+                           stationarySince: Date? = nil,
+                           minimumStationaryDuration: TimeInterval = 0) -> Bool {
         guard let sampleAt, let speed = reliableSpeedMetresPerSecond,
               speed.isFinite, speed >= 0,
               speed < DrivingRestPolicy.movingThresholdMetresPerSecond else { return false }
         let age = now.timeIntervalSince(sampleAt)
-        return age >= -5 && age <= max(0, maximumAge)
+        guard age >= -5, age <= max(0, maximumAge) else { return false }
+        let requiredDuration = max(0, minimumStationaryDuration)
+        guard requiredDuration > 0 else { return true }
+        guard let stationarySince else { return false }
+        let stationaryDuration = now.timeIntervalSince(stationarySince)
+        return stationarySince <= sampleAt.addingTimeInterval(5) &&
+            stationaryDuration.isFinite && stationaryDuration >= requiredDuration
     }
 }
 
