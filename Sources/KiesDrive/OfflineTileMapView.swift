@@ -94,6 +94,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
                 currentLocation: CLLocation?, destination: MKMapItem?, followsLocation: Bool,
                 showsRouteOverview: Bool) {
         let packageChanged = packageID != package.id
+        let overviewChanged = lastOverview != showsRouteOverview
         if packageChanged {
             mapView.removeOverlays(mapView.overlays)
             mapView.addOverlay(LocalXYZTileOverlay(package: package), level: .aboveRoads)
@@ -108,6 +109,15 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
         if packageChanged || routeGeometryChanged {
             mapView.removeOverlays(mapView.overlays.filter { $0 is MKPolyline })
             routes.forEach { mapView.addOverlay($0, level: .aboveLabels) }
+        }
+        if overviewChanged, !packageChanged, !routeGeometryChanged {
+            for overlay in mapView.overlays where overlay is MKPolyline {
+                guard let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer else {
+                    continue
+                }
+                renderer.lineWidth = NavigationRouteLinePolicy.width(isOverview: showsRouteOverview)
+                renderer.setNeedsDisplay()
+            }
         }
         let destinationSignature = destination.map {
             "\($0.name ?? "Ziel"):\($0.placemark.coordinate.latitude):\($0.placemark.coordinate.longitude)"
@@ -179,7 +189,7 @@ private final class OfflineMapCoordinator: NSObject, MKMapViewDelegate {
         if let line = overlay as? MKPolyline {
             let renderer = MKPolylineRenderer(polyline: line)
             renderer.strokeColor = .systemBlue
-            renderer.lineWidth = 6
+            renderer.lineWidth = NavigationRouteLinePolicy.width(isOverview: lastOverview)
             renderer.lineCap = .round
             renderer.lineJoin = .round
             return renderer
