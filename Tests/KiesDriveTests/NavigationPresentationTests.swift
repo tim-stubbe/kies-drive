@@ -2445,6 +2445,11 @@ final class NavigationPresentationTests: XCTestCase {
             hadManeuverClaim: true, navigationActive: true, voiceGuidance: true,
             guidanceReliable: true, hasUsableLocation: true
         ))
+        XCTAssertTrue(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
+            hadManeuverClaim: false, hadReminderClaim: true,
+            navigationActive: true, voiceGuidance: true,
+            guidanceReliable: true, hasUsableLocation: true
+        ), "An interrupted pause/fuel reminder must be reconsidered without waiting for another GPS fix")
         XCTAssertFalse(NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
             hadManeuverClaim: false, navigationActive: true, voiceGuidance: true,
             guidanceReliable: true, hasUsableLocation: true

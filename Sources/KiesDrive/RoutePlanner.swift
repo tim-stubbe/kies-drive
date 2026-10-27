@@ -4283,6 +4283,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             hasUsableLocation: lastAcceptedNavigationLocation != nil
         ), let location = lastAcceptedNavigationLocation,
            NavigationSpeechRetryLocationPolicy.mayRetry(using: location) else { return }
+        // These persisted reminder claims can outlive the utterance that owned
+        // them. Re-evaluate them whenever an interrupted audio route becomes
+        // available, even when Core Location has not delivered another fix.
+        // The freshness guard above prevents announcing from a stale position.
+        defer {
+            updateBreakReminder(settings: settings)
+            updateFuelReminder()
+        }
         let speed = NavigationGuidanceSpeedPolicy.effective(
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,
@@ -4399,6 +4407,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let cancelledManeuverClaim = activeManeuverSpeech[identifier]?.first ??
             pendingManeuverSpeech[identifier]?.first
         let hadManeuverClaim = cancelledManeuverClaim != nil
+        let hadReminderClaim = activeBreakReminderSpeech[identifier] != nil ||
+            pendingBreakReminderSpeech[identifier] != nil ||
+            activeFuelReminderSpeech[identifier] != nil ||
+            pendingFuelReminderSpeech[identifier] != nil
         pendingManeuverSpeech.removeValue(forKey: identifier)
         activeManeuverSpeech.removeValue(forKey: identifier)
         pendingBreakReminderSpeech.removeValue(forKey: identifier)
@@ -4408,6 +4420,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         finishAudioSession(for: utterance)
         guard NavigationSpeechCancellationPolicy.shouldRetryUnexpectedCancellation(
             hadManeuverClaim: hadManeuverClaim,
+            hadReminderClaim: hadReminderClaim,
             navigationActive: isNavigating,
             voiceGuidance: DriveSettings.shared.voiceGuidance,
             guidanceReliable: isManeuverGuidanceReliable,

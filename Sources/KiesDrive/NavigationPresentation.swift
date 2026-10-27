@@ -1301,12 +1301,13 @@ enum NavigationSpeechCancellationPolicy {
     /// its claims before stopping the synthesizer and therefore stays silent.
     static func shouldRetryUnexpectedCancellation(
         hadManeuverClaim: Bool,
+        hadReminderClaim: Bool = false,
         navigationActive: Bool,
         voiceGuidance: Bool,
         guidanceReliable: Bool,
         hasUsableLocation: Bool
     ) -> Bool {
-        hadManeuverClaim && NavigationSpeechInterruptionPolicy
+        (hadManeuverClaim || hadReminderClaim) && NavigationSpeechInterruptionPolicy
             .shouldRetryManeuverAfterInterruption(
                 navigationActive: navigationActive,
                 voiceGuidance: voiceGuidance,
