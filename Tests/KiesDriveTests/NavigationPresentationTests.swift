@@ -2266,6 +2266,33 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(progress.followingManeuverInstruction, "Links halten")
     }
 
+    func testOfflineGuidanceRecoversAcrossLongGapBeyondEightySteps() throws {
+        let coordinates = (0...100).map { index in
+            CLLocationCoordinate2D(latitude: 50 + Double(index) * 0.001, longitude: 8)
+        }
+        let steps = (0..<100).map { index in
+            OfflineGuidanceStep(
+                instruction: index > 0 && index.isMultiple(of: 10) ? "Geradeaus" : "",
+                distance: 111,
+                coordinates: [coordinates[index], coordinates[index + 1]]
+            )
+        }
+
+        let recovered = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: coordinates[95], currentIndex: 0, steps: steps,
+            transitionRadius: 12, allowsFullRecovery: true, courseDegrees: 0
+        ))
+        let bounded = try XCTUnwrap(OfflineGuidanceEngine.progress(
+            at: coordinates[95], currentIndex: 0, steps: steps,
+            transitionRadius: 12, allowsFullRecovery: false, courseDegrees: 0
+        ))
+
+        XCTAssertGreaterThanOrEqual(recovered.currentStepIndex, 94,
+                                    "A fresh fix after a long gap must find the current cached road")
+        XCTAssertLessThan(bounded.currentStepIndex, 94,
+                          "Normal updates must retain the bounded forward search")
+    }
+
     func testOfflineGuidanceSkipsEmptyRestoredTransitionGeometry() throws {
         let points = [
             CLLocationCoordinate2D(latitude: 50.0000, longitude: 8.0000),

@@ -2766,7 +2766,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         if isUsingOfflineGuidance {
             updateOfflineProgress(
                 at: location, guidanceSpeedMps: guidanceSpeed, settings: settings,
-                recoveredAfterLocationGap: recoveredLocationGap != nil
+                recoveredAfterLocationGap: recoveredLocationGap != nil,
+                allowsFullRecovery: allowsFullLiveRecovery
             )
         } else if let progress = liveNavigationProgress(
             at: location, allowsFullRecovery: allowsFullLiveRecovery
@@ -3121,7 +3122,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     private func updateOfflineProgress(at location: CLLocation, guidanceSpeedMps: Double,
                                        settings: DriveSettings,
-                                       recoveredAfterLocationGap: Bool) {
+                                       recoveredAfterLocationGap: Bool,
+                                       allowsFullRecovery: Bool) {
         guard let cache = offlineRoute else { return }
         let guidanceEntries = cache.legs.enumerated().flatMap { legIndex, leg in
             leg.steps.compactMap { step -> (legIndex: Int, step: OfflineGuidanceStep)? in
@@ -3136,7 +3138,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         guard let progress = OfflineGuidanceEngine.progress(
             at: location.coordinate, currentIndex: navigationStepCursor, steps: steps,
             transitionRadius: max(8, location.horizontalAccuracy * 1.5),
-            allowsFullRecovery: offlineNeedsInitialPositionMatch,
+            allowsFullRecovery: offlineNeedsInitialPositionMatch || allowsFullRecovery,
             courseDegrees: NavigationMotionPolicy.reliableCourse(for: location)
         ) else { return }
 
