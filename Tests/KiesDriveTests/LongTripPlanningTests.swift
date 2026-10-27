@@ -2733,6 +2733,35 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertGreaterThan(result.totalDistanceMetres, route.distanceMetres)
     }
 
+    func testUnverifiedFuelNeedIsNotCoveredByNearbyRestArea() {
+        let restArea = BreakCandidate(
+            id: "rest-only", name: "Rastplatz ohne Tankstelle", coordinate: .init(),
+            progress: 0.55, timeProgress: 0.39, detourMetres: 100, isOpen: true,
+            supportsFuel: false
+        )
+        let route = RoutePlanningInput(
+            id: "unverified-fuel", title: "Lange Fahrt", distanceMetres: 450_000,
+            mapKitExpectedTravelTime: 5 * 3600, unlimitedMotorwayFraction: 0,
+            typicalUnlimitedSpeedKmh: 130, toll: .unknown(reason: "test"),
+            breakCandidates: [restArea]
+        )
+        let vehicle = VehicleProfile(
+            baseConsumptionLPer100km: 10, fuelPricePerLitre: 1.8,
+            tankCapacityLitres: 35, usableTankFraction: 0.8
+        )
+
+        let result = RouteComparison(fuelModel: .init(), breakPlanner: .init())
+            .compare(routes: [route], scenarios: [.target(130)], vehicle: vehicle)
+            .results[0]
+
+        XCTAssertEqual(result.breaks.first?.candidate?.id, "rest-only")
+        XCTAssertEqual(result.fuelStops.count, 1)
+        XCTAssertNil(result.fuelStops.first?.candidate,
+                      "A rest area is not evidence that the required fuel stop is available")
+        XCTAssertEqual(result.additionalFuelStopTime, 10 * 60, accuracy: 0.01,
+                       "The unverified refuelling dwell must remain in the trip estimate")
+    }
+
     func testSeparateFuelStopAddsDetourFuelDrivingAndServiceTime() {
         let fuelStop = BreakCandidate(id: "fuel", name: "Tankstelle", coordinate: .init(),
                                       progress: 0.48, detourMetres: 2_000, isOpen: true,

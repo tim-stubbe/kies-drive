@@ -2241,7 +2241,15 @@ struct RouteComparison {
         let breaksCoveringFuel = Set(breaks.compactMap { $0.candidate?.id })
         let uncoveredFuelStops = fuelStops.filter { stop in
             if let id = stop.candidate?.id { return !breaksCoveringFuel.contains(id) }
-            return !breaks.contains { abs($0.routeProgress - stop.routeProgress) <= 0.03 }
+            // A theoretical fuel requirement is not covered by an unrelated
+            // rest area just because both fall at a similar route position.
+            // Only a verified break candidate known to sell fuel can combine
+            // those services while the exact station itself is still unknown.
+            return !breaks.contains { plannedBreak in
+                guard let candidate = plannedBreak.candidate,
+                      candidate.supportsFuel else { return false }
+                return abs(plannedBreak.routeProgress - stop.routeProgress) <= 0.03
+            }
         }.count
         let additionalFuelStopTime = TimeInterval(uncoveredFuelStops * 10 * 60)
         let adjustedDrivingTime = drivingTime + detourDrivingTime
