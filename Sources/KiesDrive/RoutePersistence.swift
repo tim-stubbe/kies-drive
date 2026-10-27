@@ -572,7 +572,10 @@ extension ActiveRouteLock {
         for waypoint in waypoints where waypoint.required {
             if visited.contains(waypoint.id), !waypoint.mayAutoCompleteWhenPassed {
                 if let progress = waypoint.insertionRouteProgress, progress.isFinite {
-                    previousWaypointProgress = max(previousWaypointProgress ?? 0, progress)
+                    previousWaypointProgress = max(
+                        previousWaypointProgress ?? 0,
+                        Self.progressImmediatelyAfter(progress, corridorCount: corridorPoints.count)
+                    )
                 }
                 continue
             }
@@ -584,7 +587,10 @@ extension ActiveRouteLock {
             ) else { break }
             previousWaypointProgress = max(
                 previousWaypointProgress ?? 0,
-                Double(match.index) / Double(max(1, corridorPoints.count - 1))
+                Self.progressImmediatelyAfter(
+                    Double(match.index) / Double(max(1, corridorPoints.count - 1)),
+                    corridorCount: corridorPoints.count
+                )
             )
             if visited.contains(waypoint.id) { continue }
             // A real fuel/food/user stop is a hard ordering boundary. If it
@@ -604,6 +610,14 @@ extension ActiveRouteLock {
             passed.append(waypoint.id)
         }
         return passed
+    }
+
+    private static func progressImmediatelyAfter(_ progress: Double,
+                                                 corridorCount: Int) -> Double {
+        let lastIndex = max(0, corridorCount - 1)
+        guard lastIndex > 0, progress.isFinite else { return 1 }
+        let index = Int((max(0, min(1, progress)) * Double(lastIndex)).rounded(.up))
+        return Double(min(lastIndex, index + 1)) / Double(lastIndex)
     }
 
     /// Heimfahrt nach Hochheim am Main. Der Punkt liegt direkt auf der B109

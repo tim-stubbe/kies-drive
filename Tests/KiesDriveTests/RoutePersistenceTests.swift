@@ -1178,8 +1178,8 @@ final class RoutePersistenceTests: XCTestCase {
             id: UUID(), title: "Schleife", destinationName: "Ziel",
             destination: corridor[5],
             waypoints: [
-                .init(id: "first", name: "Erster Pflichtpunkt",
-                      coordinate: corridor[2], required: true, optionsAfter: nil),
+                .init(id: "first", name: "Erster Durchgang",
+                      coordinate: corridor[0], required: true, optionsAfter: nil),
                 .init(id: "second", name: "Zweiter Durchgang",
                       coordinate: corridor[0], required: true, optionsAfter: nil),
             ],
