@@ -580,6 +580,21 @@ struct DriveContentView: View {
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(Color.kiesForest)
                                 Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                                if let candidate = stop.candidate,
+                                   let station = planner.stations.first(where: { $0.id == candidate.id }) {
+                                    Text(FuelStationPricePresentationPolicy.sourceLabel(
+                                        fuel: settings.fuel,
+                                        cached: planner.stationPricesAreCached
+                                    ))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                    Text(station.price.formatted(
+                                        .number.locale(Locale(identifier: "de_DE"))
+                                            .precision(.fractionLength(3))
+                                    ) + " €/l")
+                                    .font(.caption.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(Color.kiesForest)
+                                }
                             }
                         }
                         if let candidate = stop.candidate {
