@@ -305,29 +305,40 @@ enum DriveAPI {
         tollRequest.timeoutInterval = TollLookupRequestPolicy.timeout
         let payload = try await data(for: tollRequest)
         let result = try JSONDecoder().decode(TollSearchResponse.self, from: payload)
+        let availableSources = result.sources.map {
+            TollEvidenceValidator.SourceReference(url: $0.url, text: "\($0.title) \($0.snippet)", title: $0.title)
+        }
+        let selectedEvidence = result.evidenceSources?.map {
+            TollEvidenceValidator.SourceReference(url: $0.url, text: "", title: $0.title)
+        } ?? result.sourceURL.map {
+            [TollEvidenceValidator.SourceReference(url: $0, text: "", title: result.source)]
+        } ?? []
+        let verifiedSources = TollEvidenceValidator.verifiedSources(
+            selectedEvidence, among: availableSources
+        )
         if let evidence = TollEvidenceValidator.validate(
             status: result.status, amount: result.amount, currency: result.currency,
             source: result.source, sourceURL: result.sourceURL,
             corroboratingSourceURLs: result.sources.map(\.url),
             corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" },
-            corroboratingSources: result.sources.map {
-                .init(url: $0.url, text: "\($0.title) \($0.snippet)")
-            }
+            corroboratingSources: availableSources
         ) {
             return .known(
                 amount: Decimal(evidence.amount), currency: evidence.currency,
-                source: evidence.source, sourceURL: result.sourceURL
+                source: evidence.source, sourceURL: result.sourceURL,
+                evidenceSources: verifiedSources
             )
         }
         if TollEvidenceValidator.validatesNoToll(
             status: result.status, source: result.source, sourceURL: result.sourceURL,
             corroboratingSourceURLs: result.sources.map(\.url),
             corroboratingSourceTexts: result.sources.map { "\($0.title) \($0.snippet)" },
-            corroboratingSources: result.sources.map {
-                .init(url: $0.url, text: "\($0.title) \($0.snippet)")
-            }
+            corroboratingSources: availableSources
         ) {
-            return .noToll(source: result.source, sourceURL: result.sourceURL)
+            return .noToll(
+                source: result.source, sourceURL: result.sourceURL,
+                evidenceSources: verifiedSources
+            )
         }
         let titles = result.sources.prefix(3).map(\.title).joined(separator: " · ")
         return .unknown(reason: titles.isEmpty ? "SearXNG fand keinen eindeutig belegten Gesamtpreis." : "SearXNG geprüft: \(titles)")
@@ -466,6 +477,7 @@ private struct TollSearchRequest: Encodable {
     }
 }
 private struct TollSearchSource: Decodable { let title: String; let url: String; let snippet: String }
+private struct TollSearchEvidenceSource: Decodable { let title: String; let url: String }
 private struct TollSearchResponse: Decodable {
     let status: String
     let amount: Double?
@@ -473,16 +485,43 @@ private struct TollSearchResponse: Decodable {
     let source: String
     let sourceURL: String?
     let sources: [TollSearchSource]
+    let evidenceSources: [TollSearchEvidenceSource]?
 
     enum CodingKeys: String, CodingKey {
         case status, amount, currency, source, sources
         case sourceURL = "source_url"
+        case evidenceSources = "evidence_sources"
     }
 }
 
 enum TollEvidenceValidator {
     struct Evidence: Equatable { let amount: Double; let currency: String; let source: String }
-    struct SourceReference: Equatable { let url: String; let text: String }
+    struct SourceReference: Equatable {
+        let url: String
+        let text: String
+        let title: String
+
+        init(url: String, text: String, title: String = "") {
+            self.url = url
+            self.text = text
+            self.title = title
+        }
+    }
+
+    static func verifiedSources(_ selected: [SourceReference],
+                                among available: [SourceReference]) -> [TollEvidenceSource] {
+        var seenURLs = Set<String>()
+        return selected.compactMap { source in
+            guard let normalized = normalizedURL(source.url),
+                  let url = URL(string: source.url), url.scheme?.lowercased() == "https",
+                  url.host != nil,
+                  available.contains(where: { normalizedURL($0.url) == normalized }),
+                  seenURLs.insert(normalized).inserted else { return nil }
+            let title = source.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return TollEvidenceSource(title: title.isEmpty ? (url.host ?? "Quelle") : title,
+                                      url: source.url)
+        }
+    }
 
     static func validate(status: String, amount: Double?, currency: String,
                          source: String, sourceURL: String?,

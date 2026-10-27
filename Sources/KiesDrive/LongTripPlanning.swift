@@ -52,13 +52,78 @@ struct SpeedScenario: Codable, Identifiable, Equatable {
     }
 }
 
+struct TollEvidenceSource: Codable, Equatable, Sendable, Identifiable {
+    let title: String
+    let url: String
+
+    var id: String { url }
+}
+
 enum TollCost: Codable, Equatable, Sendable {
-    case known(amount: Decimal, currency: String, source: String, sourceURL: String?)
-    case noToll(source: String, sourceURL: String?)
+    case known(amount: Decimal, currency: String, source: String, sourceURL: String?,
+               evidenceSources: [TollEvidenceSource] = [])
+    case noToll(source: String, sourceURL: String?,
+                evidenceSources: [TollEvidenceSource] = [])
     case unknown(reason: String)
 
+    private enum CodingKeys: String, CodingKey { case known, noToll, unknown }
+    private enum KnownKeys: String, CodingKey {
+        case amount, currency, source, sourceURL, evidenceSources
+    }
+    private enum NoTollKeys: String, CodingKey { case source, sourceURL, evidenceSources }
+    private enum UnknownKeys: String, CodingKey { case reason }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.known) {
+            let values = try container.nestedContainer(keyedBy: KnownKeys.self, forKey: .known)
+            self = .known(
+                amount: try values.decode(Decimal.self, forKey: .amount),
+                currency: try values.decode(String.self, forKey: .currency),
+                source: try values.decode(String.self, forKey: .source),
+                sourceURL: try values.decodeIfPresent(String.self, forKey: .sourceURL),
+                evidenceSources: try values.decodeIfPresent(
+                    [TollEvidenceSource].self, forKey: .evidenceSources
+                ) ?? []
+            )
+        } else if container.contains(.noToll) {
+            let values = try container.nestedContainer(keyedBy: NoTollKeys.self, forKey: .noToll)
+            self = .noToll(
+                source: try values.decode(String.self, forKey: .source),
+                sourceURL: try values.decodeIfPresent(String.self, forKey: .sourceURL),
+                evidenceSources: try values.decodeIfPresent(
+                    [TollEvidenceSource].self, forKey: .evidenceSources
+                ) ?? []
+            )
+        } else {
+            let values = try container.nestedContainer(keyedBy: UnknownKeys.self, forKey: .unknown)
+            self = .unknown(reason: try values.decode(String.self, forKey: .reason))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .known(amount, currency, source, sourceURL, evidenceSources):
+            var values = container.nestedContainer(keyedBy: KnownKeys.self, forKey: .known)
+            try values.encode(amount, forKey: .amount)
+            try values.encode(currency, forKey: .currency)
+            try values.encode(source, forKey: .source)
+            try values.encodeIfPresent(sourceURL, forKey: .sourceURL)
+            try values.encode(evidenceSources, forKey: .evidenceSources)
+        case let .noToll(source, sourceURL, evidenceSources):
+            var values = container.nestedContainer(keyedBy: NoTollKeys.self, forKey: .noToll)
+            try values.encode(source, forKey: .source)
+            try values.encodeIfPresent(sourceURL, forKey: .sourceURL)
+            try values.encode(evidenceSources, forKey: .evidenceSources)
+        case let .unknown(reason):
+            var values = container.nestedContainer(keyedBy: UnknownKeys.self, forKey: .unknown)
+            try values.encode(reason, forKey: .reason)
+        }
+    }
+
     var amount: Decimal? {
-        if case .known(let amount, _, _, _) = self { return amount }
+        if case .known(let amount, _, _, _, _) = self { return amount }
         if case .noToll = self { return 0 }
         return nil
     }
@@ -2005,17 +2070,17 @@ struct RouteComparisonDelta: Equatable {
         fuelCostDifference = alternative.fuel.cost - baseline.fuel.cost
         let bothConfirmedNoToll: Bool
         switch (baseline.toll, alternative.toll) {
-        case let (.known(baselineAmount, baselineCurrency, _, _),
-                  .known(alternativeAmount, alternativeCurrency, _, _))
+        case let (.known(baselineAmount, baselineCurrency, _, _, _),
+                  .known(alternativeAmount, alternativeCurrency, _, _, _))
             where baselineCurrency.caseInsensitiveCompare(alternativeCurrency) == .orderedSame:
             tollSavings = baselineAmount - alternativeAmount
             tollCurrency = baselineCurrency.uppercased()
             bothConfirmedNoToll = false
-        case let (.known(amount, currency, _, _), .noToll):
+        case let (.known(amount, currency, _, _, _), .noToll):
             tollSavings = amount
             tollCurrency = currency.uppercased()
             bothConfirmedNoToll = false
-        case let (.noToll, .known(amount, currency, _, _)):
+        case let (.noToll, .known(amount, currency, _, _, _)):
             tollSavings = -amount
             tollCurrency = currency.uppercased()
             bothConfirmedNoToll = false

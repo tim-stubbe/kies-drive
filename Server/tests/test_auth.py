@@ -143,6 +143,9 @@ def test_toll_evidence_requires_official_or_independent_corroboration():
     )
     assert evidence is not None
     assert evidence[0] == 27.4
+    assert {item["url"] for item in evidence[4]} == {
+        "https://blog.example/trip", "https://calculator.example/route"
+    }
 
     official = {"title": route_text, "snippet": "", "url": "https://shop.asfinag.at/route"}
     assert main.verified_toll_evidence(
@@ -196,7 +199,10 @@ def test_no_toll_evidence_requires_official_or_two_independent_sources():
     two = {"title": text, "snippet": "", "url": "https://routes.example/trip"}
     assert main.verified_no_toll_evidence(
         [one, two], "Split", "Hochheim am Main", ["Wurzenpass"]
-    ) is not None
+    )[2] == [
+        {"title": text, "url": "https://blog.example/trip"},
+        {"title": text, "url": "https://routes.example/trip"},
+    ]
 
     same_publisher = {"title": text, "snippet": "", "url": "https://news.blog.example/trip"}
     assert main.verified_no_toll_evidence(
@@ -264,6 +270,64 @@ def test_toll_search_rejects_malformed_searxng_json(monkeypatch):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "SearXNG ist gerade nicht erreichbar."
+
+
+def test_toll_search_returns_only_the_sources_that_support_the_claim(monkeypatch):
+    year = main.date.today().year
+    price = f"Split nach Hochheim über Wurzenpass Gesamtmaut 27,40 EUR {year}"
+    toll_free = f"Split nach Hochheim über Wurzenpass gesamte Route mautfrei {year}"
+
+    class FakeResponse:
+        def __init__(self, results):
+            self.results = results
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"results": self.results}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            self.results = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def get(self, *args, **kwargs):
+            query = kwargs["params"]["q"]
+            claim = toll_free if "mautfreie Route" in query else price
+            self.results = [
+                {"title": claim, "content": claim, "url": "https://route-one.example/trip"},
+                {"title": claim, "content": claim, "url": "https://route-two.example/trip"},
+                {"title": "Nicht passende Werbung", "content": "", "url": "https://ads.example/"},
+            ]
+            return FakeResponse(self.results)
+
+    monkeypatch.setenv("SEARXNG_URL", "http://searxng:8080")
+    monkeypatch.setattr(main, "current_user", lambda authorization: {"id": 1})
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
+    client = TestClient(main.app)
+    payload = {"origin": "Split", "destination": "Hochheim", "via": ["Wurzenpass"]}
+    headers = {"Authorization": "Bearer test"}
+
+    priced = client.post("/api/navigation/toll-search", json=payload, headers=headers).json()
+    assert priced["status"] == "known"
+    assert [source["url"] for source in priced["evidence_sources"]] == [
+        "https://route-one.example/trip", "https://route-two.example/trip"
+    ]
+    assert all("ads.example" not in source["url"] for source in priced["evidence_sources"])
+
+    free = client.post(
+        "/api/navigation/toll-search", json={**payload, "avoid_tolls": True}, headers=headers
+    ).json()
+    assert free["status"] == "no_toll"
+    assert [source["url"] for source in free["evidence_sources"]] == [
+        "https://route-one.example/trip", "https://route-two.example/trip"
+    ]
 
 
 def test_verification_email_can_be_resent_without_account_disclosure(tmp_path, monkeypatch):

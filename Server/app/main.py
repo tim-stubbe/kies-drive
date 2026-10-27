@@ -882,7 +882,7 @@ def independent_source_domain(host: str) -> str:
 
 def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
                            destination: str, via: list[str],
-                           route_hints: list[str] | None = None) -> tuple[float, str, str, str] | None:
+                           route_hints: list[str] | None = None) -> tuple[float, str, str, str, list[dict[str, str]]] | None:
     """Accept one official source or two independent corroborating domains."""
     evidence: list[tuple[float, str, str, str, str, bool]] = []
     for source in sources:
@@ -903,7 +903,8 @@ def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
         evidence.append((amount, currency, independent_source_domain(host),
                          source["title"], source["url"], official))
     if official := next((item for item in evidence if item[5]), None):
-        return official[0], official[1], official[3], official[4]
+        selected = [{"title": official[3], "url": official[4]}]
+        return official[0], official[1], official[3], official[4], selected
     for amount, currency, _, _, _, _ in evidence:
         corroborating = [
             item for item in evidence
@@ -911,13 +912,18 @@ def verified_toll_evidence(sources: list[dict[str, str]], origin: str,
         ]
         if len({item[2] for item in corroborating}) >= 2:
             titles = " + ".join(dict.fromkeys(item[3] for item in corroborating))[:300]
-            return amount, currency, titles, corroborating[0][4]
+            selected_by_domain = {item[2]: item for item in corroborating}
+            selected = [
+                {"title": item[3], "url": item[4]}
+                for item in list(selected_by_domain.values())[:3]
+            ]
+            return amount, currency, titles, selected[0]["url"], selected
     return None
 
 
 def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
                               destination: str, via: list[str],
-                              route_hints: list[str] | None = None) -> tuple[str, str] | None:
+                              route_hints: list[str] | None = None) -> tuple[str, str, list[dict[str, str]]] | None:
     """Require official evidence or two domains before claiming zero toll."""
     evidence: list[tuple[str, str, str, bool]] = []
     for source in sources:
@@ -935,10 +941,15 @@ def verified_no_toll_evidence(sources: list[dict[str, str]], origin: str,
             continue
         evidence.append((independent_source_domain(host), source["title"], source["url"], official))
     if official := next((item for item in evidence if item[3]), None):
-        return official[1], official[2]
+        return official[1], official[2], [{"title": official[1], "url": official[2]}]
     if len({item[0] for item in evidence}) >= 2:
         titles = " + ".join(dict.fromkeys(item[1] for item in evidence))[:300]
-        return titles, evidence[0][2]
+        selected_by_domain = {item[0]: item for item in evidence}
+        selected = [
+            {"title": item[1], "url": item[2]}
+            for item in list(selected_by_domain.values())[:3]
+        ]
+        return titles, selected[0]["url"], selected
     return None
 
 
@@ -985,16 +996,19 @@ async def toll_search(payload: TollSearchRequest, authorization: str | None = He
     } for item in results[:5] if isinstance(item, dict)]
     if payload.avoid_tolls and (evidence := verified_no_toll_evidence(
             sources, origin, destination, via, route_hints)):
-        source_name, source_url = evidence
+        source_name, source_url, evidence_sources = evidence
         return {"status": "no_toll", "amount": 0, "currency": "EUR",
-                "source": source_name, "source_url": source_url, "sources": sources}
+                "source": source_name, "source_url": source_url,
+                "evidence_sources": evidence_sources, "sources": sources}
     if evidence := verified_toll_evidence(
             sources, origin, destination, via, route_hints):
-        amount, currency, source_name, source_url = evidence
+        amount, currency, source_name, source_url, evidence_sources = evidence
         return {"status": "known", "amount": amount, "currency": currency,
-                "source": source_name, "source_url": source_url, "sources": sources}
+                "source": source_name, "source_url": source_url,
+                "evidence_sources": evidence_sources, "sources": sources}
     return {"status": "unknown", "amount": None, "currency": "EUR",
-            "source": "SearXNG", "source_url": None, "sources": sources}
+            "source": "SearXNG", "source_url": None,
+            "evidence_sources": [], "sources": sources}
 
 
 @app.put("/api/navigation/remote/state")

@@ -2185,18 +2185,63 @@ final class LongTripPlanningTests: XCTestCase {
     func testVerifiedTollSourceLinkSurvivesPlanEncoding() throws {
         let expected = TollCost.known(
             amount: 27.4, currency: "EUR", source: "Official provider",
-            sourceURL: "https://example.test/tolls/2026"
+            sourceURL: "https://example.test/tolls/2026",
+            evidenceSources: [
+                .init(title: "Offizielle Mautseite", url: "https://example.test/tolls/2026"),
+                .init(title: "Zweiter Routenbeleg", url: "https://routes.example/2026"),
+            ]
         )
         let data = try JSONEncoder().encode(expected)
         XCTAssertEqual(try JSONDecoder().decode(TollCost.self, from: data), expected)
 
+        let oldPlan = Data(#"{"known":{"amount":27.4,"currency":"EUR","source":"Official provider","sourceURL":"https://example.test/tolls/2026"}}"#.utf8)
+        XCTAssertEqual(
+            try JSONDecoder().decode(TollCost.self, from: oldPlan),
+            .known(amount: 27.4, currency: "EUR", source: "Official provider",
+                   sourceURL: "https://example.test/tolls/2026")
+        )
+
         let noToll = TollCost.noToll(
             source: "Official provider",
-            sourceURL: "https://example.test/toll-free/2026"
+            sourceURL: "https://example.test/toll-free/2026",
+            evidenceSources: [.init(title: "Offizielle Routeninfo", url: "https://example.test/toll-free/2026")]
         )
         XCTAssertEqual(
             try JSONDecoder().decode(TollCost.self, from: JSONEncoder().encode(noToll)),
             noToll
+        )
+    }
+
+    func testOnlyReturnedHTTPSMautSourcesBecomeClickableEvidence() {
+        let available = [
+            TollEvidenceValidator.SourceReference(
+                url: "https://official.example/tolls", text: "Gesamtmaut 27,40 EUR"
+            ),
+            TollEvidenceValidator.SourceReference(
+                url: "https://routes.example/tolls", text: "Mautkosten 27,40 EUR"
+            ),
+        ]
+        let selected = [
+            TollEvidenceValidator.SourceReference(
+                url: "https://official.example/tolls", text: "", title: "Offizielle Mautseite"
+            ),
+            TollEvidenceValidator.SourceReference(
+                url: "https://routes.example/tolls", text: "", title: "Routenbeleg"
+            ),
+            TollEvidenceValidator.SourceReference(
+                url: "https://not-returned.example/tolls", text: "", title: "Nicht belegt"
+            ),
+            TollEvidenceValidator.SourceReference(
+                url: "http://routes.example/tolls", text: "", title: "Unsicher"
+            ),
+        ]
+
+        XCTAssertEqual(
+            TollEvidenceValidator.verifiedSources(selected, among: available),
+            [
+                .init(title: "Offizielle Mautseite", url: "https://official.example/tolls"),
+                .init(title: "Routenbeleg", url: "https://routes.example/tolls"),
+            ]
         )
     }
 

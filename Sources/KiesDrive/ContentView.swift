@@ -1554,12 +1554,24 @@ struct DriveContentView: View {
                                 Text("\(formatDistance(result.totalDistanceMetres)) · \(formatTime(result.totalTime)) inkl. \(result.breaks.count) Pause(n)")
                                 Text(String(format: "%.1f l · %.2f € Kraftstoff · %.1f l/100 km", result.fuel.litres, result.fuel.cost, result.fuel.averageConsumptionLPer100km))
                                 switch result.toll {
-                                case .known(let amount, let currency, let source, let sourceURL):
+                                case .known(let amount, let currency, let source, let sourceURL, let evidenceSources):
                                     Text("Maut: \(NSDecimalNumber(decimal: amount).stringValue) \(currency) · \(source)")
-                                    tollEvidenceLink(sourceURL)
-                                case .noToll(let source, let sourceURL):
+                                    if evidenceSources.isEmpty {
+                                        tollEvidenceLink(sourceURL)
+                                    } else {
+                                        ForEach(evidenceSources) { evidence in
+                                            tollEvidenceLink(evidence.url, title: evidence.title)
+                                        }
+                                    }
+                                case .noToll(let source, let sourceURL, let evidenceSources):
                                     Text("Keine Maut · \(source)")
-                                    tollEvidenceLink(sourceURL)
+                                    if evidenceSources.isEmpty {
+                                        tollEvidenceLink(sourceURL)
+                                    } else {
+                                        ForEach(evidenceSources) { evidence in
+                                            tollEvidenceLink(evidence.url, title: evidence.title)
+                                        }
+                                    }
                                 case .unknown(let reason):
                                     Text("Mautkosten unbekannt · \(reason)").foregroundStyle(.secondary)
                                 }
@@ -2134,10 +2146,10 @@ struct DriveContentView: View {
     }
 
     @ViewBuilder
-    private func tollEvidenceLink(_ value: String?) -> some View {
+    private func tollEvidenceLink(_ value: String?, title: String? = nil) -> some View {
         if let value, let url = URL(string: value), url.scheme?.lowercased() == "https" {
             Link(destination: url) {
-                Label("Mautquelle prüfen", systemImage: "checkmark.shield.fill")
+                Label(title ?? "Mautquelle prüfen", systemImage: "checkmark.shield.fill")
                     .font(.caption.weight(.semibold))
             }
             .foregroundStyle(Color.kiesForest)
