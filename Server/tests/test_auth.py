@@ -461,6 +461,9 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     assert manifest.status_code == 200
     assert manifest.headers["content-type"].startswith("application/manifest+json")
     assert manifest.json()["display"] == "standalone"
+    assert manifest.json()["start_url"] == "./"
+    assert manifest.json()["scope"] == "./"
+    assert manifest.json()["icons"][0]["src"] == "web/icon-192.png"
     worker = client.get("/service-worker.js")
     assert worker.status_code == 200
     assert worker.headers["service-worker-allowed"] == "/"

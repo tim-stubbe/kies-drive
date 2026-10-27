@@ -1,13 +1,14 @@
 const CACHE_NAME = 'kies-drive-shell-v1';
+const APP_BASE = new URL('./', self.location.href);
 const SHELL = [
-  '/',
-  '/manifest.webmanifest',
-  '/web/style.css',
-  '/web/app.js',
-  '/web/icon-180.png',
-  '/web/icon-192.png',
-  '/web/icon-512.png'
-];
+  '',
+  'manifest.webmanifest',
+  'web/style.css',
+  'web/app.js',
+  'web/icon-180.png',
+  'web/icon-192.png',
+  'web/icon-512.png'
+].map((path) => new URL(path, APP_BASE).pathname);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
@@ -37,7 +38,7 @@ self.addEventListener('fetch', (event) => {
       if (response.ok && response.type === 'basic') cache.put(request, response.clone());
       return response;
     } catch (_) {
-      return (await cache.match(request)) || (await cache.match('/')) || Response.error();
+      return (await cache.match(request)) || (await cache.match(APP_BASE.pathname)) || Response.error();
     }
   })());
 });
