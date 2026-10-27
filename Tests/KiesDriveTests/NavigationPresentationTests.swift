@@ -3713,6 +3713,30 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(recoveredSummary.resolvedRouteIssues, 1)
     }
 
+    func testLateRestoreCallbackCannotReopenCompletedArrivalDiagnostics() throws {
+        let tripID = UUID()
+        let started = DriveDiagnosticEvent(
+            sessionID: tripID, kind: .navigationStarted, detail: "Urlaubsfahrt"
+        )
+        let arrival = DriveDiagnosticEvent(
+            sessionID: tripID, kind: .arrivalReached, detail: "Ziel erreicht"
+        )
+        let lateRestoreFailure = DriveDiagnosticEvent(
+            sessionID: tripID, kind: .routeRestoreFailed,
+            detail: "Verspätete Berechnung nach Fahrtende"
+        )
+        let events = [started, arrival, lateRestoreFailure]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .good)
+        XCTAssertEqual(summary.eventCount, 2)
+        XCTAssertEqual(summary.routeRestoreFailures, 0)
+        XCTAssertEqual(
+            DriveDiagnosticReport.latestSessionEvents(in: events).map(\.id),
+            [started.id, arrival.id]
+        )
+    }
+
     func testDiagnosticExportIncludesOnlySameTripRestoreAfterPause() {
         let tripID = UUID()
         let unrelatedID = UUID()

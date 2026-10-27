@@ -620,7 +620,10 @@ struct DriveDiagnosticSummary: Equatable {
         let totalRouteStopFailures = session.filter { $0.kind == .routeStopFailed }.count
         let routeStopFailures = unresolvedRouteStopFailures(in: session)
         let restoreTimeline: [DriveDiagnosticEvent]
-        if let sessionID {
+        let mayRestoreAfterTerminal = terminal.map {
+            events[$0].kind == .navigationStopped
+        } ?? true
+        if let sessionID, mayRestoreAfterTerminal {
             restoreTimeline = events[start...].filter {
                 $0.sessionID == sessionID &&
                     ($0.kind == .routeRestoreFailed || $0.kind == .routeRestoreSucceeded)
@@ -731,7 +734,9 @@ enum DriveDiagnosticReport {
         // paused. Include only restore lifecycle events carrying the same
         // persistent trip ID; unrelated late network callbacks remain
         // excluded from the completed drive report.
-        if let terminal, let sessionID, terminal < events.index(before: events.endIndex) {
+        if let terminal, let sessionID,
+           events[terminal].kind == .navigationStopped,
+           terminal < events.index(before: events.endIndex) {
             selected.append(contentsOf: events[events.index(after: terminal)...].filter {
                 $0.sessionID == sessionID &&
                     ($0.kind == .routeRestoreFailed || $0.kind == .routeRestoreSucceeded)
