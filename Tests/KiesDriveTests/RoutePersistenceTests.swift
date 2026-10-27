@@ -1132,6 +1132,38 @@ final class RoutePersistenceTests: XCTestCase {
         )?.index, 0)
     }
 
+    func testRestoreUsesInsertedWaypointProgressAtRepeatedRouteCrossing() {
+        let now = Date(timeIntervalSince1970: 1)
+        let corridor = [
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0100),
+            DriveCoordinate(latitude: 50.0100, longitude: 8.0100),
+            DriveCoordinate(latitude: 50.0100, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 7.9900),
+        ]
+        var lock = ActiveRouteLock(
+            id: UUID(), title: "Schleife", destinationName: "Ziel",
+            destination: corridor[5],
+            waypoints: [.init(
+                id: "second-crossing", name: "Zweiter Durchgang",
+                coordinate: corridor[0], required: true, optionsAfter: nil,
+                kind: .routeConstraint, insertionRouteProgress: 0.8
+            )],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 2_000, corridorPoints: corridor,
+            visitedWaypointIDs: [], lastRouteProgress: 0,
+            status: .active, createdAt: now, updatedAt: now
+        )
+
+        XCTAssertTrue(lock.passedWaypointIDs(at: corridor[1]).isEmpty,
+                      "The first spatial occurrence is before this inserted stop")
+
+        lock.lastRouteProgress = 0.7
+        XCTAssertEqual(lock.passedWaypointIDs(at: corridor[5]), ["second-crossing"],
+                       "The persisted occurrence is safely behind the restored position")
+    }
+
     func testCommittedWaypointProgressIsStableAndDeduplicated() {
         XCTAssertEqual(
             RouteWaypointProgressPolicy.merging(

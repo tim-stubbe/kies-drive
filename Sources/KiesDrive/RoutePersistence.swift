@@ -160,6 +160,35 @@ enum RouteCorridorRestorePolicy {
         return (index, minimum)
     }
 
+    /// Matches an inserted waypoint to the intended occurrence on a loop or
+    /// crossing. Spatially identical corridor samples are common (for example
+    /// at a motorway interchange); the persisted insertion progress breaks
+    /// that tie without allowing a merely nearby but wrong road to win.
+    static func nearBestMatch(for coordinate: DriveCoordinate,
+                              in corridor: [DriveCoordinate],
+                              preferredProgress: Double?,
+                              toleranceMetres: CLLocationDistance = 75)
+        -> (index: Int, distance: CLLocationDistance)? {
+        guard let preferredProgress, preferredProgress.isFinite,
+              !corridor.isEmpty else {
+            return earliestNearBestMatch(for: coordinate, in: corridor,
+                                         toleranceMetres: toleranceMetres)
+        }
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let distances = corridor.map {
+            location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
+        }
+        guard let minimum = distances.min(), minimum.isFinite else { return nil }
+        let nearBest = corridor.indices.filter {
+            distances[$0] <= minimum + max(0, toleranceMetres)
+        }
+        guard let index = nearBest.min(by: {
+            abs(Double($0) / Double(max(1, corridor.count - 1)) - preferredProgress)
+                < abs(Double($1) / Double(max(1, corridor.count - 1)) - preferredProgress)
+        }) else { return nil }
+        return (index, distances[index])
+    }
+
     /// Uses persisted forward progress to disambiguate a corridor crossing.
     /// A small backwards allowance tolerates sparse corridor samples and GPS
     /// drift, but a restart can no longer jump back to an earlier visit of the
@@ -536,8 +565,9 @@ extension ActiveRouteLock {
             // complete here could silently bypass a required pass or country
             // rule on the return leg.
             guard waypoint.mayAutoCompleteWhenPassed else { break }
-            guard let match = RouteCorridorRestorePolicy.earliestNearBestMatch(
-                for: waypoint.coordinate, in: corridorPoints
+            guard let match = RouteCorridorRestorePolicy.nearBestMatch(
+                for: waypoint.coordinate, in: corridorPoints,
+                preferredProgress: waypoint.insertionRouteProgress
             ), RouteWaypointPassedProgressPolicy.isSafelyBeyond(
                 waypointIndex: match.index,
                 currentIndex: currentMatch.index,
