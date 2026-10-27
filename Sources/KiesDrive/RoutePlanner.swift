@@ -5585,7 +5585,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     /// Measures only the already shortlisted stops. Six candidates mean at
     /// most twelve directions requests (route entry to stop, then stop to a
-    /// forward route exit), independent of the provider result count.
+    /// forward route exit), with no more than three stop detours in flight.
     private func measureBreakCandidateDetours() async {
         let routeGeneration = routeCalculationGeneration
         let generation = UUID()
@@ -5611,53 +5611,62 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 .filter { !attemptedCandidateIDs.contains($0.id) }
             guard !candidates.isEmpty else { break }
             attemptedCandidateIDs.formUnion(candidates.map(\.id))
-            var measurementCount = 0
-            await withTaskGroup(of: BreakDetourLoadOutcome.self) { group in
-                for candidate in candidates {
-                    guard let projection = RouteGeometryProgress.nearestProgress(
-                        of: candidate.coordinate, on: routeCoordinates,
-                        progressRange: projectionRange
-                    ), let anchors = RouteSearchPolicy.detourAnchors(
-                        routeCoordinates: routeCoordinates, progress: projection.progress
-                    ) else { continue }
-                    group.addTask { [weak self] in
-                        let item = MKMapItem(placemark: MKPlacemark(coordinate: candidate.coordinate))
-                        let distance = await self?.drivingDetour(through: item, anchors: anchors)
-                        return .measurement(candidate.id, distance)
-                    }
-                    measurementCount += 1
-                }
-                if measurementCount > 0 {
-                    group.addTask { [weak self] in
-                        while !Task.isCancelled {
-                            try? await Task.sleep(nanoseconds: 100_000_000)
-                            guard !Task.isCancelled else { break }
-                            guard let self else { return .superseded }
-                            if !(await self.isCurrentBreakDetourLoad(
-                                routeGeneration: routeGeneration,
-                                loadGeneration: generation
-                            )) { return .superseded }
+            for batch in NavigationSearchBatchPolicy.detourBatches(
+                candidateCount: candidates.count
+            ) where !loadWasSuperseded {
+                var measurementCount = 0
+                await withTaskGroup(of: BreakDetourLoadOutcome.self) { group in
+                    for index in batch {
+                        let candidate = candidates[index]
+                        guard let projection = RouteGeometryProgress.nearestProgress(
+                            of: candidate.coordinate, on: routeCoordinates,
+                            progressRange: projectionRange
+                        ), let anchors = RouteSearchPolicy.detourAnchors(
+                            routeCoordinates: routeCoordinates, progress: projection.progress
+                        ) else { continue }
+                        group.addTask { [weak self] in
+                            let item = MKMapItem(
+                                placemark: MKPlacemark(coordinate: candidate.coordinate)
+                            )
+                            let distance = await self?.drivingDetour(
+                                through: item, anchors: anchors
+                            )
+                            return .measurement(candidate.id, distance)
                         }
-                        return .superseded
+                        measurementCount += 1
                     }
-                }
-                var remainingMeasurements = measurementCount
-                while remainingMeasurements > 0, let outcome = await group.next() {
-                    switch outcome {
-                    case .measurement(let id, let distance):
-                        remainingMeasurements -= 1
-                        // Retain a successful oversized measurement as
-                        // negative evidence so the next pass excludes it.
-                        if let distance, distance.isFinite, distance >= 0 {
-                            measurements[id] = distance
+                    if measurementCount > 0 {
+                        group.addTask { [weak self] in
+                            while !Task.isCancelled {
+                                try? await Task.sleep(nanoseconds: 100_000_000)
+                                guard !Task.isCancelled else { break }
+                                guard let self else { return .superseded }
+                                if !(await self.isCurrentBreakDetourLoad(
+                                    routeGeneration: routeGeneration,
+                                    loadGeneration: generation
+                                )) { return .superseded }
+                            }
+                            return .superseded
                         }
-                    case .superseded:
-                        loadWasSuperseded = true
-                        group.cancelAll()
-                        return
                     }
+                    var remainingMeasurements = measurementCount
+                    while remainingMeasurements > 0, let outcome = await group.next() {
+                        switch outcome {
+                        case .measurement(let id, let distance):
+                            remainingMeasurements -= 1
+                            // Retain a successful oversized measurement as
+                            // negative evidence so the next pass excludes it.
+                            if let distance, distance.isFinite, distance >= 0 {
+                                measurements[id] = distance
+                            }
+                        case .superseded:
+                            loadWasSuperseded = true
+                            group.cancelAll()
+                            return
+                        }
+                    }
+                    group.cancelAll()
                 }
-                group.cancelAll()
             }
         }
         guard !loadWasSuperseded else { return }
