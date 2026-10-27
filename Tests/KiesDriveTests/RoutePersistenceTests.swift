@@ -1049,6 +1049,57 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.passedWaypointIDs(at: .init(latitude: 2.1, longitude: 1)), [])
     }
 
+    func testRestorePreparesPassedCheckpointBeforeCapturingAsyncConstraintSnapshot() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
+            destination: .init(latitude: 5, longitude: 0),
+            waypoints: [
+                .init(
+                    id: "pass", name: "Pass", coordinate: .init(latitude: 1, longitude: 0),
+                    required: true,
+                    optionsAfter: .init(avoidTolls: false, avoidHighways: true),
+                    kind: .routeConstraint, insertionRouteProgress: 0.2
+                ),
+                .init(
+                    id: "slovenia", name: "Slowenien",
+                    coordinate: .init(latitude: 3, longitude: 0), required: true,
+                    optionsAfter: .init(avoidTolls: true, avoidHighways: true),
+                    kind: .routeConstraint, insertionRouteProgress: 0.6
+                ),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000,
+            corridorPoints: (0...5).map { .init(latitude: Double($0), longitude: 0) },
+            visitedWaypointIDs: [], status: .active, createdAt: now, updatedAt: now
+        )
+
+        let prepared = RouteLockRestorePreparationPolicy.preparing(
+            lock, at: .init(latitude: 2.1, longitude: 0), now: now.addingTimeInterval(30)
+        )
+        let restoreSnapshot = try XCTUnwrap(RouteCalculationConstraintSnapshot(prepared))
+        let calculationSnapshot = RouteCalculationConstraintSnapshot(
+            RouteLockRestorePreparationPolicy.preparing(
+                prepared, at: .init(latitude: 2.1, longitude: 0), now: now.addingTimeInterval(60)
+            )
+        )
+
+        XCTAssertEqual(prepared.visitedWaypointIDs, ["pass"])
+        XCTAssertEqual(prepared.updatedAt, now.addingTimeInterval(30))
+        XCTAssertEqual(
+            RouteWaypointOptionsPolicy.currentOptions(
+                defaultOptions: prepared.defaultOptions,
+                waypoints: prepared.waypoints,
+                visitedIDs: Set(prepared.visitedWaypointIDs ?? [])
+            ),
+            .init(avoidTolls: false, avoidHighways: true),
+            "Restoring past the first marker must retain the active segment's road rules"
+        )
+        XCTAssertEqual(calculationSnapshot, restoreSnapshot,
+                       "The route calculation must not invalidate its own restore snapshot")
+        XCTAssertNotEqual(RouteCalculationConstraintSnapshot(lock), restoreSnapshot)
+    }
+
     func testRestoreNeverAutoCompletesRealStopsAlreadyBehindCurrentPosition() {
         let lock = ActiveRouteLock(
             id: UUID(), title: "Nordfahrt", destinationName: "Ziel",

@@ -763,6 +763,24 @@ enum RouteWaypointProgressPolicy {
     }
 }
 
+enum RouteLockRestorePreparationPolicy {
+    /// Commit mandatory checkpoints already passed before the asynchronous
+    /// route request starts. The restore snapshot must then include this
+    /// expected progress change, otherwise the restore rejects its own
+    /// calculation result as if a different trip had been edited in flight.
+    static func preparing(_ lock: ActiveRouteLock, at current: DriveCoordinate,
+                          now: Date = Date()) -> ActiveRouteLock {
+        let newlyPassed = Set(lock.passedWaypointIDs(at: current))
+        guard !newlyPassed.isEmpty else { return lock }
+        var prepared = lock
+        prepared.visitedWaypointIDs = RouteWaypointProgressPolicy.merging(
+            existing: lock.visitedWaypointIDs, newlyPassed: newlyPassed
+        )
+        prepared.updatedAt = now
+        return prepared
+    }
+}
+
 enum RouteWaypointRoutingPolicy {
     enum Source: Equatable {
         case direct

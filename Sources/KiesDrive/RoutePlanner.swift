@@ -1067,8 +1067,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     func restoreActiveTripIfNeeded(from current: CLLocationCoordinate2D,
                                    settings: DriveSettings) async -> Bool {
         guard NavigationDestinationCoordinatePolicy.isValid(current) else { return false }
-        guard let lock = routeLockStore.activeLock, lock.isActive else { return false }
-        guard let restoreConstraintSnapshot = RouteCalculationConstraintSnapshot(lock) else {
+        guard let storedLock = routeLockStore.activeLock, storedLock.isActive else { return false }
+        let preparedLock = RouteLockRestorePreparationPolicy.preparing(
+            storedLock,
+            at: .init(latitude: current.latitude, longitude: current.longitude)
+        )
+        if preparedLock != storedLock {
+            routeLockStore.replace(with: preparedLock)
+        }
+        guard let lock = routeLockStore.activeLock,
+              let restoreConstraintSnapshot = RouteCalculationConstraintSnapshot(lock) else {
             return false
         }
         // Another surface (phone scene, CarPlay or remote bridge) may already
