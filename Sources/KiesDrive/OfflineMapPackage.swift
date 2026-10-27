@@ -391,6 +391,7 @@ final class OfflineMapPackageStore: ObservableObject {
     func reload() {
         tileCoverageCache.removeAll(keepingCapacity: true)
         try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        removeAbandonedImportStagingDirectories()
         let directories = (try? fileManager.contentsOfDirectory(
             at: rootURL,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -400,6 +401,26 @@ final class OfflineMapPackageStore: ObservableObject {
             .sorted { $0.manifest.name.localizedStandardCompare($1.manifest.name) == .orderedAscending }
         if let activePackageID, !packages.contains(where: { $0.id == activePackageID }) {
             self.activePackageID = nil
+        }
+    }
+
+    /// An app termination during a large Files copy bypasses `install`'s
+    /// `defer`, leaving a hidden partial package in Application Support.
+    /// Remove only direct child directories created by our staging prefix;
+    /// installed packages and any unrelated files are never candidates.
+    private func removeAbandonedImportStagingDirectories() {
+        let root = rootURL.standardizedFileURL
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: []
+        ) else { return }
+        for child in children where child.lastPathComponent.hasPrefix(".import-") {
+            let values = try? child.resourceValues(
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            )
+            guard values?.isDirectory == true, values?.isSymbolicLink != true,
+                  child.standardizedFileURL.deletingLastPathComponent() == root else { continue }
+            try? fileManager.removeItem(at: child)
         }
     }
 

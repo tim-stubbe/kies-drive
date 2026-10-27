@@ -120,6 +120,23 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["atomic-map"])
     }
 
+    func testReloadRemovesOnlyAbandonedImportStagingDirectories() throws {
+        let abandoned = root.appendingPathComponent(".import-interrupted", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: abandoned.appendingPathComponent("tiles/8/136"),
+            withIntermediateDirectories: true
+        )
+        let unrelatedHiddenFile = root.appendingPathComponent(".keep")
+        try Data("keep".utf8).write(to: unrelatedHiddenFile)
+        let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+
+        store.reload()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: abandoned.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelatedHiddenFile.path))
+        XCTAssertTrue(store.packages.isEmpty)
+    }
+
     func testCoverageFallsBackOutsidePackageAndForIncompleteOverview() {
         let bounds = OfflineMapBounds(north: 48, south: 45, east: 17, west: 8)
         XCTAssertTrue(OfflineMapCoveragePolicy.canUse(
