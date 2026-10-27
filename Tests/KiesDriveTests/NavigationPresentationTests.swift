@@ -41,6 +41,20 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testGermanAbfahrtSynonymKeepsExitNumberAndDirection() {
+        let presentation = NavigationManeuverPresentation(
+            "Nehmen Sie Abfahrt 7 links Richtung Hochheim"
+        )
+
+        XCTAssertEqual(presentation.exitLabel, "Ausfahrt 7")
+        XCTAssertEqual(presentation.direction, .left)
+        XCTAssertEqual(presentation.destinationLabel, "Hochheim")
+        XCTAssertEqual(
+            CarPlayManeuverSemanticPolicy.semantic(for: presentation),
+            .highwayOffRampLeft
+        )
+    }
+
     func testOrdinalsOutsideRoundaboutsDoNotInventExitLabels() {
         XCTAssertNil(NavigationManeuverPresentation(
             "Die zweite Straße rechts nehmen"

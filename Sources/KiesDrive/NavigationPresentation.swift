@@ -628,7 +628,7 @@ struct NavigationManeuverPresentation: Equatable {
         else if lower.contains("wenden") || lower.contains("u-turn") { direction = .uTurn }
         else { direction = Self.firstDirection(in: lower) }
 
-        let pattern = #"(?i:Ausfahrt|Exit|Anschlussstelle)\s+([0-9]+(?:[A-Za-z]|-[A-Za-z0-9]+|\s+[A-Z])?)"#
+        let pattern = #"(?i:Ausfahrt|Abfahrt|Exit|Anschlussstelle)\s+([0-9]+(?:[A-Za-z]|-[A-Za-z0-9]+|\s+[A-Z])?)"#
         if let regex = try? NSRegularExpression(pattern: pattern),
            let match = regex.firstMatch(in: instruction, range: NSRange(instruction.startIndex..., in: instruction)),
            let range = Range(match.range(at: 1), in: instruction) {
@@ -659,7 +659,7 @@ struct NavigationManeuverPresentation: Equatable {
     }
 
     private static func firstDirection(in text: String) -> Direction {
-        let exitSidePattern = #"(?:ausfahrt|exit|anschlussstelle)\s+(?:[0-9]+(?:\s*[-a-z])?\s+)?(links|rechts|left|right)\b"#
+        let exitSidePattern = #"(?:ausfahrt|abfahrt|exit|anschlussstelle)\s+(?:[0-9]+(?:\s*[-a-z])?\s+)?(links|rechts|left|right)\b"#
         if let regex = try? NSRegularExpression(pattern: exitSidePattern),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range(at: 1), in: text) {
@@ -677,7 +677,7 @@ struct NavigationManeuverPresentation: Equatable {
             ("leicht links", .slightLeft, 2), ("links halten", .slightLeft, 2),
             ("slight left", .slightLeft, 2), ("keep left", .slightLeft, 2),
             ("links", .left, 1), ("turn left", .left, 1),
-            ("ausfahrt", .right, 0), ("exit", .right, 0),
+            ("ausfahrt", .right, 0), ("abfahrt", .right, 0), ("exit", .right, 0),
         ]
         let matches = candidates.compactMap { phrase, direction, specificity
             -> (offset: Int, direction: Direction, specificity: Int)? in
