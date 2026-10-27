@@ -455,6 +455,9 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     assert 'href="web/style.css"' in page.text
     assert 'src="web/app.js"' in page.text
     assert 'rel="manifest" href="manifest.webmanifest"' in page.text
+    assert 'id="route-options-form"' in page.text
+    assert 'id="avoid-tolls"' in page.text
+    assert 'id="avoid-highways"' in page.text
     assert page.headers["content-security-policy"].startswith("default-src 'self'")
     assert client.get("/web/app.js").status_code == 200
     manifest = client.get("/manifest.webmanifest")
@@ -527,6 +530,21 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     command_id = queued.json()["command_id"]
     assert client.get(f"/api/web/commands/{command_id}", headers=headers).json()["status"] == "pending"
     assert client.get(f"/api/web/commands/{command_id + 1}", headers=headers).status_code == 404
+
+    options = client.post("/api/web/commands", headers=headers, json={
+        "command": "set_route_options",
+        "arguments": {"avoid_tolls": True, "avoid_highways": False},
+    })
+    assert options.status_code == 202
+    options_id = options.json()["command_id"]
+    with main.db() as conn:
+        queued_options = conn.execute(
+            "SELECT command,arguments FROM user_commands WHERE id=?", (options_id,)
+        ).fetchone()
+    assert queued_options["command"] == "set_route_options"
+    assert json.loads(queued_options["arguments"]) == {
+        "avoid_highways": False, "avoid_tolls": True,
+    }
 
     with main.db() as conn:
         old = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()

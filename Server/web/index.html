@@ -76,6 +76,12 @@
           <aside class="side-stack">
             <section class="panel"><p class="eyebrow">NEUES ZIEL</p><h3>Wohin soll’s gehen?</h3><form id="destination-form" class="inline-form"><label class="sr-only" for="destination">Zielort</label><input id="destination" placeholder="Ort oder Adresse" minlength="2" maxlength="180" required><button class="icon-button" aria-label="Ziel an Kies Drive senden">→</button></form><p class="panel-caption">Das iPhone muss online und mit deinem Konto verbunden sein.</p></section>
             <section class="panel"><p class="eyebrow">AUF DER ROUTE</p><h3>Stopp hinzufügen</h3><form id="stop-form" class="inline-form"><label class="sr-only" for="stop-query">Zwischenstopp</label><input id="stop-query" placeholder="z. B. Raststätte, Café" minlength="2" maxlength="120" required><button class="icon-button" aria-label="Stopp hinzufügen">+</button></form></section>
+            <section class="panel"><p class="eyebrow">ROUTENVORGABEN</p><h3>Wie möchtest du fahren?</h3><form id="route-options-form" class="route-options-form">
+              <label class="option-row"><input id="avoid-tolls" type="checkbox"><span><strong>Maut vermeiden</strong><small>Für die gesamte Reise</small></span></label>
+              <label class="option-row"><input id="avoid-highways" type="checkbox"><span><strong>Autobahnen vermeiden</strong><small>Für die gesamte Reise</small></span></label>
+              <button id="save-route-options" class="button secondary" type="submit" disabled>Route neu berechnen</button>
+              <p class="panel-caption">Vorgaben für einzelne Pflichtpunkte bleiben erhalten. Die Berechnung läuft auf deinem Gerät.</p>
+            </form></section>
             <section class="note-card"><span class="note-symbol">✳</span><div><strong>Deine Route bleibt deine.</strong><p>Auch mit Webzugriff navigiert Kies Drive lokal auf deinem Gerät weiter – selbst wenn die Verbindung zum Server einmal weg ist.</p></div></section>
           </aside>
         </div>

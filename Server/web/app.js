@@ -11,6 +11,8 @@
   let toastTimer;
   let connectionWarningShown = false;
   let installPrompt = null;
+  let currentRouteOptions = null;
+  let routeOptionsPending = false;
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -127,6 +129,22 @@
 
     const route = state.active_route;
     const lock = state.route_lock;
+    const savedOptions = lock?.defaultOptions || lock?.default_options;
+    const canChangeOptions = lock?.status === 'active' && savedOptions
+      && typeof savedOptions.avoidTolls === 'boolean'
+      && typeof savedOptions.avoidHighways === 'boolean';
+    const optionsForm = $('route-options-form');
+    if (canChangeOptions && !optionsForm.contains(document.activeElement)) {
+      currentRouteOptions = {
+        avoidTolls: savedOptions.avoidTolls,
+        avoidHighways: savedOptions.avoidHighways,
+      };
+      $('avoid-tolls').checked = currentRouteOptions.avoidTolls;
+      $('avoid-highways').checked = currentRouteOptions.avoidHighways;
+    }
+    $('avoid-tolls').disabled = !canChangeOptions;
+    $('avoid-highways').disabled = !canChangeOptions;
+    updateRouteOptionsButton();
     $('route-title').textContent = lock?.title || route?.destination || 'Keine aktive Route';
     const badge = $('route-badge');
     badge.textContent = state.navigation_active ? 'NAVIGATION AKTIV' : lock?.status === 'active' ? 'REISE GESPEICHERT' : 'BEREIT';
@@ -205,6 +223,8 @@
   }
 
   async function sendCommand(command, argumentsValue) {
+    if (command === 'set_route_options') routeOptionsPending = true;
+    updateRouteOptionsButton();
     try {
       const accepted = await api('/api/web/commands', {
         method: 'POST', body: JSON.stringify({ command, arguments: argumentsValue }),
@@ -216,20 +236,47 @@
           const status = await api(`/api/web/commands/${accepted.command_id}`);
           if (status.status === 'done') {
             toast(status.result?.message || 'Kies Drive hat die Aktion übernommen.');
+            if (command === 'set_route_options') $('save-route-options').blur();
             refresh();
+            if (command === 'set_route_options') routeOptionsPending = false;
             return true;
           }
           if (['failed', 'expired', 'superseded'].includes(status.status)) {
             toast(status.result?.message || 'Die Aktion wurde nicht ausgeführt. Öffne Kies Drive auf deinem iPhone.');
+            if (command === 'set_route_options') {
+              routeOptionsPending = false;
+              $('save-route-options').blur();
+            }
+            refresh();
             return true;
           }
         } catch (error) { toast(error.message); return true; }
-        return Date.now() - started > 90000;
+        if (Date.now() - started > 90000) {
+          if (command === 'set_route_options') routeOptionsPending = false;
+          toast('Kies Drive hat noch nicht geantwortet. Öffne die App und aktualisiere den Status.');
+          updateRouteOptionsButton();
+          return true;
+        }
+        return false;
       };
       const poll = async () => { if (await check()) clearInterval(timer); };
       const timer = setInterval(poll, 2500);
       poll();
-    } catch (error) { toast(error.message); }
+    } catch (error) {
+      if (command === 'set_route_options') routeOptionsPending = false;
+      updateRouteOptionsButton();
+      toast(error.message);
+    }
+  }
+
+  function updateRouteOptionsButton() {
+    const button = $('save-route-options');
+    if (!button) return;
+    const changed = currentRouteOptions && (
+      $('avoid-tolls').checked !== currentRouteOptions.avoidTolls
+      || $('avoid-highways').checked !== currentRouteOptions.avoidHighways
+    );
+    button.disabled = !currentRouteOptions || !changed || routeOptionsPending;
   }
 
   $('auth-switch').addEventListener('click', () => {
@@ -287,6 +334,16 @@
     if (query.length >= 2) sendCommand('add_route_stop', { query });
     event.currentTarget.reset();
   });
+  $('route-options-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!currentRouteOptions || routeOptionsPending) return;
+    sendCommand('set_route_options', {
+      avoid_tolls: $('avoid-tolls').checked,
+      avoid_highways: $('avoid-highways').checked,
+    });
+  });
+  $('avoid-tolls').addEventListener('change', updateRouteOptionsButton);
+  $('avoid-highways').addEventListener('change', updateRouteOptionsButton);
 
   if (session) {
     api('/auth/me').then((user) => showDashboard(user.email)).catch(() => clearSession());

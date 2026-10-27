@@ -1,7 +1,16 @@
-name: Build container
+name: Test and publish Kies Drive
 on:
   push:
     branches: [main]
+    paths:
+      - "Dockerfile"
+      - "Server/**"
+      - "docker-compose.yml"
+      - ".github/workflows/container.yml"
+  workflow_dispatch:
+concurrency:
+  group: kies-drive-container-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
   packages: write
@@ -25,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -33,6 +44,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/tim-stubbe/kies-drive:latest
