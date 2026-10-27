@@ -1065,6 +1065,41 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationSpeechRetryLocationPolicy.mayRetry(using: coarse, now: now))
     }
 
+    func testRouteReplacementPreservesOnlyFreshAccurateNavigationFix() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        let fresh = CLLocation(
+            coordinate: .init(latitude: 50, longitude: 8), altitude: 0,
+            horizontalAccuracy: 12, verticalAccuracy: 5,
+            course: 90, speed: 25, timestamp: now.addingTimeInterval(-2)
+        )
+        let stale = CLLocation(
+            coordinate: fresh.coordinate, altitude: 0,
+            horizontalAccuracy: 12, verticalAccuracy: 5,
+            course: 90, speed: 25, timestamp: now.addingTimeInterval(-8)
+        )
+        let coarse = CLLocation(
+            coordinate: fresh.coordinate, altitude: 0,
+            horizontalAccuracy: 90, verticalAccuracy: 5,
+            course: 90, speed: 25, timestamp: now.addingTimeInterval(-1)
+        )
+
+        XCTAssertEqual(
+            NavigationRouteReplacementLocationPolicy.location(
+                navigationActive: true, lastAccepted: fresh, now: now
+            )?.timestamp,
+            fresh.timestamp
+        )
+        XCTAssertNil(NavigationRouteReplacementLocationPolicy.location(
+            navigationActive: false, lastAccepted: fresh, now: now
+        ))
+        XCTAssertNil(NavigationRouteReplacementLocationPolicy.location(
+            navigationActive: true, lastAccepted: stale, now: now
+        ))
+        XCTAssertNil(NavigationRouteReplacementLocationPolicy.location(
+            navigationActive: true, lastAccepted: coarse, now: now
+        ))
+    }
+
     func testGuidanceSpeedExpiresToSafeCityFallback() {
         let measuredAt = Date(timeIntervalSince1970: 1_000)
         XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(

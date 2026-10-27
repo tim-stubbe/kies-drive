@@ -2846,6 +2846,19 @@ enum NavigationReroutePresentationPolicy {
     }
 }
 
+enum NavigationRouteReplacementLocationPolicy {
+    /// A replacement route may immediately publish guidance only from a
+    /// current, precise fix. The route calculation can take several seconds;
+    /// reusing a stale position can announce a turn that is already behind.
+    static func location(navigationActive: Bool, lastAccepted: CLLocation?,
+                         now: Date = Date()) -> CLLocation? {
+        guard navigationActive, let lastAccepted,
+              NavigationSpeechRetryLocationPolicy.mayRetry(using: lastAccepted, now: now)
+        else { return nil }
+        return lastAccepted
+    }
+}
+
 enum NavigationDirectionsTimeoutPolicy {
     static let routeCalculation: TimeInterval = 18
     static let detourCalculation: TimeInterval = 8

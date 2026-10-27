@@ -2447,6 +2447,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 activeRouteLock = routeLockStore.activeLock
                 viaStations.removeAll { newlyPassed.contains($0.id) }
             }
+            let routeReplacementLocation = NavigationRouteReplacementLocationPolicy.location(
+                navigationActive: isNavigating,
+                lastAccepted: lastAcceptedNavigationLocation
+            )
             cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
             liveRouteDestinationCoordinate = destination.placemark.coordinate
@@ -2487,6 +2491,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             remainingDistanceMetres = totalDistance
             remainingTravelTime = totalTravelTime
             resetDeviationTracking()
+            if let routeReplacementLocation {
+                // `resetLiveNavigationProgress` intentionally clears old
+                // route-local state. Keep only a fix that is still safe for
+                // immediate post-reroute guidance; the next GPS callback
+                // repopulates it when calculation took too long.
+                lastAcceptedNavigationLocation = routeReplacementLocation
+                presentRecalculatedRoute(
+                    at: routeReplacementLocation,
+                    voiceGuidance: settings.voiceGuidance,
+                    mayAnnounce: !isRecalculating && isManeuverGuidanceReliable
+                )
+            } else if isNavigating {
+                // The seeded first step belongs to the route origin and can
+                // be miles behind a moving driver. Wait for a fresh fix before
+                // showing or speaking a maneuver from the replacement route.
+                nextManeuverIdentity = "live:\(routeCalculationGeneration):awaiting-location"
+                nextManeuverInstruction = "Standort wird abgeglichen"
+                nextManeuverDistance = nil
+                upcomingManeuverInstructions = []
+            }
             cacheForOffline()
             DriveDiagnosticStore.append(.routeCalculated, detail: "\(legs.count) Etappen · \(Int(totalDistance)) m")
             // Die sichtbare Route ist jetzt fertig. Langsame Server-Zusatzdaten
@@ -4765,9 +4789,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// the next maneuver is still far away, confirm completion without
     /// manufacturing an early turn cue.
     private func presentRecalculatedRoute(at location: CLLocation,
-                                          voiceGuidance: Bool) {
+                                          voiceGuidance: Bool,
+                                          mayAnnounce: Bool = true) {
+        guard NavigationSpeechRetryLocationPolicy.mayRetry(using: location) else { return }
+        let shouldSpeak = voiceGuidance && mayAnnounce
         guard let progress = liveNavigationProgress(at: location) else {
-            if voiceGuidance {
+            if shouldSpeak {
                 _ = speak("Die neue Route ist bereit.", priority: .status)
             }
             return
@@ -4776,7 +4803,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // immediately. Voice guidance is only an audio preference and must
         // never delay the visible route state until another GPS callback.
         updateNextManeuver(using: progress)
-        guard voiceGuidance else { return }
+        guard shouldSpeak else { return }
         let speed = NavigationGuidanceSpeedPolicy.effective(
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,
