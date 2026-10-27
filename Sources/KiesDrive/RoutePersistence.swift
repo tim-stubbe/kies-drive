@@ -167,25 +167,36 @@ enum RouteCorridorRestorePolicy {
     static func nearBestMatch(for coordinate: DriveCoordinate,
                               in corridor: [DriveCoordinate],
                               preferredProgress: Double?,
+                              minimumProgress: Double? = nil,
                               toleranceMetres: CLLocationDistance = 75)
         -> (index: Int, distance: CLLocationDistance)? {
-        guard let preferredProgress, preferredProgress.isFinite,
-              !corridor.isEmpty else {
-            return earliestNearBestMatch(for: coordinate, in: corridor,
-                                         toleranceMetres: toleranceMetres)
-        }
+        guard !corridor.isEmpty else { return nil }
+        let lastIndex = max(0, corridor.count - 1)
+        let lowerProgress = minimumProgress.flatMap { $0.isFinite ? $0 : nil }
+            .map { max(0, min(1, $0)) } ?? 0
+        let firstEligibleIndex = min(lastIndex, Int((lowerProgress * Double(lastIndex)).rounded(.up)))
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         let distances = corridor.map {
             location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
         }
-        guard let minimum = distances.min(), minimum.isFinite else { return nil }
-        let nearBest = corridor.indices.filter {
+        let eligibleIndices = corridor.indices.dropFirst(firstEligibleIndex)
+        guard let minimum = eligibleIndices.map({ distances[$0] }).min(), minimum.isFinite else {
+            return nil
+        }
+        let nearBest = eligibleIndices.filter {
             distances[$0] <= minimum + max(0, toleranceMetres)
         }
-        guard let index = nearBest.min(by: {
-            abs(Double($0) / Double(max(1, corridor.count - 1)) - preferredProgress)
-                < abs(Double($1) / Double(max(1, corridor.count - 1)) - preferredProgress)
-        }) else { return nil }
+        let index: Int?
+        if let preferredProgress, preferredProgress.isFinite {
+            let preferred = max(lowerProgress, max(0, min(1, preferredProgress)))
+            index = nearBest.min(by: {
+                abs(Double($0) / Double(max(1, corridor.count - 1)) - preferred)
+                    < abs(Double($1) / Double(max(1, corridor.count - 1)) - preferred)
+            })
+        } else {
+            index = nearBest.first
+        }
+        guard let index else { return nil }
         return (index, distances[index])
     }
 
@@ -557,7 +568,24 @@ extension ActiveRouteLock {
 
         let visited = Set(visitedWaypointIDs ?? [])
         var passed: [String] = []
+        var previousWaypointProgress: Double?
         for waypoint in waypoints where waypoint.required {
+            if visited.contains(waypoint.id), !waypoint.mayAutoCompleteWhenPassed {
+                if let progress = waypoint.insertionRouteProgress, progress.isFinite {
+                    previousWaypointProgress = max(previousWaypointProgress ?? 0, progress)
+                }
+                continue
+            }
+            let preferredProgress = waypoint.insertionRouteProgress ?? previousWaypointProgress
+            guard let match = RouteCorridorRestorePolicy.nearBestMatch(
+                for: waypoint.coordinate, in: corridorPoints,
+                preferredProgress: preferredProgress,
+                minimumProgress: previousWaypointProgress
+            ) else { break }
+            previousWaypointProgress = max(
+                previousWaypointProgress ?? 0,
+                Double(match.index) / Double(max(1, corridorPoints.count - 1))
+            )
             if visited.contains(waypoint.id) { continue }
             // A real fuel/food/user stop is a hard ordering boundary. If it
             // was missed, restoration must route back to it and then enforce
@@ -565,10 +593,7 @@ extension ActiveRouteLock {
             // complete here could silently bypass a required pass or country
             // rule on the return leg.
             guard waypoint.mayAutoCompleteWhenPassed else { break }
-            guard let match = RouteCorridorRestorePolicy.nearBestMatch(
-                for: waypoint.coordinate, in: corridorPoints,
-                preferredProgress: waypoint.insertionRouteProgress
-            ), RouteWaypointPassedProgressPolicy.isSafelyBeyond(
+            guard RouteWaypointPassedProgressPolicy.isSafelyBeyond(
                 waypointIndex: match.index,
                 currentIndex: currentMatch.index,
                 corridor: corridorPoints

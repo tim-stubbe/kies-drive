@@ -1164,6 +1164,37 @@ final class RoutePersistenceTests: XCTestCase {
                        "The persisted occurrence is safely behind the restored position")
     }
 
+    func testRestoreKeepsOrderedRequiredPointsOnLaterLoopOccurrence() {
+        let now = Date(timeIntervalSince1970: 1)
+        let corridor = [
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0100),
+            DriveCoordinate(latitude: 50.0100, longitude: 8.0100),
+            DriveCoordinate(latitude: 50.0100, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 8.0000),
+            DriveCoordinate(latitude: 50.0000, longitude: 7.9900),
+        ]
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Schleife", destinationName: "Ziel",
+            destination: corridor[5],
+            waypoints: [
+                .init(id: "first", name: "Erster Pflichtpunkt",
+                      coordinate: corridor[2], required: true, optionsAfter: nil),
+                .init(id: "second", name: "Zweiter Durchgang",
+                      coordinate: corridor[0], required: true, optionsAfter: nil),
+            ],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 2_000, corridorPoints: corridor,
+            visitedWaypointIDs: ["first"], lastRouteProgress: 0,
+            status: .active, createdAt: now, updatedAt: now
+        )
+
+        XCTAssertTrue(lock.passedWaypointIDs(at: corridor[1]).isEmpty,
+                      "A completed earlier anchor fixes the order of a repeated coordinate")
+        XCTAssertEqual(lock.passedWaypointIDs(at: corridor[5]), ["second"],
+                       "The later occurrence can complete once the car has passed it")
+    }
+
     func testCommittedWaypointProgressIsStableAndDeduplicated() {
         XCTAssertEqual(
             RouteWaypointProgressPolicy.merging(
