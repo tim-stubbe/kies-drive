@@ -12,6 +12,7 @@ RUN apt-get update \
 COPY Server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY Server/app ./app
+COPY Server/web ./web
 COPY Server/entrypoint.sh /usr/local/bin/kies-drive-entrypoint
 VOLUME ["/data"]
 EXPOSE 8080 18181

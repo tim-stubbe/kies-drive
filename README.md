@@ -10,6 +10,11 @@ nur noch optionale Zusatzdienste wie Jarvis und Tankpreise.
 
 - App: MapKit-Navigation, Pflichtpunkte, Pausen, Mautvergleich, Route-Lock
 - TrueNAS: `ghcr.io/tim-stubbe/kies-drive:latest`, Port `18080`
+- Web: responsives Kies-Drive-Dashboard im selben TrueNAS-Dienst unter `/`;
+  Anmeldung mit demselben Konto und optionaler Authenticator-2FA. Es zeigt nur
+  frische Live-Telemetrie und den persistenten Trip-Lock. Ziel-, Stopp- und
+  Wiederherstellungsaktionen werden sicher an die native App übergeben; die
+  eigentliche Navigation bleibt lokal auf dem iPhone/macOS.
 - MCP: `https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive/mcp`; ChatGPT entdeckt dort
   automatisch die Browser-Anmeldung mit OAuth 2.1/PKCE. Es muss kein Token
   kopiert oder im Container hinterlegt werden.
@@ -34,8 +39,13 @@ install before that approval.
   auch bewusst auf später verschoben werden.
 - E-Mail: `KIES_DRIVE_PUBLIC_URL`, `SMTP_HOST`, `SMTP_FROM` sowie je nach
   Anbieter `SMTP_USERNAME` und `SMTP_PASSWORD` im TrueNAS-App-Formular setzen.
-  `KIES_DRIVE_PUBLIC_URL` muss die öffentliche HTTPS-Adresse des gesamten
-  Dienstes sein, damit Konto-Bestätigung und MCP-OAuth dieselbe Domain nutzen.
+  `KIES_DRIVE_PUBLIC_URL` muss die öffentliche HTTPS-Basisadresse des Dienstes
+  (also die Adresse, unter der die Web-Startseite erreichbar ist) sein, damit
+  Webzugriff, Konto-Bestätigung und MCP-OAuth dieselbe Domain nutzen. Den
+  bestehenden TrueNAS-Port `18080` hinter
+  einen HTTPS-Reverse-Proxy legen; Tailscale Serve/Funnel oder der vorhandene
+  öffentliche Proxy kann dafür genutzt werden. Den MCP-Endpunkt erreicht man
+  anschließend unter derselben Adresse plus `/mcp`.
   Für einen öffentlichen App-Build wird dieselbe Adresse als Xcode-Buildwert
   `KIES_DRIVE_SERVER_URL=https://…` gesetzt. Die App übernimmt sie automatisch;
   Nutzer sehen weder Serveradresse noch Zugangstoken.

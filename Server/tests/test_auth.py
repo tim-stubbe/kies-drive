@@ -374,6 +374,84 @@ def test_password_and_authentication_guards(tmp_path, monkeypatch):
     }).status_code == 401
 
 
+def test_web_companion_serves_local_app_and_protects_live_state_and_route_actions(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "web.db"))
+    verification = {}
+    monkeypatch.setattr(
+        main, "send_verification_email",
+        lambda email, token: verification.update(email=email, token=token),
+    )
+    main.AUTH_ATTEMPTS.clear()
+    client = TestClient(main.app)
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "Kies Drive" in page.text
+    assert page.headers["content-security-policy"].startswith("default-src 'self'")
+    assert client.get("/web/app.js").status_code == 200
+    assert client.get("/api/web/state").status_code == 401
+    assert client.post("/api/web/commands", json={
+        "command": "set_destination", "arguments": {"query": "Hochheim"}
+    }).status_code == 401
+
+    email, password = "web@example.com", "a-secure-web-password"
+    assert client.post("/auth/register", json={"email": email, "password": password}).status_code == 202
+    assert client.get("/auth/verify-email", params={"token": verification["token"]}).status_code == 200
+    session = client.post("/auth/login", json={"email": email, "password": password}).json()["session"]
+    headers = {"Authorization": f"Bearer {session}"}
+
+    with main.db() as conn:
+        payload = {
+            "location": {"latitude": 50.0, "longitude": 8.0},
+            "heading_degrees": 91,
+            "speed_kmh": 84,
+            "active_route": {"destination": "Hochheim", "distance_metres": 12000},
+            "route_lock": {"title": "Urlaubsfahrt", "waypoints": []},
+            "next_maneuver": {"instruction": "Rechts abbiegen", "distance_metres": 400},
+            "navigation_active": True,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+        conn.execute("INSERT INTO user_state(user_id,payload,updated_at) VALUES(1,?,?)",
+                     (json.dumps(payload), datetime.now(timezone.utc).isoformat()))
+
+    state = client.get("/api/web/state", headers=headers).json()
+    assert client.get("/api/web/state", headers=headers).headers["cache-control"] == "no-store"
+    assert state["live"] is True
+    assert state["location"] == {"latitude": 50.0, "longitude": 8.0}
+    assert state["heading"]["direction"] == "Ost"
+    assert state["next_maneuver"]["instruction"] == "Rechts abbiegen"
+    assert state["route_lock"]["title"] == "Urlaubsfahrt"
+
+    invalid = client.post("/api/web/commands", headers=headers, json={
+        "command": "delete_account", "arguments": {}
+    })
+    assert invalid.status_code == 422
+    assert client.post("/api/web/commands", headers=headers, json={
+        "command": "set_destination", "arguments": {"latitude": 100, "longitude": 8}
+    }).status_code == 422
+
+    queued = client.post("/api/web/commands", headers=headers, json={
+        "command": "set_destination", "arguments": {"query": "Hochheim"}
+    })
+    assert queued.status_code == 202
+    command_id = queued.json()["command_id"]
+    assert client.get(f"/api/web/commands/{command_id}", headers=headers).json()["status"] == "pending"
+    assert client.get(f"/api/web/commands/{command_id + 1}", headers=headers).status_code == 404
+
+    with main.db() as conn:
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        stale_payload = dict(payload, recorded_at=old)
+        conn.execute("UPDATE user_state SET payload=?,updated_at=? WHERE user_id=1",
+                     (json.dumps(stale_payload), old))
+    stale = client.get("/api/web/state", headers=headers).json()
+    assert stale["live"] is False
+    assert stale["location"] is None
+    assert stale["speed_kmh"] is None
+    assert stale["next_maneuver"] is None
+    assert stale["route_lock"]["title"] == "Urlaubsfahrt"
+
+
 def test_mcp_reports_remote_command_completion(tmp_path, monkeypatch):
     monkeypatch.setenv("KIES_DRIVE_DB", str(tmp_path / "remote-status.db"))
     verification = {}

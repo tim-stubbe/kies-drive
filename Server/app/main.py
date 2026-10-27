@@ -19,7 +19,9 @@ import httpx
 import pyotp
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from pydantic import BaseModel
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from .auth import (PASSWORD_HASHER, authenticated_user, complete_registration,
                    consume_password_reset, create_password_reset,
@@ -32,6 +34,14 @@ from .auth import (PASSWORD_HASHER, authenticated_user, complete_registration,
 
 app = FastAPI(title="Kies Drive", version="1.0.0")
 KIES_BASE_URL = os.getenv("KIES_BASE_URL", "https://100.72.226.91:8000").rstrip("/")
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+app.mount("/web", StaticFiles(directory=WEB_DIR), name="web")
+
+
+@app.get("/", include_in_schema=False)
+def web_app():
+    """Serve the self-hosted web companion from the same TrueNAS service."""
+    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.middleware("http")
@@ -42,7 +52,11 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    if request.url.path.startswith(("/auth/", "/oauth/")):
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    )
+    if request.url.path.startswith(("/auth/", "/oauth/", "/api/web/", "/api/navigation/remote/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response
@@ -630,6 +644,82 @@ def me(authorization: str | None = Header(None)):
     user = current_user(authorization)
     return {"email": user["email"], "email_verified": bool(user["email_verified_at"]),
             "two_factor_enabled": bool(user["totp_secret"])}
+
+
+@app.get("/api/web/state")
+def web_state(authorization: str | None = Header(None)):
+    """Authenticated, privacy-filtered snapshot for the web companion."""
+    user = current_user(authorization)
+    with db() as conn:
+        row = conn.execute(
+            "SELECT payload,updated_at FROM user_state WHERE user_id=?", (user["id"],)
+        ).fetchone()
+    state = decode_remote_state(row["payload"] if row else None)
+    observed_at, age, live = remote_state_freshness(
+        state, row["updated_at"] if row else None
+    )
+    view = {
+        "active_route": state.get("active_route"),
+        "route_lock": state.get("route_lock"),
+        "navigation_active": bool(state.get("navigation_active", False)),
+        "on_route": state.get("on_route") if live else None,
+        "rerouting": bool(state.get("rerouting", False)) if live else False,
+        "offline_guidance_active": bool(state.get("offline_guidance_active", False)),
+        "location": state.get("location") if live else None,
+        "heading": heading_remote_view(state) if live else None,
+        "speed_kmh": state.get("speed_kmh") if live else None,
+        "next_maneuver": state.get("next_maneuver") if live else None,
+        "recorded_at": observed_at,
+        "age_seconds": age,
+        "live": live,
+    }
+    return view
+
+
+class WebCommandRequest(BaseModel):
+    command: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/web/commands", status_code=202)
+def web_command(payload: WebCommandRequest, authorization: str | None = Header(None)):
+    """Expose only the same bounded route actions offered through Kies MCP."""
+    user = current_user(authorization)
+    if payload.command not in {"set_destination", "set_route_options", "restore_route", "add_route_stop"}:
+        raise HTTPException(422, "Diese Web-Aktion ist nicht verfügbar.")
+    if validation_error := validate_mcp_arguments(payload.command, payload.arguments):
+        raise HTTPException(422, validation_error)
+    with db() as conn:
+        command_id, deduplicated, superseded = enqueue_remote_command(
+            conn, user["id"], payload.command, payload.arguments
+        )
+    return {
+        "accepted": True,
+        "command_id": command_id,
+        "status": "pending",
+        "deduplicated": deduplicated,
+        "superseded_commands": superseded,
+    }
+
+
+@app.get("/api/web/commands/{command_id}")
+def web_command_status(command_id: int, authorization: str | None = Header(None)):
+    user = current_user(authorization)
+    with db() as conn:
+        expire_stale_remote_commands(conn, user["id"])
+        row = conn.execute(
+            "SELECT status,result FROM user_commands WHERE id=? AND user_id=?",
+            (command_id, user["id"]),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Diese Aktion wurde nicht gefunden.")
+    result = None
+    if row["result"]:
+        try:
+            result = json.loads(row["result"])
+        except json.JSONDecodeError:
+            result = None
+    return {"command_id": command_id, "status": row["status"], "result": result}
 
 
 @app.post("/auth/logout")

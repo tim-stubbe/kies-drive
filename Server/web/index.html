@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#102f27">
+    <meta name="description" content="Kies Drive – deine Route und dein Fahrzeugstatus, sicher gehostet auf deinem TrueNAS.">
+    <title>Kies Drive</title>
+    <link rel="stylesheet" href="/web/style.css">
+    <script src="/web/app.js" defer></script>
+  </head>
+  <body>
+    <main id="app" class="page-shell">
+      <section id="auth-view" class="auth-view">
+        <header class="brand-lockup"><span class="brand-mark">K</span><div><span class="eyebrow">DEIN FAHRBEGLEITER</span><h1>Kies Drive</h1></div></header>
+        <div class="auth-card">
+          <p class="eyebrow">SICHER VERBUNDEN</p>
+          <h2 id="auth-title">Willkommen zurück.</h2>
+          <p id="auth-description" class="muted">Melde dich mit deinem Kies-Drive-Konto an.</p>
+          <form id="auth-form">
+            <label>E-Mail-Adresse<input id="email" type="email" autocomplete="username" required></label>
+            <label>Passwort<input id="password" type="password" autocomplete="current-password" required minlength="12"></label>
+            <label id="totp-field" class="hidden">Authenticator- oder Wiederherstellungscode<input id="totp" inputmode="text" autocomplete="one-time-code" placeholder="6-stelliger Code oder Wiederherstellungscode" maxlength="64"></label>
+            <p id="auth-message" class="message hidden" role="status"></p>
+            <button class="button primary" type="submit">Anmelden <span aria-hidden="true">→</span></button>
+          </form>
+          <button id="auth-switch" class="button quiet auth-switch" type="button">Neu bei Kies Drive? Konto erstellen</button>
+          <p class="auth-foot">Deine Daten bleiben in deinem Kies-Drive-Dienst auf TrueNAS.</p>
+        </div>
+        <p class="footer-note">Kies Drive Web · Die native App bleibt für Navigation und Standort zuständig.</p>
+      </section>
+
+      <section id="dashboard-view" class="hidden">
+        <header class="topbar">
+          <a class="brand-lockup compact" href="/"><span class="brand-mark">K</span><div><span class="eyebrow">DEIN FAHRBEGLEITER</span><h1>Kies Drive</h1></div></a>
+          <div class="top-actions"><span id="account-email" class="account-email"></span><button id="logout" class="button quiet">Abmelden</button></div>
+        </header>
+
+        <section class="welcome-row">
+          <div><p class="eyebrow">DEIN FAHRZEUG · DEINE ROUTE</p><h2>Alles im Blick.</h2><p class="muted">Dein Status wird sicher von Kies Drive auf deinem iPhone synchronisiert.</p></div>
+          <div class="sync-pill"><span id="sync-dot" class="sync-dot"></span><span id="sync-label">Verbinde…</span></div>
+        </section>
+
+        <section class="metrics-grid" aria-label="Live-Fahrzeugstatus">
+          <article class="metric-card"><span class="metric-label">GESCHWINDIGKEIT</span><div class="metric-value"><span id="speed">—</span><small>km/h</small></div><span id="road-status" class="metric-note">Warte auf Kies Drive</span></article>
+          <article class="metric-card"><span class="metric-label">FAHRTRICHTUNG</span><div class="metric-value"><span id="heading">—</span></div><span class="metric-note">Kompassrichtung</span></article>
+          <article class="metric-card"><span class="metric-label">POSITION</span><div class="metric-value coordinate-value" id="location">—</div><span id="updated" class="metric-note">Noch keine Live-Daten</span></article>
+        </section>
+
+        <div class="content-grid">
+          <section class="panel route-panel">
+            <div class="panel-heading"><div><p class="eyebrow">AKTIVE REISE</p><h3 id="route-title">Keine aktive Route</h3></div><span id="route-badge" class="badge">BEREIT</span></div>
+            <p id="route-summary" class="muted">Starte oder stelle deine Reise in der Kies-Drive-App wieder her.</p>
+            <div id="maneuver-card" class="maneuver-card hidden"><span class="maneuver-arrow">↗</span><div><span class="eyebrow">ALS NÄCHSTES</span><strong id="maneuver-text"></strong><span id="maneuver-distance" class="muted"></span></div></div>
+            <div id="waypoints" class="waypoint-list"></div>
+            <div class="panel-actions"><button id="restore-route" class="button primary" disabled>Route in Kies Drive fortsetzen <span aria-hidden="true">→</span></button><button id="refresh" class="button secondary">Aktualisieren</button></div>
+            <p class="panel-caption">Routenaktionen werden an dein iPhone gesendet. Kies Drive auf dem Gerät bleibt für Berechnung, Navigation und Sicherheit verantwortlich.</p>
+          </section>
+
+          <aside class="side-stack">
+            <section class="panel"><p class="eyebrow">NEUES ZIEL</p><h3>Wohin soll’s gehen?</h3><form id="destination-form" class="inline-form"><label class="sr-only" for="destination">Zielort</label><input id="destination" placeholder="Ort oder Adresse" minlength="2" maxlength="180" required><button class="icon-button" aria-label="Ziel an Kies Drive senden">→</button></form><p class="panel-caption">Das iPhone muss online und mit deinem Konto verbunden sein.</p></section>
+            <section class="panel"><p class="eyebrow">AUF DER ROUTE</p><h3>Stopp hinzufügen</h3><form id="stop-form" class="inline-form"><label class="sr-only" for="stop-query">Zwischenstopp</label><input id="stop-query" placeholder="z. B. Raststätte, Café" minlength="2" maxlength="120" required><button class="icon-button" aria-label="Stopp hinzufügen">+</button></form></section>
+            <section class="note-card"><span class="note-symbol">✳</span><div><strong>Deine Route bleibt deine.</strong><p>Auch mit Webzugriff navigiert Kies Drive lokal auf deinem Gerät weiter – selbst wenn die Verbindung zum Server einmal weg ist.</p></div></section>
+          </aside>
+        </div>
+        <footer class="dashboard-footer">KIES DRIVE <span>·</span> PRIVAT GEHOSTET AUF DEINEM TRUENAS</footer>
+      </section>
+    </main>
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  </body>
+</html>
