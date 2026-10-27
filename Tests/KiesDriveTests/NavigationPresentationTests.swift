@@ -5372,6 +5372,7 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testRouteSearchBatchLimitsRemainSmallAndBounded() {
         XCTAssertEqual(NavigationSearchBatchPolicy.timeoutNanoseconds, 8_000_000_000)
+        XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentMapSearches, 3)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentRouteSearches, 5)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentAmenitySearches, 8)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentDetourCalculations, 3)

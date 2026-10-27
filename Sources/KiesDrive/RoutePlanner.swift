@@ -5751,12 +5751,20 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         defer { timeout.cancel() }
         return await withTaskGroup(of: [MKMapItem].self, returning: [MKMapItem].self) { group in
-            for search in searches {
+            var nextSearchIndex = 0
+            func enqueueNextSearch() {
+                guard nextSearchIndex < searches.count else { return }
+                let search = searches[nextSearchIndex]
+                nextSearchIndex += 1
                 group.addTask { (try? await search.start().mapItems) ?? [] }
             }
+            let initialSearchCount = min(
+                searches.count, NavigationSearchBatchPolicy.maximumConcurrentMapSearches
+            )
+            for _ in 0..<initialSearchCount { enqueueNextSearch() }
             var results: [MKMapItem] = []
             var completedSearches = 0
-            for await items in group {
+            while let items = await group.next() {
                 completedSearches += 1
                 results.append(contentsOf: items)
                 let uniqueResultCount = NavigationSearchBatchPolicy.uniqueResultCount(
@@ -5782,6 +5790,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     group.cancelAll()
                     break
                 }
+                enqueueNextSearch()
             }
             return results
         }

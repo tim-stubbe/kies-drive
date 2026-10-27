@@ -29,6 +29,7 @@ enum NavigationSearchTimeoutPolicy {
 
 enum NavigationSearchBatchPolicy {
     static let timeoutNanoseconds: UInt64 = 8_000_000_000
+    static let maximumConcurrentMapSearches = 3
     static let maximumConcurrentRouteSearches = 5
     static let maximumConcurrentAmenitySearches = 8
     static let maximumConcurrentDetourCalculations = 3
