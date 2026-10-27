@@ -5688,6 +5688,36 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(segment.movingTime, 10)
     }
 
+    func testDriveUsageRejectsNavigationToleratedGpsJump() {
+        let start = CLLocation(
+            coordinate: .init(latitude: 49.8, longitude: 8.3), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 20,
+            timestamp: Date(timeIntervalSince1970: 1_000)
+        )
+        let jumped = CLLocation(
+            coordinate: .init(latitude: 49.803, longitude: 8.3), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 20,
+            timestamp: Date(timeIntervalSince1970: 1_001)
+        )
+
+        XCTAssertNil(DriveUsageSegmentPolicy.segment(previous: start, current: jumped))
+    }
+
+    func testDriveUsageRetainsPlausibleHighwaySpeed() throws {
+        let start = CLLocation(
+            coordinate: .init(latitude: 49.8, longitude: 8.3), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 60,
+            timestamp: Date(timeIntervalSince1970: 1_000)
+        )
+        let end = CLLocation(
+            coordinate: .init(latitude: 49.8007, longitude: 8.3), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: 60,
+            timestamp: Date(timeIntervalSince1970: 1_001)
+        )
+
+        XCTAssertNotNil(DriveUsageSegmentPolicy.segment(previous: start, current: end))
+    }
+
     func testDriveUsageRejectsStationaryJitterAndLongGaps() {
         let start = CLLocation(coordinate: .init(latitude: 49.8, longitude: 8.3),
                                altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5,

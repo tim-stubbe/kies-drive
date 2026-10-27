@@ -241,14 +241,23 @@ struct DriveUsageSessionStore {
 /// Counts only plausible movement samples received while guidance is active.
 /// Coordinates are deliberately never persisted.
 enum DriveUsageSegmentPolicy {
+    static let maximumPlausibleSpeedMetresPerSecond = 90.0
+
     static func segment(previous: CLLocation?, current: CLLocation) ->
         (distanceMetres: CLLocationDistance, movingTime: TimeInterval)? {
         guard let previous else { return nil }
+        guard previous.horizontalAccuracy >= 0, previous.horizontalAccuracy <= 65,
+              current.horizontalAccuracy >= 0, current.horizontalAccuracy <= 65 else { return nil }
         let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
         guard elapsed > 0, elapsed <= 120 else { return nil }
 
         let distance = current.distance(from: previous)
         let inferredSpeed = distance / elapsed
+        // Navigation can tolerate one coarse 350 m GPS jump to keep route
+        // matching alive. Trip statistics must be stricter: counting that
+        // fallback as real distance would inflate a short drive substantially.
+        guard distance.isFinite, inferredSpeed.isFinite,
+              inferredSpeed <= maximumPlausibleSpeedMetresPerSecond else { return nil }
         let measuredSpeed = [previous.speed, current.speed]
             .filter { $0.isFinite && $0 >= 0 }
             .max() ?? -1
