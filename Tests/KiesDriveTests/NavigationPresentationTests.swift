@@ -2861,6 +2861,45 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testPlannedFuelStopActionRejectsUnknownAndStaleStops() {
+        let candidate = BreakCandidate(
+            id: "station-a", name: "Autohof A",
+            coordinate: .init(latitude: 49, longitude: 8), progress: 0.4,
+            detourMetres: 700, isOpen: true, supportsFuel: true
+        )
+        let stop = PlannedFuelStop(
+            id: "fuel-a", candidate: candidate,
+            afterDistanceMetres: 200_000, routeProgress: 0.4,
+            explanation: "Tankstopp"
+        )
+        let result = RouteScenarioResult(
+            id: "route", routeTitle: "Route", scenario: .target(130),
+            distanceMetres: 500_000, drivingTime: 18_000, totalTime: 19_000,
+            fuel: .init(litres: 30, cost: 55, averageConsumptionLPer100km: 6),
+            toll: .unknown(reason: "Test"), breaks: [], fuelStops: [stop],
+            unlimitedFraction: 0.2
+        )
+        let plan = LongTripPlan(createdAt: Date(), results: [result], note: "")
+
+        XCTAssertTrue(PlannedStopSelectionPolicy.acceptsFuelStop(stop, currentPlan: plan))
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsFuelStop(stop, currentPlan: nil))
+
+        let movedStop = PlannedFuelStop(
+            id: stop.id, candidate: candidate,
+            afterDistanceMetres: stop.afterDistanceMetres,
+            routeProgress: 0.5, explanation: "Neu berechnet"
+        )
+        let movedResult = RouteScenarioResult(
+            id: result.id, routeTitle: result.routeTitle, scenario: result.scenario,
+            distanceMetres: result.distanceMetres, drivingTime: result.drivingTime,
+            totalTime: result.totalTime, fuel: result.fuel, toll: result.toll,
+            breaks: [], fuelStops: [movedStop], unlimitedFraction: result.unlimitedFraction
+        )
+        XCTAssertFalse(PlannedStopSelectionPolicy.acceptsFuelStop(
+            stop, currentPlan: .init(createdAt: Date(), results: [movedResult], note: "")
+        ))
+    }
+
     func testCarPlayPlannedStopsExcludeExistingAndKeepEarliestTwo() {
         func candidate(_ id: String, _ progress: Double) -> BreakCandidate {
             .init(id: id, name: "Stop \(id)", coordinate: .init(latitude: 49, longitude: 8),

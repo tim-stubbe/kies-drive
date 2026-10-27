@@ -6129,6 +6129,40 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
     }
 
+    @discardableResult
+    func addPlannedFuelStop(_ plannedStop: PlannedFuelStop, from start: CLLocationCoordinate2D,
+                            settings: DriveSettings) async -> Bool {
+        guard PlannedStopSelectionPolicy.acceptsFuelStop(
+            plannedStop, currentPlan: longTripPlan
+        ) else {
+            errorMessage = "Der Reiseplan wurde inzwischen aktualisiert. Bitte wähle den Tankstopp erneut."
+            return false
+        }
+        guard let candidate = plannedStop.candidate,
+              let station = stations.first(where: { $0.id == candidate.id }),
+              CLLocation(latitude: station.lat, longitude: station.lon).distance(
+                from: CLLocation(latitude: candidate.coordinate.latitude,
+                                 longitude: candidate.coordinate.longitude)
+              ) <= 30 else {
+            errorMessage = "Die vorgeschlagene Tankstelle ist nicht mehr aktuell. Bitte aktualisiere die Reiseplanung."
+            return false
+        }
+        if isRouteStopSelected(id: station.id) { return true }
+        guard mayInsertRouteStop(at: station.coordinate) else { return false }
+        if isNavigating, !RouteStopInsertionPolicy.isStillAhead(
+            candidateProgress: plannedStop.insertionRouteProgress,
+            currentProgress: currentInstalledRouteProgress(from: start),
+            totalRouteDistance: totalDistance
+        ) {
+            errorMessage = "Dieser Tankstopp liegt inzwischen hinter dir."
+            return false
+        }
+        return await toggleWaypoint(
+            station, from: start, settings: settings,
+            knownRouteProgress: plannedStop.insertionRouteProgress
+        )
+    }
+
     /// CarPlay presents a compact projection of the selected route scenario,
     /// not a newly authored `PlannedBreak`. Resolve that projection back to
     /// the authoritative current plan before mutating the route. This also

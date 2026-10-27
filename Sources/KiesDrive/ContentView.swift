@@ -582,6 +582,23 @@ struct DriveContentView: View {
                                 Text(stop.explanation).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                             }
                         }
+                        if let candidate = stop.candidate {
+                            let isPlanned = planner.isRouteStopSelected(id: candidate.id)
+                            Button {
+                                guard let start = location.location?.coordinate else {
+                                    planner.errorMessage = "Standort ist noch nicht verfügbar."
+                                    return
+                                }
+                                Task { await planner.addPlannedFuelStop(stop, from: start, settings: settings) }
+                            } label: {
+                                Label(isPlanned ? "Tankstopp eingeplant" : "Tankstelle zur Route hinzufügen",
+                                      systemImage: isPlanned ? "checkmark.circle.fill" : "plus.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(Color.kiesForest)
+                            .disabled(isPlanned)
+                        }
                     }
                 }
                 .padding(12).background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 14))

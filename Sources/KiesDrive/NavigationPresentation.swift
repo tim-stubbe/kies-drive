@@ -415,6 +415,14 @@ enum PlannedStopSelectionPolicy {
         currentPlan?.results.contains { $0.breaks.contains(plannedBreak) } ?? false
     }
 
+    /// Fuel-stop cards can stay on screen while the route planner refreshes.
+    /// Only allow insertion when the exact stop (including its route position)
+    /// still belongs to the current plan.
+    static func acceptsFuelStop(_ plannedStop: PlannedFuelStop,
+                                currentPlan: LongTripPlan?) -> Bool {
+        currentPlan?.results.contains { $0.fuelStops.contains(plannedStop) } ?? false
+    }
+
     static func acceptsCarPlayAction(_ action: CarPlayPlannedStopAction,
                                      currentPlan: LongTripPlan?) -> Bool {
         guard let result = currentPlan?.results.first else { return false }
