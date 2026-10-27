@@ -1912,6 +1912,13 @@ struct BreakPlanner {
                     accumulatedDetourDrivingTime: accumulatedDetourDrivingTime
                 ) - idealDrivingTime) <= drivingTime * 0.12
             }
+            // A traffic refresh can shift a chosen stop to the edge of the
+            // safe window. Keep it while it remains ahead and before the
+            // continuous-driving limit; the narrower ideal-time band is for
+            // selecting a new stop, not for silently replacing a safe one.
+            let preferredCandidates = candidatesAhead.filter {
+                preferredCandidateIDs.contains($0.id)
+            }
             // A distant stop is not an "optimal" pause merely because it is
             // the only search result. Leave the location unverified instead.
             // A required fuel stop inside the safe pause window always does both
@@ -1926,7 +1933,9 @@ struct BreakPlanner {
                 // with the progress and purpose of another.
                 best = coordinatedFuelStop.candidate
             } else {
-                best = candidatesInWindow.min {
+                let selectionPool = preferredCandidates.isEmpty
+                    ? candidatesInWindow : preferredCandidates
+                best = selectionPool.min {
                     let lhsPreferred = preferredCandidateIDs.contains($0.id)
                     let rhsPreferred = preferredCandidateIDs.contains($1.id)
                     if lhsPreferred != rhsPreferred { return lhsPreferred }

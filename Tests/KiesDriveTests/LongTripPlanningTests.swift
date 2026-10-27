@@ -1059,6 +1059,33 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks.first?.candidate?.id, "existing")
     }
 
+    func testBreakPlannerKeepsChosenStopAtEdgeOfSafeWindowAfterETAShift() {
+        let totalDrivingTime: TimeInterval = 2 * 60 * 60 + 20 * 60
+        let candidates = [
+            BreakCandidate(
+                id: "existing", name: "Gewählter Rastplatz", coordinate: .init(),
+                progress: 102.0 / 140.0, detourMetres: 900, isOpen: true
+            ),
+            BreakCandidate(
+                id: "new", name: "Näherer Rastplatz", coordinate: .init(),
+                progress: 116.0 / 140.0, detourMetres: 200, isOpen: true
+            ),
+        ]
+
+        let breaks = BreakPlanner().plan(
+            drivingTime: totalDrivingTime,
+            candidates: candidates,
+            preferredCandidateIDs: ["existing"]
+        )
+
+        XCTAssertEqual(breaks.first?.candidate?.id, "existing")
+        XCTAssertLessThanOrEqual(
+            breaks.first?.afterDriving ?? .infinity,
+            2 * 60 * 60,
+            "Keeping a selected stop must still respect the continuous-driving limit"
+        )
+    }
+
     func testBreakPlannerTieBreakIsStableAcrossProviderResultOrder() {
         let first = BreakCandidate(
             id: "z-stop", name: "Raststätte Z", coordinate: .init(latitude: 50, longitude: 8),
