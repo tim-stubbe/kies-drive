@@ -36,6 +36,10 @@ enum NavigationSearchBatchPolicy {
     static let usefulResultCount = 8
     static let minimumCompletedSearches = 2
 
+    static func shouldContinue(isCurrentRequest: Bool, taskCancelled: Bool) -> Bool {
+        isCurrentRequest && !taskCancelled
+    }
+
     static func uniqueResultCount<Result>(
         _ results: [Result], areDuplicates: (Result, Result) -> Bool
     ) -> Int {

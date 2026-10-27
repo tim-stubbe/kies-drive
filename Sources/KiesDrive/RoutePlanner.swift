@@ -5767,7 +5767,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         }
         defer { timeout.cancel() }
         return await withTaskGroup(of: [MKMapItem].self, returning: [MKMapItem].self) { group in
-            guard shouldContinue() else {
+            func mayContinue() -> Bool {
+                NavigationSearchBatchPolicy.shouldContinue(
+                    isCurrentRequest: shouldContinue(), taskCancelled: Task.isCancelled
+                )
+            }
+            guard mayContinue() else {
                 searches.forEach { $0.cancel() }
                 return []
             }
@@ -5785,7 +5790,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             var results: [MKMapItem] = []
             var completedSearches = 0
             while let items = await group.next() {
-                guard shouldContinue() else {
+                guard mayContinue() else {
                     searches.forEach { $0.cancel() }
                     group.cancelAll()
                     return []
@@ -5815,7 +5820,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     group.cancelAll()
                     break
                 }
-                if shouldContinue() {
+                if mayContinue() {
                     enqueueNextSearch()
                 } else {
                     searches.forEach { $0.cancel() }
