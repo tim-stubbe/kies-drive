@@ -388,6 +388,8 @@ def test_web_companion_serves_local_app_and_protects_live_state_and_route_action
     page = client.get("/")
     assert page.status_code == 200
     assert "Kies Drive" in page.text
+    assert 'href="web/style.css"' in page.text
+    assert 'src="web/app.js"' in page.text
     assert page.headers["content-security-policy"].startswith("default-src 'self'")
     assert client.get("/web/app.js").status_code == 200
     assert client.get("/api/web/state").status_code == 401

@@ -4,6 +4,7 @@
   const dashboard = $('dashboard-view');
   const authForm = $('auth-form');
   const sessionKey = 'kies-drive.web-session';
+  const appBase = new URL('./', window.location.href);
   let session = sessionStorage.getItem(sessionKey) || '';
   let registerMode = false;
   let refreshTimer;
@@ -29,7 +30,8 @@
     const headers = new Headers(options.headers || {});
     if (session) headers.set('Authorization', `Bearer ${session}`);
     if (options.body) headers.set('Content-Type', 'application/json');
-    const response = await fetch(path, { ...options, headers, cache: 'no-store' });
+    const relativePath = path.replace(/^\/+/, '');
+    const response = await fetch(new URL(relativePath, appBase), { ...options, headers, cache: 'no-store' });
     let body = {};
     try { body = await response.json(); } catch (_) { /* handled below */ }
     if (response.status === 401 && session) {
