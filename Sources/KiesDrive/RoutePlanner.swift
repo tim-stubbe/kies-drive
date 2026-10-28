@@ -3296,12 +3296,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 wrongWay: isWrongWay
             )
             if reliableInitialMatch {
-                if offlineInitialMatchStepIndex == progress.currentStepIndex {
+                if OfflineInitialPositionMatchPolicy.continuesCandidate(
+                    previousStepIndex: offlineInitialMatchStepIndex,
+                    currentStepIndex: progress.currentStepIndex
+                ) {
                     onRouteRecoveryFixCount += 1
                 } else {
-                    offlineInitialMatchStepIndex = progress.currentStepIndex
                     onRouteRecoveryFixCount = 1
                 }
+                offlineInitialMatchStepIndex = progress.currentStepIndex
                 guard OfflineInitialPositionMatchPolicy.isConfirmed(
                     consecutiveMatches: onRouteRecoveryFixCount
                 ) else {

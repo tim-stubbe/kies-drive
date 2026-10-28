@@ -2954,6 +2954,8 @@ enum OfflineRouteRecoveryPolicy {
 
 enum OfflineInitialPositionMatchPolicy {
     static let requiredConsecutiveMatches = 3
+    static let maximumForwardStepAdvance = 2
+    static let maximumBackwardStepJitter = 1
 
     /// The first cached-route match is authoritative only inside the same
     /// accuracy/speed-aware corridor used by deviation detection. A far-away
@@ -2972,6 +2974,19 @@ enum OfflineInitialPositionMatchPolicy {
 
     static func isConfirmed(consecutiveMatches: Int) -> Bool {
         consecutiveMatches >= requiredConsecutiveMatches
+    }
+
+    /// Cached MapKit steps can be very short around intersections. Requiring
+    /// three fixes on one exact step can keep guidance disabled while the car
+    /// is moving normally along the same route. Accept a small forward advance
+    /// and one-step GPS jitter, while rejecting a distant snap elsewhere in a
+    /// loop or parallel road sequence.
+    static func continuesCandidate(previousStepIndex: Int?, currentStepIndex: Int) -> Bool {
+        guard let previousStepIndex, previousStepIndex >= 0, currentStepIndex >= 0 else {
+            return false
+        }
+        let delta = currentStepIndex - previousStepIndex
+        return delta <= maximumForwardStepAdvance && delta >= -maximumBackwardStepJitter
     }
 }
 

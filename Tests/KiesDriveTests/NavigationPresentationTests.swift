@@ -5028,6 +5028,24 @@ final class NavigationPresentationTests: XCTestCase {
 
     func testOfflineInitialRecoveryWaitsForPositionInsideRouteCorridor() {
         XCTAssertEqual(OfflineInitialPositionMatchPolicy.requiredConsecutiveMatches, 3)
+        XCTAssertTrue(OfflineInitialPositionMatchPolicy.continuesCandidate(
+            previousStepIndex: 10, currentStepIndex: 10
+        ))
+        XCTAssertTrue(OfflineInitialPositionMatchPolicy.continuesCandidate(
+            previousStepIndex: 10, currentStepIndex: 12
+        ), "Short MapKit steps may advance while the car remains on the matched route")
+        XCTAssertTrue(OfflineInitialPositionMatchPolicy.continuesCandidate(
+            previousStepIndex: 10, currentStepIndex: 9
+        ), "One-step cursor jitter should not restart the confirmation count")
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.continuesCandidate(
+            previousStepIndex: 10, currentStepIndex: 13
+        ), "A large jump must be confirmed from scratch")
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.continuesCandidate(
+            previousStepIndex: 10, currentStepIndex: 8
+        ), "A backwards snap beyond one adjacent step must be confirmed from scratch")
+        XCTAssertFalse(OfflineInitialPositionMatchPolicy.continuesCandidate(
+            previousStepIndex: nil, currentStepIndex: 10
+        ))
         XCTAssertFalse(OfflineInitialPositionMatchPolicy.isConfirmed(consecutiveMatches: 1))
         XCTAssertFalse(OfflineInitialPositionMatchPolicy.isConfirmed(consecutiveMatches: 2))
         XCTAssertTrue(OfflineInitialPositionMatchPolicy.isConfirmed(consecutiveMatches: 3))
