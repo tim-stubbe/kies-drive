@@ -1822,12 +1822,27 @@ struct BreakPlanner {
     var maximumContinuousDriving: TimeInterval = 2 * 60 * 60
     var defaultBreakDuration: TimeInterval = 20 * 60
     var earliestStopTolerance: TimeInterval = 20 * 60
+    /// A route with more than two full days behind the wheel is not a usable
+    /// point-to-point driving plan. This also bounds work if a provider ever
+    /// returns an extreme but finite ETA.
+    var maximumPlanningHorizon: TimeInterval = 48 * 60 * 60
 
     func plan(drivingTime: TimeInterval, candidates: [BreakCandidate],
               plannedFuelStops: [PlannedFuelStop] = [],
               alreadyDrivenSinceBreak: TimeInterval = 0,
               preferredCandidateIDs: Set<String> = []) -> [PlannedBreak] {
-        let elapsed = min(maximumContinuousDriving, max(0, alreadyDrivenSinceBreak))
+        guard drivingTime.isFinite, drivingTime >= 0,
+              maximumContinuousDriving.isFinite, maximumContinuousDriving > 0,
+              defaultBreakDuration.isFinite, defaultBreakDuration >= 0,
+              earliestStopTolerance.isFinite, earliestStopTolerance >= 0,
+              maximumPlanningHorizon.isFinite, maximumPlanningHorizon > 0,
+              drivingTime <= maximumPlanningHorizon else { return [] }
+        let elapsedInput = alreadyDrivenSinceBreak.isNaN
+            ? 0
+            : (alreadyDrivenSinceBreak.isFinite
+                ? max(0, alreadyDrivenSinceBreak)
+                : (alreadyDrivenSinceBreak > 0 ? maximumContinuousDriving : 0))
+        let elapsed = min(maximumContinuousDriving, elapsedInput)
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
         var remaining = candidates.compactMap { candidate -> BreakCandidate? in
             guard BreakCandidateValidationPolicy.isUsable(candidate) else { return nil }
@@ -2179,6 +2194,20 @@ struct LongTripPlan: Equatable {
     let note: String
 }
 
+enum RoutePlanningInputValidationPolicy {
+    /// MapKit results are expected to be finite, but malformed ETA values
+    /// must never flow into the speed model and break planner. In particular,
+    /// an infinite ETA would otherwise create an unbounded sequence of breaks.
+    static func isUsable(_ route: RoutePlanningInput) -> Bool {
+        route.distanceMetres.isFinite && route.distanceMetres >= 0 &&
+            route.mapKitExpectedTravelTime.isFinite && route.mapKitExpectedTravelTime >= 0 &&
+            route.unlimitedMotorwayFraction.isFinite &&
+            route.typicalUnlimitedSpeedKmh.isFinite && route.typicalUnlimitedSpeedKmh > 0 &&
+            route.installedRouteStartProgress.isFinite &&
+            (0...1).contains(route.installedRouteStartProgress)
+    }
+}
+
 struct SpeedScenarioComparison: Equatable {
     let baseline: RouteScenarioResult
     let alternative: RouteScenarioResult
@@ -2243,7 +2272,8 @@ struct RouteComparison {
                  alreadyDrivenSinceBreak: TimeInterval = 0,
                  preferredStopCandidateIDs: Set<String> = [],
                  now: Date = Date()) -> LongTripPlan {
-        let results = routes.flatMap { route in
+        let usableRoutes = routes.filter(RoutePlanningInputValidationPolicy.isUsable)
+        let results = usableRoutes.flatMap { route in
             scenarios.map { scenario in
                 result(route: route, scenario: scenario, vehicle: vehicle,
                        alreadyDrivenSinceBreak: alreadyDrivenSinceBreak,
@@ -2251,7 +2281,10 @@ struct RouteComparison {
             }
         }
         var note = "ETA basiert auf MapKit-Verkehrsdaten. Das Zieltempo verändert nur den geeigneten Anteil ohne bekanntes Limit; Pausen kommen anschließend hinzu."
-        if routes.count < 2 {
+        if usableRoutes.count != routes.count {
+            note += " Eine Route wurde wegen ungültiger Distanz- oder Zeitdaten ausgeblendet; bitte Route erneut berechnen."
+        }
+        if usableRoutes.count < 2 {
             note += " Ein Mautvergleich erscheint nur, wenn eine echte zweite Route mit allen Pflichtpunkten und Routenvorgaben verfügbar ist."
         }
         return LongTripPlan(
