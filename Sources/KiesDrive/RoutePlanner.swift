@@ -4,8 +4,17 @@ import AVFoundation
 import CryptoKit
 
 private enum FuelStationLoadOutcome {
-    case batch(expectedProgress: Double, stations: [FuelStation])
+    case batch(expectedProgress: Double, coordinate: CLLocationCoordinate2D,
+               stations: [FuelStation], fetchedAt: Date?)
     case superseded
+}
+
+private struct FuelStationQueryCacheEntry {
+    let coordinate: CLLocationCoordinate2D
+    let fuel: String
+    let radiusKilometres: Double
+    let stations: [FuelStation]
+    let fetchedAt: Date
 }
 
 private enum SpeedLimitLoadOutcome {
@@ -356,6 +365,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var alternatives: [MKRoute] = []
     @Published var stations: [FuelStation] = []
     @Published private(set) var stationPricesAreCached = false
+    private var fuelStationQueryCache: [FuelStationQueryCacheEntry] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isRecalculating = false
@@ -6125,27 +6135,67 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             currentProgress: currentProgress,
             maximum: FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: remainingDistance)
         )
+        let cacheNow = Date()
+        fuelStationQueryCache.removeAll {
+            let age = cacheNow.timeIntervalSince($0.fetchedAt)
+            return age < 0 || age > FuelStationQueryCachePolicy.maximumAge
+        }
         var results: [(station: FuelStation, expectedProgress: Double)] = []
+        var uncachedPoints: [FuelStationQueryPolicy.SamplePoint] = []
+        for point in points {
+            let cached = fuelStationQueryCache
+                .filter {
+                    FuelStationQueryCachePolicy.canReuse(
+                        fetchedAt: $0.fetchedAt, now: cacheNow,
+                        cachedCoordinate: $0.coordinate,
+                        requestedCoordinate: point.coordinate,
+                        cachedFuel: $0.fuel, requestedFuel: fuel.apiValue,
+                        cachedRadiusKilometres: $0.radiusKilometres,
+                        requestedRadiusKilometres: FuelStationQueryPolicy.searchRadiusKilometres
+                    )
+                }
+                .max { $0.fetchedAt < $1.fetchedAt }
+            if let cached {
+                results.append(contentsOf: cached.stations.prefix(
+                    FuelStationQueryPolicy.maximumResultsPerSample
+                ).map { (station: $0, expectedProgress: point.expectedRouteProgress) })
+            } else {
+                uncachedPoints.append(point)
+            }
+        }
         var loadWasSuperseded = false
         await withTaskGroup(of: FuelStationLoadOutcome.self) { group in
             var nextPointIndex = 0
             func enqueueNextRequest() {
-                guard nextPointIndex < points.count else { return }
-                let point = points[nextPointIndex]
+                guard nextPointIndex < uncachedPoints.count else { return }
+                let point = uncachedPoints[nextPointIndex]
                 nextPointIndex += 1
                 group.addTask {
-                    .batch(expectedProgress: point.expectedRouteProgress,
-                           stations: (try? await DriveAPI.stations(
+                    do {
+                        let stations = try await DriveAPI.stations(
                             near: point.coordinate, fuel: fuel,
                             radiusKm: FuelStationQueryPolicy.searchRadiusKilometres
-                           )) ?? [])
+                        )
+                        return .batch(
+                            expectedProgress: point.expectedRouteProgress,
+                            coordinate: point.coordinate,
+                            stations: stations,
+                            fetchedAt: Date()
+                        )
+                    } catch {
+                        return .batch(
+                            expectedProgress: point.expectedRouteProgress,
+                            coordinate: point.coordinate,
+                            stations: [], fetchedAt: nil
+                        )
+                    }
                 }
             }
             let initialRequestCount = min(
-                points.count, FuelStationQueryPolicy.maximumConcurrentRequests
+                uncachedPoints.count, FuelStationQueryPolicy.maximumConcurrentRequests
             )
             for _ in 0..<initialRequestCount { enqueueNextRequest() }
-            if !points.isEmpty {
+            if !uncachedPoints.isEmpty {
                 group.addTask { [weak self] in
                     while !Task.isCancelled {
                         try? await Task.sleep(nanoseconds: 100_000_000)
@@ -6159,16 +6209,36 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     return .superseded
                 }
             }
-            var remainingRequests = points.count
+            var remainingRequests = uncachedPoints.count
             while remainingRequests > 0, let outcome = await group.next() {
                 switch outcome {
-                case .batch(let expectedProgress, let batch):
+                case .batch(let expectedProgress, let coordinate, let batch, let fetchedAt):
                     remainingRequests -= 1
                     // A malformed or unexpectedly broad backend response must
                     // not turn a bounded route query back into hundreds of
                     // objects to sort and project on the main actor.
                     for station in batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample) {
                         results.append((station, expectedProgress))
+                    }
+                    if let fetchedAt {
+                        fuelStationQueryCache.removeAll {
+                            $0.fuel == fuel.apiValue &&
+                                CLLocation(latitude: $0.coordinate.latitude,
+                                           longitude: $0.coordinate.longitude)
+                                    .distance(from: CLLocation(latitude: coordinate.latitude,
+                                                               longitude: coordinate.longitude)) < 100
+                        }
+                        fuelStationQueryCache.append(.init(
+                            coordinate: coordinate, fuel: fuel.apiValue,
+                            radiusKilometres: FuelStationQueryPolicy.searchRadiusKilometres,
+                            stations: Array(batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample)),
+                            fetchedAt: fetchedAt
+                        ))
+                        if fuelStationQueryCache.count > 24 {
+                            fuelStationQueryCache.removeFirst(
+                                fuelStationQueryCache.count - 24
+                            )
+                        }
                     }
                     // Refill one slot only after a lookup finishes, so a
                     // continental trip never launches every region at once.
@@ -6228,6 +6298,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 )
             }?.station
         }
+        // This flag means prices came from the persistent offline snapshot.
+        // The short-lived request cache above is only a performance optimization.
         stationPricesAreCached = false
     }
 

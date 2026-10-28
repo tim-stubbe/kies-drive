@@ -817,6 +817,33 @@ enum FuelStationQueryPolicy {
     }
 }
 
+enum FuelStationQueryCachePolicy {
+    /// Fuel-price responses are reused briefly across small reroutes and GPS
+    /// corrections. A short lifetime avoids presenting old prices as current.
+    static let maximumAge: TimeInterval = 2 * 60
+    static let maximumCoordinateDistance: CLLocationDistance = 1_000
+
+    static func canReuse(fetchedAt: Date, now: Date,
+                         cachedCoordinate: CLLocationCoordinate2D,
+                         requestedCoordinate: CLLocationCoordinate2D,
+                         cachedFuel: String, requestedFuel: String,
+                         cachedRadiusKilometres: Double,
+                         requestedRadiusKilometres: Double) -> Bool {
+        let age = now.timeIntervalSince(fetchedAt)
+        guard age >= 0, age <= maximumAge,
+              cachedFuel == requestedFuel,
+              cachedRadiusKilometres.isFinite, requestedRadiusKilometres.isFinite,
+              abs(cachedRadiusKilometres - requestedRadiusKilometres) < 0.01,
+              CLLocationCoordinate2DIsValid(cachedCoordinate),
+              CLLocationCoordinate2DIsValid(requestedCoordinate) else { return false }
+        return CLLocation(latitude: cachedCoordinate.latitude,
+                          longitude: cachedCoordinate.longitude)
+            .distance(from: CLLocation(latitude: requestedCoordinate.latitude,
+                                       longitude: requestedCoordinate.longitude))
+            <= maximumCoordinateDistance
+    }
+}
+
 enum SpeedLimitQueryPolicy {
     /// Route planning must remain usable when the external road-data provider
     /// is overloaded. A missing limit is safer than an indefinitely blocked

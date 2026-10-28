@@ -529,6 +529,28 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(SpeedLimitQueryPolicy.requestTimeout, 10)
     }
 
+    func testFuelStationQueryCacheOnlyReusesNearbyFreshMatchingResponses() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let cached = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        func reusable(secondsOld: TimeInterval = 60,
+                      coordinate: CLLocationCoordinate2D = .init(latitude: 50.005, longitude: 8),
+                      fuel: String = "diesel", radius: Double = 8) -> Bool {
+            FuelStationQueryCachePolicy.canReuse(
+                fetchedAt: now.addingTimeInterval(-secondsOld), now: now,
+                cachedCoordinate: cached, requestedCoordinate: coordinate,
+                cachedFuel: "diesel", requestedFuel: fuel,
+                cachedRadiusKilometres: 8, requestedRadiusKilometres: radius
+            )
+        }
+
+        XCTAssertTrue(reusable(), "Small reroute shifts should reuse a recent nearby query")
+        XCTAssertFalse(reusable(secondsOld: FuelStationQueryCachePolicy.maximumAge + 1))
+        XCTAssertFalse(reusable(coordinate: .init(latitude: 50.02, longitude: 8)))
+        XCTAssertFalse(reusable(fuel: "e10"))
+        XCTAssertFalse(reusable(radius: 6))
+        XCTAssertFalse(reusable(secondsOld: -1), "Future timestamps must not be trusted")
+    }
+
     func testFuelStationQuerySamplesRetainExpectedProgressOnRemainingRoute() {
         let route = (0...10).map {
             CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) / 100)
