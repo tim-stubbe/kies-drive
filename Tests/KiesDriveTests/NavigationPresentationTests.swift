@@ -3466,11 +3466,11 @@ final class NavigationPresentationTests: XCTestCase {
         // The final cue must start early enough to survive Bluetooth/audio
         // latency and still leave time to change lanes safely.
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 410, speedKmh: 200), .final)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 430, speedKmh: 200), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 600, speedKmh: 200), .prepare)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 240, speedKmh: 120), .final)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 270, speedKmh: 120), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 350, speedKmh: 120), .prepare)
         XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 100, speedKmh: 50), .final)
-        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 110, speedKmh: 50), .prepare)
+        XCTAssertEqual(NavigationAnnouncementStage.stage(distance: 150, speedKmh: 50), .prepare)
     }
 
     func testManeuverStageUsesBoundedGPSAccuracySafetyMargin() {
@@ -3483,14 +3483,14 @@ final class NavigationPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             NavigationAnnouncementStage.stage(
-                distance: 540, speedKmh: 200, horizontalAccuracy: 500
+                distance: 630, speedKmh: 200, horizontalAccuracy: 500
             ),
             .prepare,
             "A coarse fix must not move the announcement horizon without limit"
         )
         XCTAssertEqual(
             NavigationAnnouncementStage.stage(
-                distance: 110, speedKmh: 50, horizontalAccuracy: -1
+                distance: 150, speedKmh: 50, horizontalAccuracy: -1
             ),
             .prepare,
             "Invalid Core Location accuracy must contribute no safety margin"

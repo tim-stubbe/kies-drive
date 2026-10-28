@@ -1099,7 +1099,12 @@ enum NavigationAnnouncementStage: Int, Hashable, CaseIterable {
         // time at speed.
         let nowDistance = min(180, max(30, speedMetresPerSecond * 3.5))
         if safetyDistance <= nowDistance { return .now }
-        let finalDistance = min(450, max(70, speedMetresPerSecond * 7.5))
+        // The decisive distance cue must leave enough time to choose a lane
+        // and complete an urban turn, even when the previous fix arrived
+        // during acceleration. Ten seconds is still close enough to avoid
+        // calling out turns far ahead, while the hard cap keeps the cue
+        // bounded at motorway speeds.
+        let finalDistance = min(650, max(90, speedMetresPerSecond * 10))
         if safetyDistance <= finalDistance { return .final }
         let prepareDistance = min(1_200, max(250, speedMetresPerSecond * 18))
         if safetyDistance <= prepareDistance { return .prepare }
