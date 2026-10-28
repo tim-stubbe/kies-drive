@@ -2195,12 +2195,15 @@ struct LongTripPlan: Equatable {
 }
 
 enum RoutePlanningInputValidationPolicy {
+    static let maximumExpectedTravelTime: TimeInterval = 48 * 60 * 60
+
     /// MapKit results are expected to be finite, but malformed ETA values
     /// must never flow into the speed model and break planner. In particular,
     /// an infinite ETA would otherwise create an unbounded sequence of breaks.
     static func isUsable(_ route: RoutePlanningInput) -> Bool {
         route.distanceMetres.isFinite && route.distanceMetres >= 0 &&
             route.mapKitExpectedTravelTime.isFinite && route.mapKitExpectedTravelTime >= 0 &&
+            route.mapKitExpectedTravelTime <= maximumExpectedTravelTime &&
             route.unlimitedMotorwayFraction.isFinite &&
             route.typicalUnlimitedSpeedKmh.isFinite && route.typicalUnlimitedSpeedKmh > 0 &&
             route.installedRouteStartProgress.isFinite &&

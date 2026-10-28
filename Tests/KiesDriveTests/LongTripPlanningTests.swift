@@ -1063,20 +1063,23 @@ final class LongTripPlanningTests: XCTestCase {
         )
     }
 
-    func testRouteComparisonDropsRouteWithInfiniteMapKitETA() {
-        let route = RoutePlanningInput(
-            id: "invalid-eta", title: "Ungültige ETA", distanceMetres: 500_000,
-            mapKitExpectedTravelTime: .infinity, unlimitedMotorwayFraction: 0.5,
-            typicalUnlimitedSpeedKmh: 130,
-            toll: .unknown(reason: "Nicht geprüft"), breakCandidates: []
-        )
+    func testRouteComparisonDropsInfiniteAndImplausiblyLongMapKitETAs() {
+        let invalidETAs: [TimeInterval] = [.infinity, 49 * 60 * 60]
+        for eta in invalidETAs {
+            let route = RoutePlanningInput(
+                id: "invalid-eta", title: "Ungültige ETA", distanceMetres: 500_000,
+                mapKitExpectedTravelTime: eta, unlimitedMotorwayFraction: 0.5,
+                typicalUnlimitedSpeedKmh: 130,
+                toll: .unknown(reason: "Nicht geprüft"), breakCandidates: []
+            )
 
-        let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
-            routes: [route], scenarios: [.target(150), .target(200)], vehicle: .init()
-        )
+            let plan = RouteComparison(fuelModel: .init(), breakPlanner: .init()).compare(
+                routes: [route], scenarios: [.target(150), .target(200)], vehicle: .init()
+            )
 
-        XCTAssertTrue(plan.results.isEmpty)
-        XCTAssertTrue(plan.note.contains("ungültiger Distanz- oder Zeitdaten"))
+            XCTAssertTrue(plan.results.isEmpty)
+            XCTAssertTrue(plan.note.contains("ungültiger Distanz- oder Zeitdaten"))
+        }
     }
 
     func testBreakPlannerKeepsExistingSafeStopAcrossSmallETARefresh() {
