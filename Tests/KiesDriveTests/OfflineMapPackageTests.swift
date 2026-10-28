@@ -393,6 +393,27 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertLessThanOrEqual(maximumGap, 2_100)
     }
 
+    func testOfflineCorridorKeepsStreetLevelCoverageAcrossVeryLongRoutes() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 80),
+        ]
+        let samples = OfflineRouteCorridorCoveragePolicy.coordinates(along: route)
+        let maximumGap = zip(samples, samples.dropFirst()).map {
+            CLLocation(latitude: $0.0.latitude, longitude: $0.0.longitude).distance(
+                from: CLLocation(latitude: $0.1.latitude, longitude: $0.1.longitude)
+            )
+        }.max() ?? .infinity
+
+        XCTAssertGreaterThan(samples.count, 1_200,
+                             "A route longer than 2,400 km must not silently lose intermediate checks")
+        XCTAssertLessThanOrEqual(samples.count, OfflineRouteCorridorCoveragePolicy.maximumSamples)
+        XCTAssertLessThanOrEqual(maximumGap, 2_100,
+                                 "Route coverage probes must remain dense enough for adjacent street tiles")
+        XCTAssertEqual(try XCTUnwrap(samples.first).longitude, 8, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(samples.last).longitude, 80, accuracy: 0.000_001)
+    }
+
     func testLargeOfflineCoverageScanUsesStableCacheWindow() {
         XCTAssertEqual(OfflineTileCoverageCachePolicy.lifetime(tileCount: 9), 2)
         XCTAssertEqual(OfflineTileCoverageCachePolicy.lifetime(tileCount: 100), 2)

@@ -84,6 +84,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     private var speedLimitBadgeView: CarPlaySpeedLimitBadgeView?
     private var offlineAttributionLabel: UILabel?
     private var offlineTileOverlay: LocalXYZTileOverlay?
+    private var offlineCoverageTask: Task<Void, Never>?
+    private var offlineCoverageGeneration = UUID()
+    private var offlineCoverageRequestKey: String?
+    private var offlineCoverageLastCheckedAt: Date?
     private var mapTemplate: CPMapTemplate?
     private var audioMapButton: CPMapButton?
     private var navigationSession: CPNavigationSession?
@@ -142,6 +146,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         speedLimitBadgeView = nil
         offlineAttributionLabel = nil
         offlineTileOverlay = nil
+        offlineCoverageTask?.cancel()
+        offlineCoverageTask = nil
+        offlineCoverageGeneration = UUID()
+        offlineCoverageRequestKey = nil
+        offlineCoverageLastCheckedAt = nil
         mapTemplate = nil
         audioMapButton = nil
         routeRestoreTask?.cancel()
@@ -251,6 +260,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         speedLimitBadgeView = nil
         offlineAttributionLabel = nil
         offlineTileOverlay = nil
+        offlineCoverageTask?.cancel()
+        offlineCoverageTask = nil
+        offlineCoverageGeneration = UUID()
+        offlineCoverageRequestKey = nil
+        offlineCoverageLastCheckedAt = nil
         mapTemplate = nil
         audioMapButton = nil
         navigationSession = nil
@@ -1340,10 +1354,57 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
     }
 
     private func refreshOfflineMapOverlay(at suppliedLocation: CLLocation? = nil) {
-        guard let mapView else { return }
+        guard mapView != nil else { return }
         let store = OfflineMapPackageStore.shared
         let location = suppliedLocation ?? LocationService.shared.location
-        let package = applicableOfflinePackage(store: store, location: location)
+        let package = store.activePackage
+        let tile = package.flatMap { package in
+            location.flatMap { location in
+                OfflineTileCoordinatePolicy.tile(
+                    containing: location.coordinate,
+                    zoom: OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+                        minimumZoom: package.manifest.minimumZoom,
+                        maximumZoom: package.manifest.maximumZoom
+                    )
+                )
+            }
+        }
+        let routeSignature = visibleRoutePolylines.map { route in
+            let rect = route.boundingMapRect
+            return "\(route.pointCount):\(rect.origin.x):\(rect.origin.y):\(rect.size.width):\(rect.size.height)"
+        }.joined(separator: "|")
+        let requestKey = "\(package?.id ?? "none")|\(cameraMode)|\(tile.map { "\($0.z)/\($0.x)/\($0.y)" } ?? "no-location")|\(routeSignature)"
+        if requestKey == offlineCoverageRequestKey,
+           offlineCoverageTask != nil || offlineCoverageLastCheckedAt.map({
+               Date().timeIntervalSince($0) < 15
+           }) == true {
+            return
+        }
+        offlineCoverageRequestKey = requestKey
+        offlineCoverageLastCheckedAt = Date()
+        offlineCoverageTask?.cancel()
+        let generation = UUID()
+        offlineCoverageGeneration = generation
+        offlineCoverageTask = Task { [weak self] in
+            guard let self else { return }
+            let verifiedPackage = await self.applicableOfflinePackage(
+                store: store, location: location
+            )
+            guard !Task.isCancelled, generation == self.offlineCoverageGeneration,
+                  let mapView = self.mapView else {
+                if generation == self.offlineCoverageGeneration {
+                    self.offlineCoverageTask = nil
+                }
+                return
+            }
+            self.installOfflineMapOverlay(verifiedPackage, on: mapView)
+            self.offlineCoverageTask = nil
+        }
+    }
+
+    private func installOfflineMapOverlay(
+        _ package: InstalledOfflineMapPackage?, on mapView: MKMapView
+    ) {
         if offlineTileOverlay?.packageID != package?.id {
             if let offlineTileOverlay { mapView.removeOverlay(offlineTileOverlay) }
             offlineTileOverlay = nil
@@ -1359,7 +1420,7 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
 
     private func applicableOfflinePackage(
         store: OfflineMapPackageStore, location: CLLocation?
-    ) -> InstalledOfflineMapPackage? {
+    ) async -> InstalledOfflineMapPackage? {
         // A freely panned CarPlay camera may leave the verified route/location
         // coverage. Fall back to Apple Maps until the driver chooses follow or
         // overview again instead of showing partial local tiles as complete.
@@ -1375,26 +1436,31 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
         ) else { return nil }
         let requiredCoordinates = needsRouteCoverage
             ? routeCoordinates : [location?.coordinate].compactMap { $0 }
-        guard !requiredCoordinates.isEmpty,
-              store.hasBaseTiles(covering: requiredCoordinates, package: package),
-              store.hasZoomPyramidTiles(
-                covering: OfflineRouteCorridorCoveragePolicy.coordinates(
-                    along: requiredCoordinates, maximumSamples: 240
-                ),
-                package: package
-              ) else {
+        guard !requiredCoordinates.isEmpty else {
             return nil
         }
+        async let hasBaseTiles = store.hasBaseTilesAsync(
+            covering: requiredCoordinates, package: package
+        )
+        async let hasZoomPyramid = store.hasZoomPyramidTilesAsync(
+            covering: OfflineRouteCorridorCoveragePolicy.coordinates(
+                along: requiredCoordinates
+            ),
+            package: package
+        )
+        guard await hasBaseTiles, await hasZoomPyramid, !Task.isCancelled else { return nil }
         if needsRouteCoverage, !routeCoordinates.isEmpty {
             let corridor = OfflineRouteCorridorCoveragePolicy.coordinates(along: routeCoordinates)
-            guard store.hasNavigationTiles(along: corridor, package: package) else { return nil }
+            guard await store.hasNavigationTilesAsync(along: corridor, package: package),
+                  !Task.isCancelled else { return nil }
         } else if let location {
             let lookahead = OfflineRouteLookaheadPolicy.coordinates(
                 from: location.coordinate, route: routeCoordinates,
                 routeProgress: RoutePlanner.shared.isNavigating
                     ? RoutePlanner.shared.currentInstalledRouteProgress : nil
             )
-            guard store.hasNavigationTiles(along: lookahead, package: package) else { return nil }
+            guard await store.hasNavigationTilesAsync(along: lookahead, package: package),
+                  !Task.isCancelled else { return nil }
         }
         return package
     }

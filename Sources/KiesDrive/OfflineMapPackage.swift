@@ -145,15 +145,16 @@ enum OfflineRouteLookaheadPolicy {
 }
 
 enum OfflineRouteCorridorCoveragePolicy {
+    static let maximumSamples = 6_000
+
     /// Samples the complete route at a calm interval for preflight coverage
     /// checks. Long sparse polyline segments are interpolated, while the cap
-    /// keeps a continent-scale route from causing unbounded synchronous disk
-    /// reads. When capped, samples stay evenly distributed to retain the
-    /// destination and every major part of the journey.
+    /// keeps continent-scale route checks bounded. When capped, samples stay
+    /// evenly distributed to retain the destination and major sections.
     static func coordinates(
         along route: [CLLocationCoordinate2D],
         intervalMetres: CLLocationDistance = 2_000,
-        maximumSamples: Int = 1_200
+        maximumSamples: Int = maximumSamples
     ) -> [CLLocationCoordinate2D] {
         let route = route.filter {
             $0.latitude.isFinite && $0.longitude.isFinite &&

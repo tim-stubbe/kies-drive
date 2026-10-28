@@ -1834,7 +1834,7 @@ struct DriveContentView: View {
         )
         async let zoomPyramid = offlineMaps.hasZoomPyramidTilesAsync(
             covering: OfflineRouteCorridorCoveragePolicy.coordinates(
-                along: requiredCoordinates, maximumSamples: 240
+                along: requiredCoordinates
             ),
             package: package
         )
