@@ -5037,6 +5037,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let difference: Double?
         if let course = vehicleCourse,
            let directionalIndex = bestDirectionalIndex,
+           NavigationCourseMatchingPolicy.directionalMetricIsLocallySupported(
+                nearestDistance: bestDistance,
+                directionalDistance: bestDirectionalDistance
+           ),
            let routeCourse = NavigationCourseMatchingPolicy.bearing(
                 from: points[directionalIndex].coordinate,
                 to: points[directionalIndex + 1].coordinate

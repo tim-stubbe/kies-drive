@@ -2206,10 +2206,23 @@ struct NavigationStepMetric: Equatable {
 /// a compass while the car is stationary.
 enum NavigationCourseMatchingPolicy {
     static let maximumPlausibleDifference = 80.0
-    /// MapKit occasionally repeats a coordinate at step boundaries. Such a
-    /// zero-length segment has no direction and must not disable course
-    /// matching exactly where carriageways and ramps are closest together.
-    static let minimumDirectionalSegmentLength: CLLocationDistance = 1
+    /// Very short MapKit segments amplify coordinate quantization into large
+    /// bearing swings. A few metres of route geometry give course matching a
+    /// stable direction while leaving distance-only matching available when a
+    /// junction contains no sufficiently long local segment.
+    static let minimumDirectionalSegmentLength: CLLocationDistance = 5
+    /// A segment on another part of a crossing or looping route must not
+    /// supply the direction for the closest point on the road being matched.
+    static let maximumDirectionalGeometryDrift: CLLocationDistance = 12
+
+    static func directionalMetricIsLocallySupported(
+        nearestDistance: CLLocationDistance,
+        directionalDistance: CLLocationDistance
+    ) -> Bool {
+        nearestDistance.isFinite && nearestDistance >= 0 &&
+            directionalDistance.isFinite && directionalDistance >= nearestDistance &&
+            directionalDistance - nearestDistance <= maximumDirectionalGeometryDrift
+    }
 
     static func angularDifference(courseDegrees: Double,
                                   routeCourseDegrees: Double) -> Double? {
@@ -2232,15 +2245,21 @@ enum NavigationCourseMatchingPolicy {
         let points = coordinates.map(MKMapPoint.init)
         var bestIndex: Int?
         var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        var nearestDistance = CLLocationDistance.greatestFiniteMagnitude
         for index in points.indices.dropLast() {
-            guard points[index].distance(to: points[index + 1]) >=
-                    minimumDirectionalSegmentLength else { continue }
+            let segmentLength = points[index].distance(to: points[index + 1])
             let projection = segmentProjection(target, points[index], points[index + 1])
+            nearestDistance = min(nearestDistance, projection.distance)
+            guard segmentLength >= minimumDirectionalSegmentLength else { continue }
             guard projection.distance < bestDistance else { continue }
             bestDistance = projection.distance
             bestIndex = index
         }
-        guard let bestIndex else { return nil }
+        guard let bestIndex,
+              directionalMetricIsLocallySupported(
+                nearestDistance: nearestDistance,
+                directionalDistance: bestDistance
+              ) else { return nil }
         return bearing(from: coordinates[bestIndex], to: coordinates[bestIndex + 1])
     }
 

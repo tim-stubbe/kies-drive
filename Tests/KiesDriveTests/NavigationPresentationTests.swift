@@ -1027,6 +1027,38 @@ final class NavigationPresentationTests: XCTestCase {
         ), "A duplicate MapKit point must not hide an opposing carriageway")
     }
 
+    func testCourseMatchingSkipsSubFiveMetreGeometryJitter() throws {
+        let origin = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let tinyEastwardJitter = CLLocationCoordinate2D(
+            latitude: 50, longitude: 8.000005
+        )
+        let northbound = CLLocationCoordinate2D(
+            latitude: 50.001, longitude: 8.000005
+        )
+
+        let course = try XCTUnwrap(NavigationCourseMatchingPolicy.routeCourse(
+            near: origin, coordinates: [origin, tinyEastwardJitter, northbound]
+        ))
+
+        XCTAssertEqual(course, 0, accuracy: 1)
+        XCTAssertNil(NavigationCourseMatchingPolicy.routeCourse(
+            near: origin,
+            coordinates: [origin, tinyEastwardJitter, .init(latitude: 50, longitude: 8.00001)]
+        ), "Only sub-five-metre jitter must not invent a route heading")
+    }
+
+    func testCourseMatchingRejectsHeadingFromDistantRouteGeometry() {
+        XCTAssertTrue(NavigationCourseMatchingPolicy.directionalMetricIsLocallySupported(
+            nearestDistance: 24, directionalDistance: 35
+        ))
+        XCTAssertFalse(NavigationCourseMatchingPolicy.directionalMetricIsLocallySupported(
+            nearestDistance: 24, directionalDistance: 37
+        ), "A crossing route segment 13 m away cannot supply this road's heading")
+        XCTAssertFalse(NavigationCourseMatchingPolicy.directionalMetricIsLocallySupported(
+            nearestDistance: 24, directionalDistance: 20
+        ))
+    }
+
     func testCourseMatchingRejectsEntirelyDegenerateGeometry() {
         let point = CLLocationCoordinate2D(latitude: 50, longitude: 8)
         XCTAssertNil(NavigationCourseMatchingPolicy.routeCourse(
