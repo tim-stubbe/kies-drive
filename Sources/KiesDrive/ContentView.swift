@@ -1759,8 +1759,10 @@ struct DriveContentView: View {
             location.location.flatMap { location in
                 OfflineTileCoordinatePolicy.tile(
                     containing: location.coordinate,
-                    zoom: min(package.manifest.maximumZoom,
-                              max(package.manifest.minimumZoom, 14))
+                    zoom: OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+                        minimumZoom: package.manifest.minimumZoom,
+                        maximumZoom: package.manifest.maximumZoom
+                    )
                 )
             }
         }.map { "\($0.z)/\($0.x)/\($0.y)" } ?? "no-location-tile"

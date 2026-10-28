@@ -61,6 +61,16 @@ enum OfflineMapCoveragePolicy {
     }
 }
 
+enum OfflineTileZoomPolicy {
+    /// Offline readiness preflights the pyramid only through the normal
+    /// street-navigation zoom. Do not let an imported manifest expose higher
+    /// zooms whose tiles were never verified; MapKit could otherwise request
+    /// online-only detail while the UI labels this map as local.
+    static func maximumVerifiedStreetZoom(minimumZoom: Int, maximumZoom: Int) -> Int {
+        min(maximumZoom, max(minimumZoom, 14))
+    }
+}
+
 enum OfflineMapCameraPolicy {
     static func shouldFitOverview(showsOverview: Bool, showedOverviewPreviously: Bool,
                                   routeGeometryChanged: Bool) -> Bool {
@@ -520,8 +530,10 @@ final class OfflineMapPackageStore: ObservableObject {
     func hasZoomPyramidTiles(covering coordinates: [CLLocationCoordinate2D],
                              package: InstalledOfflineMapPackage) -> Bool {
         guard !coordinates.isEmpty else { return false }
-        let streetZoom = min(package.manifest.maximumZoom,
-                             max(package.manifest.minimumZoom, 14))
+        let streetZoom = OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+            minimumZoom: package.manifest.minimumZoom,
+            maximumZoom: package.manifest.maximumZoom
+        )
         var requiredTiles = Set<OfflineTileCoordinatePolicy.Tile>()
         for zoom in package.manifest.minimumZoom...streetZoom {
             for coordinate in coordinates {
@@ -545,8 +557,10 @@ final class OfflineMapPackageStore: ObservableObject {
 
     func hasNavigationTiles(along coordinates: [CLLocationCoordinate2D],
                             package: InstalledOfflineMapPackage) -> Bool {
-        let zoom = min(package.manifest.maximumZoom,
-                       max(package.manifest.minimumZoom, 14))
+        let zoom = OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+            minimumZoom: package.manifest.minimumZoom,
+            maximumZoom: package.manifest.maximumZoom
+        )
         let requiredTiles = coordinates.reduce(into: Set<OfflineTileCoordinatePolicy.Tile>()) {
             $0.formUnion(OfflineTileCoordinatePolicy.neighbourhood(containing: $1, zoom: zoom))
         }
@@ -569,8 +583,10 @@ final class OfflineMapPackageStore: ObservableObject {
     func hasZoomPyramidTilesAsync(covering coordinates: [CLLocationCoordinate2D],
                                   package: InstalledOfflineMapPackage) async -> Bool {
         guard !coordinates.isEmpty else { return false }
-        let streetZoom = min(package.manifest.maximumZoom,
-                             max(package.manifest.minimumZoom, 14))
+        let streetZoom = OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+            minimumZoom: package.manifest.minimumZoom,
+            maximumZoom: package.manifest.maximumZoom
+        )
         var requiredTiles = Set<OfflineTileCoordinatePolicy.Tile>()
         for zoom in package.manifest.minimumZoom...streetZoom {
             for coordinate in coordinates {
@@ -586,8 +602,10 @@ final class OfflineMapPackageStore: ObservableObject {
 
     func hasNavigationTilesAsync(along coordinates: [CLLocationCoordinate2D],
                                  package: InstalledOfflineMapPackage) async -> Bool {
-        let zoom = min(package.manifest.maximumZoom,
-                       max(package.manifest.minimumZoom, 14))
+        let zoom = OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+            minimumZoom: package.manifest.minimumZoom,
+            maximumZoom: package.manifest.maximumZoom
+        )
         let requiredTiles = coordinates.reduce(into: Set<OfflineTileCoordinatePolicy.Tile>()) {
             $0.formUnion(OfflineTileCoordinatePolicy.neighbourhood(containing: $1, zoom: zoom))
         }

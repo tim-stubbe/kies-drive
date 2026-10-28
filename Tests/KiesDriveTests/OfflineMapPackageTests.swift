@@ -272,6 +272,24 @@ final class OfflineMapPackageTests: XCTestCase {
         ))
     }
 
+    func testOfflineOverlayNeverExposesUnverifiedZoomLevels() {
+        XCTAssertEqual(
+            OfflineTileZoomPolicy.maximumVerifiedStreetZoom(minimumZoom: 8, maximumZoom: 18),
+            14,
+            "The overlay must not request higher zoom tiles than offline coverage preflight verifies"
+        )
+        XCTAssertEqual(
+            OfflineTileZoomPolicy.maximumVerifiedStreetZoom(minimumZoom: 8, maximumZoom: 12),
+            12,
+            "A package capped below street zoom must retain its declared maximum"
+        )
+        XCTAssertEqual(
+            OfflineTileZoomPolicy.maximumVerifiedStreetZoom(minimumZoom: 16, maximumZoom: 20),
+            16,
+            "A package starting above the normal street zoom must stay within its supported range"
+        )
+    }
+
     func testOfflineLookaheadStartsAtCarAndOnlySamplesRouteAhead() {
         let route = (0...12).map {
             CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) * 0.01)

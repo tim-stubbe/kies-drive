@@ -60,7 +60,10 @@ final class LocalXYZTileOverlay: MKTileOverlay {
         canReplaceMapContent = false
         tileSize = CGSize(width: 256, height: 256)
         minimumZ = package.manifest.minimumZoom
-        maximumZ = package.manifest.maximumZoom
+        maximumZ = OfflineTileZoomPolicy.maximumVerifiedStreetZoom(
+            minimumZoom: package.manifest.minimumZoom,
+            maximumZoom: package.manifest.maximumZoom
+        )
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping (Data?, (any Error)?) -> Void) {
