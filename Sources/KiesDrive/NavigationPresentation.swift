@@ -313,8 +313,8 @@ enum FuelStationPricePresentationPolicy {
     }
 
     static func sourceLabel(fuel: FuelKind, cached: Bool) -> String {
-        cached ? "Zuletzt gespeicherter Preis · \(fuel.label)"
-            : "Aktueller Serverpreis · \(fuel.label)"
+        cached ? "Gespeichert · Preisstand unbekannt · \(fuel.label)"
+            : "Serverpreis · Preisstand unbekannt · \(fuel.label)"
     }
 }
 

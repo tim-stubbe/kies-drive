@@ -3012,7 +3012,11 @@ final class NavigationPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             FuelStationPricePresentationPolicy.sourceLabel(fuel: .diesel, cached: true),
-            "Zuletzt gespeicherter Preis · Diesel"
+            "Gespeichert · Preisstand unbekannt · Diesel"
+        )
+        XCTAssertEqual(
+            FuelStationPricePresentationPolicy.sourceLabel(fuel: .diesel, cached: false),
+            "Serverpreis · Preisstand unbekannt · Diesel"
         )
     }
 
