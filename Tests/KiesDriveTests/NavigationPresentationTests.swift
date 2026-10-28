@@ -4,6 +4,34 @@ import MapKit
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testRouteCameraRefitsOnlyAnExplicitOverviewOrActiveFollowView() {
+        XCTAssertEqual(
+            NavigationRouteCameraPolicy.update(
+                navigationActive: true, followsVehicle: false, showsRouteOverview: true
+            ),
+            .fitRouteOverview
+        )
+        XCTAssertEqual(
+            NavigationRouteCameraPolicy.update(
+                navigationActive: true, followsVehicle: true, showsRouteOverview: false
+            ),
+            .followVehicle
+        )
+        XCTAssertEqual(
+            NavigationRouteCameraPolicy.update(
+                navigationActive: true, followsVehicle: false, showsRouteOverview: false
+            ),
+            .preserveUserView,
+            "A manually panned map must not snap back after rerouting"
+        )
+        XCTAssertEqual(
+            NavigationRouteCameraPolicy.update(
+                navigationActive: false, followsVehicle: true, showsRouteOverview: false
+            ),
+            .preserveUserView
+        )
+    }
+
     func testDistancePresentationUsesLocalizedMetricFormattingForTripScale() {
         let german = Locale(identifier: "de_DE")
         XCTAssertEqual(

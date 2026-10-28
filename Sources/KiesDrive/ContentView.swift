@@ -230,6 +230,20 @@ struct DriveContentView: View {
                 // all contrast against the ivory surface.
                 .environment(\.colorScheme, .light)
         }
+        .onChange(of: planner.routePresentationRevision) { _, _ in
+            switch NavigationRouteCameraPolicy.update(
+                navigationActive: planner.isNavigating,
+                followsVehicle: isFollowingLocation,
+                showsRouteOverview: isShowingRouteOverview
+            ) {
+            case .fitRouteOverview:
+                fitCompleteRouteCamera()
+            case .followVehicle:
+                followCurrentLocation()
+            case .preserveUserView:
+                break
+            }
+        }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = NavigationIdleTimerPolicy.shouldDisable(
                 navigationActive: planner.isNavigating,
@@ -1446,6 +1460,10 @@ struct DriveContentView: View {
         isFollowingLocation = false
         isShowingRouteOverview = true
         #endif
+        fitCompleteRouteCamera()
+    }
+
+    private func fitCompleteRouteCamera() {
         let routeRect: MKMapRect?
         #if targetEnvironment(simulator)
         routeRect = planner.completeDisplayMapRect ?? simulatorPlannedRoutePolyline.boundingMapRect

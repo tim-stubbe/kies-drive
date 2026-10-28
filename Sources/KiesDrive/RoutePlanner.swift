@@ -362,6 +362,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var destination: MKMapItem?
     @Published var viaStations: [FuelStation] = []
     @Published var legs: [MKRoute] = []
+    @Published private(set) var routePresentationRevision = UUID()
     @Published var alternatives: [MKRoute] = []
     @Published var stations: [FuelStation] = []
     @Published private(set) var stationPricesAreCached = false
@@ -688,6 +689,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
         }
         legs = [selectedRoute]
+        routePresentationRevision = UUID()
         comparisonRoutes = []
         liveRouteConstraintIdentity = routeLockStore.activeLock.map {
             OfflineRouteConstraintIdentityPolicy.identity(for: $0)
@@ -2552,6 +2554,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             )
             cancelSpeechForRouteReplacementIfNeeded()
             legs = computedLegs
+            routePresentationRevision = UUID()
             liveRouteDestinationCoordinate = destination.placemark.coordinate
             liveRouteConstraintIdentity = routeLockStore.activeLock.map {
                 OfflineRouteConstraintIdentityPolicy.identity(for: $0)

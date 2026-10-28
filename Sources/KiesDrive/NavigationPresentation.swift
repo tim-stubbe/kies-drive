@@ -2945,6 +2945,24 @@ enum NavigationReroutePresentationPolicy {
     }
 }
 
+enum NavigationRouteCameraUpdate: Equatable {
+    case preserveUserView
+    case followVehicle
+    case fitRouteOverview
+}
+
+enum NavigationRouteCameraPolicy {
+    /// A newly committed route changes the geometry beneath the camera. Keep
+    /// the driver's chosen framing: refit only an explicit route overview,
+    /// or refresh an active follow camera when follow mode is still enabled.
+    static func update(navigationActive: Bool, followsVehicle: Bool,
+                       showsRouteOverview: Bool) -> NavigationRouteCameraUpdate {
+        if showsRouteOverview { return .fitRouteOverview }
+        if navigationActive && followsVehicle { return .followVehicle }
+        return .preserveUserView
+    }
+}
+
 enum NavigationRouteReplacementLocationPolicy {
     /// A replacement route may immediately publish guidance only from a
     /// current, precise fix. The route calculation can take several seconds;
