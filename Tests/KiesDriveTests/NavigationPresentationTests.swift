@@ -2422,7 +2422,11 @@ final class NavigationPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText("Follow signs for E71 toward Zagreb"),
-            "Der Beschilderung folgen Richtung E 71 Richtung Zagreb."
+            "Der Beschilderung Richtung E 71 folgen nach Zagreb."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Follow signs for E71"),
+            "Der Beschilderung Richtung E 71 folgen."
         )
     }
 
