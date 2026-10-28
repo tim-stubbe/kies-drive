@@ -925,14 +925,27 @@ enum BreakAmenitySearchPolicy {
         let remainingDrivingTime = drivingTime * (1 - start)
         let elapsed = min(interval, max(0, alreadyDrivenSinceBreak))
         var next = max(0, interval - elapsed)
-        var values: [Double] = []
-        while next < remainingDrivingTime, values.count < maximum {
-            values.append(RouteTravelTimeProgress.distanceProgress(
-                timeProgress: start + next / drivingTime, segments: segments
-            ))
+        var allValues: [Double] = []
+        while next < remainingDrivingTime {
+            allValues.append(RouteTravelTimeProgress.distanceProgress(
+                timeProgress: start + next / drivingTime, segments: segments))
             next += interval
         }
-        return values
+        guard allValues.count > maximum else { return allValues }
+        if maximum == 1 { return [allValues[allValues.count / 2]] }
+        // Keep the search bounded, but spread it across the entire remaining
+        // trip. Taking only the first `maximum` windows leaves long-trip
+        // breaks near the destination without any nearby candidates.
+        return (0..<maximum).map { sampleIndex in
+            let sourceIndex = Int((Double(sampleIndex) * Double(allValues.count - 1)
+                                   / Double(maximum - 1)).rounded())
+            return allValues[sourceIndex]
+        }
+    }
+
+    static func samplingCoverageMessage(totalWindows: Int, sampledWindows: Int) -> String? {
+        guard totalWindows > sampledWindows, sampledWindows > 0 else { return nil }
+        return "Pausenorte stichprobenartig geprüft (\(sampledWindows) von \(totalWindows) Zeitfenstern); passende Orte können fehlen."
     }
 }
 

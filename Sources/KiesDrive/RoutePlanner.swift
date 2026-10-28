@@ -5963,6 +5963,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             maximum: pointLimit,
             startingTimeProgress: startingTimeProgress
         )
+        let totalBreakWindows = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: totalTravelTime,
+            alreadyDrivenSinceBreak: drivingRestState.continuousDriving,
+            segments: timeline,
+            maximum: Int.max,
+            startingTimeProgress: startingTimeProgress
+        ).count
         let searchPoints = searchProgresses.compactMap {
             RouteGeometryProgress.coordinate(at: $0, on: routeCoordinates)
         }
@@ -5997,10 +6004,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: breakCandidateLoadGeneration
         ) else { return }
-        breakCandidateSearchMessage = BreakAmenitySearchPolicy.incompleteCoverageMessage(
+        let failedSearchMessage = BreakAmenitySearchPolicy.incompleteCoverageMessage(
             completedSearches: mapSearchResults.successfulSearchCount,
             totalSearches: mapSearchResults.totalSearchCount
         )
+        let samplingMessage = BreakAmenitySearchPolicy.samplingCoverageMessage(
+            totalWindows: totalBreakWindows, sampledWindows: searchProgresses.count
+        )
+        breakCandidateSearchMessage = [samplingMessage, failedSearchMessage]
+            .compactMap { $0 }.joined(separator: " ")
+        if breakCandidateSearchMessage?.isEmpty == true { breakCandidateSearchMessage = nil }
         activeAmenitySearches = []
         guard routeCoordinates.count > 1 else { amenityBreakCandidates = []; return }
         let candidates = matches.values.compactMap { item -> BreakCandidate? in

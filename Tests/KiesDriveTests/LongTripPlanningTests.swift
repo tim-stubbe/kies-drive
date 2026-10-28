@@ -1418,12 +1418,31 @@ final class LongTripPlanningTests: XCTestCase {
 
         XCTAssertEqual(progresses.count, 4)
         XCTAssertEqual(progresses[0], 0.5 / 12, accuracy: 0.001)
-        XCTAssertEqual(progresses[1], 2.5 / 12, accuracy: 0.001)
+        XCTAssertEqual(progresses[1], 4.5 / 12, accuracy: 0.001)
+        XCTAssertEqual(progresses.last!, 10.5 / 12, accuracy: 0.001)
         XCTAssertTrue(progresses.allSatisfy { $0 >= 0 && $0 < 1 })
         XCTAssertTrue(BreakAmenitySearchPolicy.distanceProgresses(
             drivingTime: 90 * 60, alreadyDrivenSinceBreak: 0,
             segments: [(150_000, 90 * 60)], maximum: 4
         ).isEmpty)
+    }
+
+    func testBreakAmenitySearchSamplesAcrossEntireLongTrip() {
+        let progresses = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 24 * 3600,
+            alreadyDrivenSinceBreak: 0,
+            segments: [(2_400_000, 24 * 3600)],
+            maximum: 4
+        )
+
+        XCTAssertEqual(progresses.count, 4)
+        XCTAssertEqual(progresses.first!, 2.0 / 24, accuracy: 0.001)
+        XCTAssertEqual(progresses.last!, 22.0 / 24, accuracy: 0.001)
+        XCTAssertGreaterThan(progresses[1], 0.25)
+        XCTAssertLessThan(progresses[2], 0.75)
+        XCTAssertEqual(BreakAmenitySearchPolicy.samplingCoverageMessage(
+            totalWindows: 11, sampledWindows: progresses.count
+        ), "Pausenorte stichprobenartig geprüft (4 von 11 Zeitfenstern); passende Orte können fehlen.")
     }
 
     func testBreakAmenitySearchNeverQueriesPassedRouteAfterProgress() {
