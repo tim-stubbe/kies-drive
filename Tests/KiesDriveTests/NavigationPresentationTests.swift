@@ -2242,6 +2242,25 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testSpeechTranslatesEnglishForkAndBearManeuvers() {
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Bear right onto A10"),
+            "Rechts halten auf A 10."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Bear left at the fork"),
+            "An der Gabelung links halten."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("At the fork, keep right"),
+            "An der Gabelung rechts halten."
+        )
+        XCTAssertEqual(
+            NavigationSpeechFormatter.spokenText("Take the exit on the left toward Graz"),
+            "Die Ausfahrt links nehmen Richtung Graz."
+        )
+    }
+
     func testSpeechTranslatesEnglishMotorwayLaneAndExitInstructions() {
         XCTAssertEqual(
             NavigationSpeechFormatter.spokenText(
