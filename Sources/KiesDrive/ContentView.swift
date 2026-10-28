@@ -297,7 +297,8 @@ struct DriveContentView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = NavigationIdleTimerPolicy.shouldDisable(
                 navigationActive: planner.isNavigating,
-                sceneActive: scenePhase == .active
+                sceneActive: scenePhase == .active,
+                viewVisible: false
             )
         }
         .onReceive(location.$location) { newValue in

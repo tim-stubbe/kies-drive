@@ -31,10 +31,12 @@ enum NavigationDistancePresentationPolicy {
 
 enum NavigationIdleTimerPolicy {
     /// Navigation may keep the display awake only while guidance is running
-    /// and the app is actually in the foreground. Browsing the map must keep
-    /// the user's normal Auto-Lock setting intact.
-    static func shouldDisable(navigationActive: Bool, sceneActive: Bool) -> Bool {
-        navigationActive && sceneActive
+    /// and the guidance view is visible in the foreground. Leaving the root
+    /// view must release the global UIKit idle-timer override even if the trip
+    /// remains active in the background.
+    static func shouldDisable(navigationActive: Bool, sceneActive: Bool,
+                              viewVisible: Bool = true) -> Bool {
+        navigationActive && sceneActive && viewVisible
     }
 }
 

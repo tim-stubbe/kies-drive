@@ -65,6 +65,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationIdleTimerPolicy.shouldDisable(
             navigationActive: false, sceneActive: false
         ))
+        XCTAssertFalse(NavigationIdleTimerPolicy.shouldDisable(
+            navigationActive: true, sceneActive: true, viewVisible: false
+        ), "Leaving the navigation view must restore the user's normal Auto-Lock behavior")
     }
 
     func testRoundaboutPresentationKeepsOrdinalExitVisible() {
