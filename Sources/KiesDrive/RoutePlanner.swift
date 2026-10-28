@@ -2327,7 +2327,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
             required: true, optionsAfter: nil, kind: kind
         ), knownProgress: knownProgress, progress: { progress($0.clLocationCoordinate) },
-           orderedProgress: { localProgressByWaypoint?[$0.id] })
+           orderedProgress: {
+               localProgressByWaypoint?[$0.id] ?? progress($0.coordinate.clLocationCoordinate)
+           })
         routeLockStore.save(lock)
         activeRouteLock = lock
     }
