@@ -525,7 +525,47 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(FuelStationQueryPolicy.maximumConcurrentRequests, 2)
         XCTAssertEqual(FuelStationQueryPolicy.maximumResultsPerSample, 24)
         XCTAssertEqual(FuelStationQueryPolicy.requestTimeout, 8)
+        XCTAssertEqual(FuelStationQueryPolicy.searchRadiusKilometres, 8)
         XCTAssertEqual(SpeedLimitQueryPolicy.requestTimeout, 10)
+    }
+
+    func testFuelStationQuerySamplesRetainExpectedProgressOnRemainingRoute() {
+        let route = (0...10).map {
+            CLLocationCoordinate2D(latitude: 50, longitude: 8 + Double($0) / 100)
+        }
+        let remaining = RouteSearchPolicy.remainingRouteCoordinates(route, currentProgress: 0.5)
+        let points = FuelStationQueryPolicy.samplePoints(
+            on: remaining, currentProgress: 0.5, maximum: 3
+        )
+
+        XCTAssertEqual(points.count, 3)
+        XCTAssertEqual(points.first?.expectedRouteProgress ?? 0, 0.5, accuracy: 0.01)
+        XCTAssertEqual(points.last?.expectedRouteProgress ?? 0, 1, accuracy: 0.001)
+        XCTAssertLessThan(points[0].coordinate.longitude, points[1].coordinate.longitude)
+        XCTAssertLessThan(points[1].coordinate.longitude, points[2].coordinate.longitude)
+    }
+
+    func testFuelStationProjectionRangeDisambiguatesLongRouteLoops() throws {
+        let route = [
+            CLLocationCoordinate2D(latitude: 50, longitude: 8),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50.1, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.1),
+            CLLocationCoordinate2D(latitude: 50, longitude: 8.2)
+        ]
+        let range = FuelStationQueryPolicy.projectionRange(
+            around: 0.8, routeDistanceMetres: 800_000
+        )
+        let projection = try XCTUnwrap(RouteGeometryProgress.nearestProgress(
+            of: CLLocationCoordinate2D(latitude: 50, longitude: 8.1),
+            on: route,
+            progressRange: range
+        ))
+
+        XCTAssertGreaterThan(projection.progress, 0.6)
+        XCTAssertLessThan(projection.progress, 0.9)
+        XCTAssertEqual(range.lowerBound, 0.785, accuracy: 0.001)
+        XCTAssertEqual(range.upperBound, 0.815, accuracy: 0.001)
     }
 
     func testFuelPlannerContinuesAfterMandatoryDepartureRefuel() {

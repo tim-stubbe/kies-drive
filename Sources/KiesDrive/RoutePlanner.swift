@@ -4,7 +4,7 @@ import AVFoundation
 import CryptoKit
 
 private enum FuelStationLoadOutcome {
-    case batch([FuelStation])
+    case batch(expectedProgress: Double, stations: [FuelStation])
     case superseded
 }
 
@@ -5907,11 +5907,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         // Short remaining routes use only two requests; continental journeys
         // scale gradually but remain capped. This prevents server and map-pin
         // floods without throwing away geographic coverage on holiday trips.
-        let points = evenlySpaced(
-            remainingQueryCoordinates,
+        let points = FuelStationQueryPolicy.samplePoints(
+            on: remainingQueryCoordinates,
+            currentProgress: currentProgress,
             maximum: FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: remainingDistance)
         )
-        var unique: [String: FuelStation] = [:]
+        var results: [(station: FuelStation, expectedProgress: Double)] = []
         var loadWasSuperseded = false
         await withTaskGroup(of: FuelStationLoadOutcome.self) { group in
             var nextPointIndex = 0
@@ -5920,9 +5921,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 let point = points[nextPointIndex]
                 nextPointIndex += 1
                 group.addTask {
-                    .batch((try? await DriveAPI.stations(
-                        near: point, fuel: fuel, radiusKm: 8
-                    )) ?? [])
+                    .batch(expectedProgress: point.expectedRouteProgress,
+                           stations: (try? await DriveAPI.stations(
+                            near: point.coordinate, fuel: fuel,
+                            radiusKm: FuelStationQueryPolicy.searchRadiusKilometres
+                           )) ?? [])
                 }
             }
             let initialRequestCount = min(
@@ -5946,13 +5949,13 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             var remainingRequests = points.count
             while remainingRequests > 0, let outcome = await group.next() {
                 switch outcome {
-                case .batch(let batch):
+                case .batch(let expectedProgress, let batch):
                     remainingRequests -= 1
                     // A malformed or unexpectedly broad backend response must
                     // not turn a bounded route query back into hundreds of
                     // objects to sort and project on the main actor.
                     for station in batch.prefix(FuelStationQueryPolicy.maximumResultsPerSample) {
-                        unique[station.id] = station
+                        results.append((station, expectedProgress))
                     }
                     // Refill one slot only after a lookup finishes, so a
                     // continental trip never launches every region at once.
@@ -5974,16 +5977,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             request: generation, currentRequest: stationLoadGeneration
         ) else { return }
         let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 160) }
-        let nearRoute = unique.values.compactMap { station -> (station: FuelStation, progress: Double,
-                                                                corridorDistance: Double)? in
+        var unique: [String: (station: FuelStation, progress: Double, corridorDistance: Double)] = [:]
+        for result in results {
+            let station = result.station
             guard let projection = RouteGeometryProgress.nearestProgress(
-                    of: station.coordinate, on: routeCoordinates
+                    of: station.coordinate, on: routeCoordinates,
+                    progressRange: FuelStationQueryPolicy.projectionRange(
+                        around: result.expectedProgress,
+                        routeDistanceMetres: totalDistance,
+                        searchRadiusMetres: FuelStationQueryPolicy.searchRadiusMetres
+                    )
                   ), projection.distance < 4_000,
                   RouteSearchPolicy.isAhead(candidateProgress: projection.progress,
                                             currentProgress: currentProgress,
-                                            totalRouteDistance: totalDistance) else { return nil }
-            return (station, projection.progress, projection.distance)
+                                            totalRouteDistance: totalDistance) else { continue }
+            let candidate = (station, projection.progress, projection.distance)
+            if let existing = unique[station.id],
+               existing.corridorDistance <= candidate.2 { continue }
+            unique[station.id] = candidate
         }
+        let nearRoute = Array(unique.values)
         // Keep at most one strong candidate per route section. This gives the
         // break planner geographic coverage without flooding MapKit with pins.
         let bucketCount = min(12, max(1, routeCoordinates.count))

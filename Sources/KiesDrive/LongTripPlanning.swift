@@ -739,6 +739,11 @@ enum FuelStationDistributionPolicy {
 }
 
 enum FuelStationQueryPolicy {
+    struct SamplePoint {
+        let coordinate: CLLocationCoordinate2D
+        let expectedRouteProgress: Double
+    }
+
     static let maximumSampleCount = 6
     /// Keep long-route lookups from arriving at the TrueNAS price service as
     /// one burst. The sample count still covers the entire route; only the
@@ -746,11 +751,51 @@ enum FuelStationQueryPolicy {
     static let maximumConcurrentRequests = 2
     static let maximumResultsPerSample = 24
     static let requestTimeout: TimeInterval = 8
+    static let searchRadiusKilometres = 8.0
+    static let searchRadiusMetres = searchRadiusKilometres * 1_000
 
     static func sampleCount(remainingDistanceMetres: CLLocationDistance) -> Int {
         guard remainingDistanceMetres.isFinite, remainingDistanceMetres > 0 else { return 2 }
         let sections = Int(ceil(remainingDistanceMetres / 200_000))
         return min(maximumSampleCount, max(2, sections))
+    }
+
+    /// Retains the position on the remaining route for every bounded lookup.
+    /// A station may be close to several visits of a loop or crossing, so its
+    /// result must be matched near the query point that actually found it.
+    static func samplePoints(on remainingRoute: [CLLocationCoordinate2D],
+                             currentProgress: Double,
+                             maximum: Int) -> [SamplePoint] {
+        guard !remainingRoute.isEmpty else { return [] }
+        let points = RouteGeometryProgress.evenlySpaced(remainingRoute, maximum: maximum)
+        let fractions: [Double]
+        if remainingRoute.count <= maximum || maximum <= 1 {
+            fractions = RouteGeometryProgress.cumulativeFractions(remainingRoute)
+        } else {
+            fractions = (0..<points.count).map { Double($0) / Double(points.count - 1) }
+        }
+        let start = min(1, max(0, currentProgress.isFinite ? currentProgress : 0))
+        return points.enumerated().map { index, coordinate in
+            let fraction = fractions.indices.contains(index) ? fractions[index] : 0
+            return SamplePoint(
+                coordinate: coordinate,
+                expectedRouteProgress: start + fraction * (1 - start)
+            )
+        }
+    }
+
+    /// Provider results are queried within a finite radius around the sample.
+    /// Expand by that radius in route-progress units, with a small allowance
+    /// for polyline and distance-estimate differences.
+    static func projectionRange(around expectedProgress: Double,
+                                routeDistanceMetres: CLLocationDistance,
+                                searchRadiusMetres: CLLocationDistance = FuelStationQueryPolicy.searchRadiusMetres)
+        -> ClosedRange<Double> {
+        let center = min(1, max(0, expectedProgress.isFinite ? expectedProgress : 0))
+        let distance = routeDistanceMetres.isFinite ? max(0, routeDistanceMetres) : 0
+        let radius = searchRadiusMetres.isFinite ? max(0, searchRadiusMetres) : 0
+        let allowance = distance > 0 ? min(1, radius / distance + 0.005) : 1
+        return max(0, center - allowance)...min(1, center + allowance)
     }
 }
 
