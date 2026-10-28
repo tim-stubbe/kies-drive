@@ -1165,7 +1165,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let item = MKMapItem(placemark: MKPlacemark(coordinate: lock.destination.clLocationCoordinate))
         item.name = lock.destinationName
         destination = item
-        let onlineCalculationSucceeded = await calculate(from: current, settings: settings)
+        let onlineCalculationSucceeded = await calculate(
+            from: current, settings: settings, allowsCheckpointProgressFromStart: false
+        )
         // Finishing, replacing or editing the trip while MapKit was awaiting
         // a response revokes this restore. Never let an old result restart a
         // route the driver has just ended or materially changed.
@@ -2356,7 +2358,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                    showLoading: Bool = true,
                    navigationSession: UUID? = nil,
                    navigationWork: UUID? = nil,
-                   newlyReachedWaypointID: String? = nil) async -> Bool {
+                   newlyReachedWaypointID: String? = nil,
+                   allowsCheckpointProgressFromStart: Bool = true) async -> Bool {
         guard let destination else { return false }
         if NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
             isRecalculating: isRecalculating,
@@ -2393,9 +2396,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         do {
             let lock = routeLockStore.activeLock
             let constraintSnapshot = RouteCalculationConstraintSnapshot(lock)
-            var newlyPassed = Set(lock?.passedWaypointIDs(at: .init(
-                latitude: start.latitude, longitude: start.longitude
-            )) ?? [])
+            var newlyPassed = allowsCheckpointProgressFromStart
+                ? Set(lock?.passedWaypointIDs(at: .init(
+                    latitude: start.latitude, longitude: start.longitude
+                )) ?? [])
+                : []
             if let newlyReachedWaypointID {
                 newlyPassed.insert(newlyReachedWaypointID)
             }
