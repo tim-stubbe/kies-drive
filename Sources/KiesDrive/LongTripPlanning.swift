@@ -1975,11 +1975,13 @@ struct BreakPlanner {
               earliestStopTolerance.isFinite, earliestStopTolerance >= 0,
               maximumPlanningHorizon.isFinite, maximumPlanningHorizon > 0,
               drivingTime <= maximumPlanningHorizon else { return [] }
-        let elapsedInput = alreadyDrivenSinceBreak.isNaN
-            ? 0
-            : (alreadyDrivenSinceBreak.isFinite
-                ? max(0, alreadyDrivenSinceBreak)
-                : (alreadyDrivenSinceBreak > 0 ? maximumContinuousDriving : 0))
+        // A corrupt or non-finite fatigue clock is not evidence that the
+        // driver rested. Treat unknown elapsed driving conservatively as the
+        // continuous-driving limit so the plan asks for a pause now instead
+        // of silently granting another full interval.
+        let elapsedInput = alreadyDrivenSinceBreak.isFinite
+            ? max(0, alreadyDrivenSinceBreak)
+            : maximumContinuousDriving
         let elapsed = min(maximumContinuousDriving, elapsedInput)
         guard drivingTime + elapsed > maximumContinuousDriving else { return [] }
         var remaining = candidates.compactMap { candidate -> BreakCandidate? in

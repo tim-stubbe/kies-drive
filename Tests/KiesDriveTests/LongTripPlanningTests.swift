@@ -1539,6 +1539,19 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(breaks[0].routeProgress, 0, accuracy: 0.001)
     }
 
+    func testBreakPlannerTreatsNonFiniteDrivingClockAsPauseDueNow() {
+        for elapsed in [Double.nan, .infinity, -.infinity] {
+            let breaks = BreakPlanner().plan(
+                drivingTime: 60 * 60, candidates: [],
+                alreadyDrivenSinceBreak: elapsed
+            )
+
+            XCTAssertEqual(breaks.first?.afterDriving ?? -1, 0, accuracy: 1,
+                           "Unknown driving time must not postpone a safety pause")
+            XCTAssertEqual(breaks.first?.routeProgress ?? -1, 0, accuracy: 0.001)
+        }
+    }
+
     func testLongTripPlanRefreshesImmediatelyAfterPassingConcreteStop() {
         let candidate = BreakCandidate(
             id: "rest-a", name: "Raststätte", coordinate: .init(),
