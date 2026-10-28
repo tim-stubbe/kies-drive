@@ -1445,6 +1445,43 @@ final class LongTripPlanningTests: XCTestCase {
         ), "Pausenorte stichprobenartig geprüft (4 von 11 Zeitfenstern); passende Orte können fehlen.")
     }
 
+    func testBreakAmenitySearchBoundsSamplingAndRejectsInvalidTimeInputs() {
+        XCTAssertEqual(BreakAmenitySearchPolicy.windowCount(
+            drivingTime: 24 * 3600, alreadyDrivenSinceBreak: 0
+        ), 11)
+        XCTAssertEqual(BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 24 * 3600, alreadyDrivenSinceBreak: 0,
+            segments: [(2_400_000, 24 * 3600)], maximum: Int.max
+        ).count, 11)
+
+        let denseWindows = BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 48 * 3600, alreadyDrivenSinceBreak: 0,
+            segments: [(4_800_000, 48 * 3600)], maximum: Int.max, interval: 1
+        )
+        XCTAssertEqual(denseWindows.count, BreakAmenitySearchPolicy.maximumReturnedWindows)
+        XCTAssertLessThan(denseWindows.first!, denseWindows.last!)
+
+        XCTAssertTrue(BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: .infinity, alreadyDrivenSinceBreak: 0,
+            segments: [], maximum: Int.max
+        ).isEmpty)
+        XCTAssertTrue(BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 48 * 3600 + 1, alreadyDrivenSinceBreak: 0,
+            segments: [], maximum: Int.max
+        ).isEmpty)
+        XCTAssertTrue(BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 48 * 3600, alreadyDrivenSinceBreak: 0,
+            segments: [], maximum: Int.max, interval: .leastNonzeroMagnitude
+        ).isEmpty)
+    }
+
+    func testBreakAmenitySearchTreatsUnknownFatigueAsDueAtCurrentPosition() {
+        XCTAssertEqual(BreakAmenitySearchPolicy.distanceProgresses(
+            drivingTime: 5 * 3600, alreadyDrivenSinceBreak: .nan,
+            segments: [(500_000, 5 * 3600)], maximum: 4
+        ).first ?? -1, 0, accuracy: 0.001)
+    }
+
     func testBreakAmenitySearchNeverQueriesPassedRouteAfterProgress() {
         let segments: [(distance: Double, travelTime: TimeInterval)] = [
             (1_200_000, 12 * 3600)

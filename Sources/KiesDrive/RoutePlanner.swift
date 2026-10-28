@@ -5966,13 +5966,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             maximum: pointLimit,
             startingTimeProgress: startingTimeProgress
         )
-        let totalBreakWindows = BreakAmenitySearchPolicy.distanceProgresses(
+        let totalBreakWindows = BreakAmenitySearchPolicy.windowCount(
             drivingTime: totalTravelTime,
             alreadyDrivenSinceBreak: drivingRestState.continuousDriving,
-            segments: timeline,
-            maximum: Int.max,
             startingTimeProgress: startingTimeProgress
-        ).count
+        )
         let searchPoints = searchProgresses.compactMap {
             RouteGeometryProgress.coordinate(at: $0, on: routeCoordinates)
         }

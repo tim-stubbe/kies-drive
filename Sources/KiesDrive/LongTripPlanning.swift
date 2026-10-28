@@ -857,7 +857,9 @@ enum RouteTravelTimeProgress {
     /// with plain values so the safety-critical math remains unit-testable.
     static func value(distanceProgress: Double,
                       segments: [(distance: Double, travelTime: TimeInterval)]) -> Double {
-        let valid = segments.map {
+        let valid = segments.filter {
+            $0.distance.isFinite && $0.travelTime.isFinite
+        }.map {
             (distance: max(0, $0.distance), travelTime: max(0, $0.travelTime))
         }.filter { $0.distance > 0 }
         let totalDistance = valid.reduce(0) { $0 + $1.distance }
@@ -883,7 +885,9 @@ enum RouteTravelTimeProgress {
     /// and fast motorway legs therefore do not shift a planned break by hours.
     static func distanceProgress(timeProgress: Double,
                                  segments: [(distance: Double, travelTime: TimeInterval)]) -> Double {
-        let valid = segments.map {
+        let valid = segments.filter {
+            $0.distance.isFinite && $0.travelTime.isFinite
+        }.map {
             (distance: max(0, $0.distance), travelTime: max(0, $0.travelTime))
         }.filter { $0.distance > 0 && $0.travelTime > 0 }
         let totalDistance = valid.reduce(0) { $0 + $1.distance }
@@ -906,6 +910,10 @@ enum RouteTravelTimeProgress {
 }
 
 enum BreakAmenitySearchPolicy {
+    static let maximumDrivingTime: TimeInterval = 48 * 60 * 60
+    static let minimumSearchInterval: TimeInterval = 1
+    static let maximumReturnedWindows = 64
+
     static func incompleteCoverageMessage(completedSearches: Int,
                                           totalSearches: Int) -> String? {
         guard totalSearches > 0, completedSearches < totalSearches else { return nil }
@@ -920,27 +928,54 @@ enum BreakAmenitySearchPolicy {
         startingTimeProgress: Double = 0,
         interval: TimeInterval = 2 * 60 * 60
     ) -> [Double] {
-        guard drivingTime > 0, maximum > 0, interval > 0 else { return [] }
-        let start = min(1, max(0, startingTimeProgress))
+        let totalWindows = windowCount(
+            drivingTime: drivingTime,
+            alreadyDrivenSinceBreak: alreadyDrivenSinceBreak,
+            startingTimeProgress: startingTimeProgress,
+            interval: interval
+        )
+        guard totalWindows > 0, maximum > 0 else { return [] }
+        let sampleCount = min(totalWindows, min(maximum, maximumReturnedWindows))
+        let start = startingTimeProgress.isFinite
+            ? min(1, max(0, startingTimeProgress)) : 0
+        let elapsed = alreadyDrivenSinceBreak.isFinite
+            ? min(interval, max(0, alreadyDrivenSinceBreak)) : interval
+        let firstWindowTime = max(0, interval - elapsed)
+        return (0..<sampleCount).map { sampleIndex in
+            let sourceIndex: Int
+            if sampleCount == 1 {
+                sourceIndex = totalWindows / 2
+            } else {
+                sourceIndex = Int((Double(sampleIndex) * Double(totalWindows - 1)
+                                   / Double(sampleCount - 1)).rounded())
+            }
+            let time = firstWindowTime + Double(sourceIndex) * interval
+            return RouteTravelTimeProgress.distanceProgress(
+                timeProgress: start + time / drivingTime, segments: segments
+            )
+        }
+    }
+
+    /// Counts theoretical time windows without materializing them. Search
+    /// callers use this to report partial coverage while the map queries stay
+    /// capped to a small, deterministic sample across the full route.
+    static func windowCount(
+        drivingTime: TimeInterval,
+        alreadyDrivenSinceBreak: TimeInterval,
+        startingTimeProgress: Double = 0,
+        interval: TimeInterval = 2 * 60 * 60
+    ) -> Int {
+        guard drivingTime.isFinite, drivingTime > 0,
+              drivingTime <= maximumDrivingTime,
+              interval.isFinite, interval >= minimumSearchInterval else { return 0 }
+        let start = startingTimeProgress.isFinite
+            ? min(1, max(0, startingTimeProgress)) : 0
         let remainingDrivingTime = drivingTime * (1 - start)
-        let elapsed = min(interval, max(0, alreadyDrivenSinceBreak))
-        var next = max(0, interval - elapsed)
-        var allValues: [Double] = []
-        while next < remainingDrivingTime {
-            allValues.append(RouteTravelTimeProgress.distanceProgress(
-                timeProgress: start + next / drivingTime, segments: segments))
-            next += interval
-        }
-        guard allValues.count > maximum else { return allValues }
-        if maximum == 1 { return [allValues[allValues.count / 2]] }
-        // Keep the search bounded, but spread it across the entire remaining
-        // trip. Taking only the first `maximum` windows leaves long-trip
-        // breaks near the destination without any nearby candidates.
-        return (0..<maximum).map { sampleIndex in
-            let sourceIndex = Int((Double(sampleIndex) * Double(allValues.count - 1)
-                                   / Double(maximum - 1)).rounded())
-            return allValues[sourceIndex]
-        }
+        let elapsed = alreadyDrivenSinceBreak.isFinite
+            ? min(interval, max(0, alreadyDrivenSinceBreak)) : interval
+        let firstWindowTime = max(0, interval - elapsed)
+        guard firstWindowTime < remainingDrivingTime else { return 0 }
+        return Int(ceil((remainingDrivingTime - firstWindowTime) / interval))
     }
 
     static func samplingCoverageMessage(totalWindows: Int, sampledWindows: Int) -> String? {
