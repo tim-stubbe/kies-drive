@@ -193,6 +193,7 @@ enum RouteCorridorRestorePolicy {
     static func matchAlongRoute(
         for coordinate: DriveCoordinate,
         in corridor: [DriveCoordinate],
+        progressValues: [Double]? = nil,
         previousProgress: Double? = nil,
         preferredProgress: Double? = nil,
         minimumProgress: Double? = nil,
@@ -200,15 +201,30 @@ enum RouteCorridorRestorePolicy {
         toleranceMetres: CLLocationDistance = 75
     ) -> Match? {
         guard corridor.count > 1 else { return nil }
+        let mappedProgress = progressValues.flatMap { values -> [Double]? in
+            guard values.count == corridor.count,
+                  values.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
+                  zip(values, values.dropFirst()).allSatisfy({ $0 <= $1 }),
+                  values.first == 0, values.last == 1 else { return nil }
+            return values
+        }
         let point = MKMapPoint(coordinate.clLocationCoordinate)
         let lowerProgress = max(
             0,
             min(1, minimumProgress ?? previousProgress ?? 0) - max(0, backwardsAllowance)
         )
         let segmentCount = corridor.count - 1
-        let firstSegment = min(segmentCount - 1, max(
-            0, Int((lowerProgress * Double(segmentCount)).rounded(.down))
-        ))
+        let firstSegment: Int
+        if let mappedProgress {
+            firstSegment = min(segmentCount - 1, max(0,
+                (0..<segmentCount).first(where: { mappedProgress[$0 + 1] >= lowerProgress })
+                    ?? segmentCount - 1
+            ))
+        } else {
+            firstSegment = min(segmentCount - 1, max(
+                0, Int((lowerProgress * Double(segmentCount)).rounded(.down))
+            ))
+        }
         var candidates: [Match] = []
         for index in firstSegment..<segmentCount {
             let start = MKMapPoint(corridor[index].clLocationCoordinate)
@@ -220,7 +236,15 @@ enum RouteCorridorRestorePolicy {
                 ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
             ))
             let projection = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
-            let progress = (Double(index) + fraction) / Double(segmentCount)
+            let progress: Double
+            if let mappedProgress {
+                progress = mappedProgress[index]
+                    + (mappedProgress[index + 1] - mappedProgress[index]) * fraction
+            } else {
+                // Legacy locks stored index-based progress. Keep that domain
+                // until they are replaced so saved checkpoints remain valid.
+                progress = (Double(index) + fraction) / Double(segmentCount)
+            }
             guard progress + 0.000_001 >= lowerProgress else { continue }
             candidates.append(.init(
                 segmentIndex: index, fraction: fraction,
@@ -427,6 +451,9 @@ struct ActiveRouteLock: Codable, Equatable, Identifiable, Sendable {
     var defaultOptions: LockedRouteOptions
     var corridorWidthMetres: Double
     var corridorPoints: [DriveCoordinate]?
+    /// Distance-normalized progress for each corridor anchor. Nil preserves
+    /// the legacy index-based progress domain for already persisted trips.
+    var corridorProgressValues: [Double]? = nil
     var visitedWaypointIDs: [String]?
     /// Monotonic progress on the original locked corridor. Optional so route
     /// locks written by older app versions continue to decode.
@@ -450,6 +477,7 @@ enum ActiveRouteLockRefreshPolicy {
         fallbackOptions: LockedRouteOptions,
         fallbackCorridorWidthMetres: Double,
         fallbackCorridorPoints: [DriveCoordinate],
+        fallbackCorridorProgressValues: [Double] = [],
         now: Date = Date()
     ) -> ActiveRouteLock {
         ActiveRouteLock(
@@ -461,6 +489,12 @@ enum ActiveRouteLockRefreshPolicy {
             defaultOptions: existing?.defaultOptions ?? fallbackOptions,
             corridorWidthMetres: existing?.corridorWidthMetres ?? fallbackCorridorWidthMetres,
             corridorPoints: existing?.corridorPoints ?? fallbackCorridorPoints,
+            corridorProgressValues: existing?.corridorProgressValues
+                ?? (existing?.lastRouteProgress == nil
+                    ? (existing?.corridorPoints.map { RouteGeometryProgress.cumulativeFractions(
+                        $0.map(\.clLocationCoordinate)
+                    ) } ?? fallbackCorridorProgressValues)
+                    : nil),
             visitedWaypointIDs: existing?.visitedWaypointIDs ?? [],
             lastRouteProgress: existing?.lastRouteProgress,
             status: .active,
@@ -577,7 +611,15 @@ enum ActiveRouteLockValidationPolicy {
                       $0.isFinite && (0...1).contains($0)
                   } ?? true
               }),
-              lock.corridorPoints?.allSatisfy(isValid) ?? true
+              lock.corridorPoints?.allSatisfy(isValid) ?? true,
+              lock.corridorProgressValues.map({ values in
+                  guard let points = lock.corridorPoints, values.count == points.count,
+                        values.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
+                        zip(values, values.dropFirst()).allSatisfy({ $0 <= $1 }) else {
+                      return false
+                  }
+                  return values.count < 2 || (values.first == 0 && values.last == 1)
+              }) ?? true
         else { return false }
         return true
     }
@@ -694,7 +736,8 @@ extension ActiveRouteLock {
     func passedWaypointIDs(at current: DriveCoordinate) -> [String] {
         guard let corridorPoints, corridorPoints.count > 2 else { return [] }
         guard let currentMatch = RouteCorridorRestorePolicy.matchAlongRoute(
-            for: current, in: corridorPoints, previousProgress: lastRouteProgress
+            for: current, in: corridorPoints, progressValues: corridorProgressValues,
+            previousProgress: lastRouteProgress
         ), currentMatch.distance <= RouteLockRestorePreparationPolicy.maximumCheckpointAdvanceDistance
         else { return [] }
 
@@ -706,7 +749,8 @@ extension ActiveRouteLock {
                 if let progress = waypoint.insertionRouteProgress, progress.isFinite {
                     previousWaypointProgress = max(
                         previousWaypointProgress ?? 0,
-                        Self.progressImmediatelyAfter(progress, corridorCount: corridorPoints.count)
+                        Self.progressImmediatelyAfter(progress, corridorCount: corridorPoints.count,
+                                                       progressValues: corridorProgressValues)
                     )
                 }
                 continue
@@ -714,6 +758,7 @@ extension ActiveRouteLock {
             let preferredProgress = waypoint.insertionRouteProgress ?? previousWaypointProgress
             guard let match = RouteCorridorRestorePolicy.matchAlongRoute(
                 for: waypoint.coordinate, in: corridorPoints,
+                progressValues: corridorProgressValues,
                 preferredProgress: preferredProgress,
                 minimumProgress: previousWaypointProgress,
                 backwardsAllowance: 0
@@ -722,7 +767,8 @@ extension ActiveRouteLock {
                 previousWaypointProgress ?? 0,
                 Self.progressImmediatelyAfter(
                     match.progress,
-                    corridorCount: corridorPoints.count
+                    corridorCount: corridorPoints.count,
+                    progressValues: corridorProgressValues
                 )
             )
             if visited.contains(waypoint.id) { continue }
@@ -746,9 +792,14 @@ extension ActiveRouteLock {
     }
 
     private static func progressImmediatelyAfter(_ progress: Double,
-                                                 corridorCount: Int) -> Double {
+                                                 corridorCount: Int,
+                                                 progressValues: [Double]?) -> Double {
         let lastIndex = max(0, corridorCount - 1)
         guard lastIndex > 0, progress.isFinite else { return 1 }
+        if let values = progressValues, values.count == corridorCount,
+           let index = values.indices.first(where: { values[$0] >= progress }) {
+            return values[min(lastIndex, index + 1)]
+        }
         let index = Int((max(0, min(1, progress)) * Double(lastIndex)).rounded(.up))
         return Double(min(lastIndex, index + 1)) / Double(lastIndex)
     }
@@ -911,7 +962,8 @@ enum RouteLockRestorePreparationPolicy {
                           now: Date = Date()) -> ActiveRouteLock {
         guard let corridor = lock.corridorPoints,
               let match = RouteCorridorRestorePolicy.matchAlongRoute(
-                for: current, in: corridor, previousProgress: lock.lastRouteProgress
+                for: current, in: corridor, progressValues: lock.corridorProgressValues,
+                previousProgress: lock.lastRouteProgress
               ), match.distance <= maximumCheckpointAdvanceDistance else { return lock }
         let newlyPassed = Set(lock.passedWaypointIDs(at: current))
         guard !newlyPassed.isEmpty else { return lock }

@@ -964,6 +964,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let options = LockedRouteOptions(avoidTolls: DriveSettings.shared.avoidTolls,
                                          avoidHighways: DriveSettings.shared.avoidHighways)
         let existing = routeLockStore.activeLock
+        let fallbackCorridor = legs.flatMap { sample($0.polyline, maximum: 120) }
+            .map { DriveCoordinate(latitude: $0.latitude, longitude: $0.longitude) }
+        let fallbackProgress = fallbackCorridor.count > 1
+            ? RouteGeometryProgress.cumulativeFractions(fallbackCorridor.map(\.clLocationCoordinate))
+            : []
         let lock = ActiveRouteLockRefreshPolicy.refreshed(
             existing: existing,
             title: destination.name ?? destinationText,
@@ -972,8 +977,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             fallbackWaypoints: viaStations.map(RouteStopWaypointFactory.fuelStation),
             fallbackOptions: options,
             fallbackCorridorWidthMetres: 5_000,
-            fallbackCorridorPoints: legs.flatMap { sample($0.polyline, maximum: 120) }
-                .map { .init(latitude: $0.latitude, longitude: $0.longitude) }
+            fallbackCorridorPoints: fallbackCorridor,
+            fallbackCorridorProgressValues: fallbackProgress
         )
         routeLockStore.save(lock)
         activeRouteLock = lock
@@ -3952,7 +3957,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
               let match = RouteCorridorRestorePolicy.matchAlongRoute(
                 for: .init(latitude: location.coordinate.latitude,
                            longitude: location.coordinate.longitude),
-                in: corridor, previousProgress: lock.lastRouteProgress
+                in: corridor, progressValues: lock.corridorProgressValues,
+                previousProgress: lock.lastRouteProgress
               ),
               match.distance <= RouteLockRestorePreparationPolicy.maximumCheckpointAdvanceDistance
         else { return }

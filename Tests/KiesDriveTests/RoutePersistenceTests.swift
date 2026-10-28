@@ -1210,6 +1210,70 @@ final class RoutePersistenceTests: XCTestCase {
         )
     }
 
+    func testCorridorRestoreProgressUsesDistanceWeightedAnchors() throws {
+        let corridor = [
+            DriveCoordinate(latitude: 50, longitude: 8),
+            DriveCoordinate(latitude: 50, longitude: 8.001),
+            DriveCoordinate(latitude: 50, longitude: 8.101),
+        ]
+        let progress = [0.0, 0.01, 1.0]
+        let point = DriveCoordinate(latitude: 50, longitude: 8.051)
+
+        let match = try XCTUnwrap(RouteCorridorRestorePolicy.matchAlongRoute(
+            for: point, in: corridor, progressValues: progress
+        ))
+
+        XCTAssertEqual(match.segmentIndex, 1)
+        XCTAssertEqual(match.progress, 0.505, accuracy: 0.002)
+        XCTAssertNotEqual(match.progress, 0.75, accuracy: 0.01,
+                          "Long and short corridor segments must not count as equal trip progress")
+    }
+
+    func testLegacyCorridorProgressRemainsIndexBasedUntilMigrated() throws {
+        let corridor = [
+            DriveCoordinate(latitude: 50, longitude: 8),
+            DriveCoordinate(latitude: 50, longitude: 8.001),
+            DriveCoordinate(latitude: 50, longitude: 8.101),
+        ]
+        let match = try XCTUnwrap(RouteCorridorRestorePolicy.matchAlongRoute(
+            for: .init(latitude: 50, longitude: 8.051), in: corridor
+        ))
+        XCTAssertEqual(match.progress, 0.75, accuracy: 0.002)
+
+        let now = Date(timeIntervalSince1970: 1_000)
+        let legacy = ActiveRouteLock(
+            id: UUID(), title: "Alt", destinationName: "Ziel", destination: corridor[2],
+            waypoints: [], defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: corridor,
+            lastRouteProgress: 0.7, status: .active, createdAt: now, updatedAt: now
+        )
+        let refreshed = ActiveRouteLockRefreshPolicy.refreshed(
+            existing: legacy, title: "Neu", destinationName: "Ziel",
+            destination: corridor[2], fallbackWaypoints: [],
+            fallbackOptions: legacy.defaultOptions, fallbackCorridorWidthMetres: 5_000,
+            fallbackCorridorPoints: corridor, fallbackCorridorProgressValues: [0, 0.01, 1], now: now
+        )
+        XCTAssertNil(refreshed.corridorProgressValues,
+                     "Existing persisted progress and its interpretation must stay paired")
+        XCTAssertEqual(refreshed.lastRouteProgress, 0.7)
+    }
+
+    func testRouteLockRejectsMalformedCorridorProgressMap() {
+        var lock = ActiveRouteLock.hochheimViaWurzenpass()
+        lock.corridorPoints = [
+            .init(latitude: 50, longitude: 8), .init(latitude: 51, longitude: 9),
+            .init(latitude: 52, longitude: 10),
+        ]
+        lock.corridorProgressValues = [0, 0.8]
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.corridorProgressValues = [0, 0.9, 0.7]
+        XCTAssertFalse(ActiveRouteLockValidationPolicy.isValid(lock))
+
+        lock.corridorProgressValues = [0, 0.5, 1]
+        XCTAssertTrue(ActiveRouteLockValidationPolicy.isValid(lock))
+    }
+
     func testRestoreNeverAutoCompletesRealStopsAlreadyBehindCurrentPosition() {
         let lock = ActiveRouteLock(
             id: UUID(), title: "Nordfahrt", destinationName: "Ziel",
