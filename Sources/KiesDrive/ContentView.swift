@@ -2605,26 +2605,31 @@ struct DriveSettingsView: View {
                             LabeledContent("Automatisch behoben", value: "\(latestSummary.resolvedRouteIssues)")
                         }
                         if latestSummary.quality != .good {
-                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.routeRestoreFailures) fehlgeschlagene Wiederherstellung(en), \(latestSummary.routeStopFailures) nicht berechenbare Zwischenstopps, \(latestSummary.locationServiceFailures) GPS-Dienstfehler, \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
+                            Text("Offene Punkte und Messwerte stehen unter Fahrtdetails.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        LabeledContent("Ereignisse dieser Fahrt", value: "\(latestSummary.eventCount)")
-                        LabeledContent("Neuberechnungen", value: "\(latestSummary.rerouteRequests)")
-                        LabeledContent("Fehlgeschlagen", value: "\(latestSummary.rerouteFailures)")
-                        LabeledContent("Wiederherstellung fehlgeschlagen", value: "\(latestSummary.routeRestoreFailures)")
-                        LabeledContent("Zwischenstopp fehlgeschlagen", value: "\(latestSummary.routeStopFailures)")
-                        LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
-                        LabeledContent("GPS-Dienstfehler offen", value: "\(latestSummary.locationServiceFailures)")
-                        LabeledContent("GPS-Unterbrechungen", value: "\(latestSummary.recoveredLocationGaps)")
-                        LabeledContent("Ziel sicher erkannt", value: "\(latestSummary.arrivals)")
-                        LabeledContent("Gesprochene Manöver", value: "\(latestSummary.maneuverAnnouncements)")
-                        LabeledContent("Pausenhinweise gezeigt", value: "\(latestSummary.breakRemindersShown)")
-                        LabeledContent("Pausenhinweise gesprochen", value: "\(latestSummary.breakRemindersAnnounced)")
-                        LabeledContent("Erholungspausen erkannt", value: "\(latestSummary.restBreaksCompleted)")
-                        LabeledContent("Tankhinweise gezeigt", value: "\(latestSummary.fuelRemindersShown)")
-                        LabeledContent("Tankhinweise gesprochen", value: "\(latestSummary.fuelRemindersAnnounced)")
-                        LabeledContent("Nicht beendete Fahransagen", value: "\(latestSummary.speechDeliveryFailures)")
-                        LabeledContent("Letzte Ansage verpasst", value: "\(latestSummary.missedFinalCues)")
+                        DisclosureGroup("Fahrtdetails") {
+                            LabeledContent("Ereignisse", value: "\(latestSummary.eventCount)")
+                            LabeledContent("Neuberechnungen", value: "\(latestSummary.rerouteRequests)")
+                            LabeledContent("Fehlgeschlagene Neuberechnungen", value: "\(latestSummary.rerouteFailures)")
+                            LabeledContent("Wiederherstellungen fehlgeschlagen", value: "\(latestSummary.routeRestoreFailures)")
+                            LabeledContent("Zwischenstopps fehlgeschlagen", value: "\(latestSummary.routeStopFailures)")
+                            LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
+                            LabeledContent("GPS-Dienstfehler offen", value: "\(latestSummary.locationServiceFailures)")
+                            LabeledContent("GPS-Unterbrechungen", value: "\(latestSummary.recoveredLocationGaps)")
+                            LabeledContent("Ziel sicher erkannt", value: "\(latestSummary.arrivals)")
+                            LabeledContent("Gesprochene Manöver", value: "\(latestSummary.maneuverAnnouncements)")
+                            LabeledContent("Pausenhinweise gezeigt", value: "\(latestSummary.breakRemindersShown)")
+                            LabeledContent("Pausenhinweise gesprochen", value: "\(latestSummary.breakRemindersAnnounced)")
+                            LabeledContent("Erholungspausen erkannt", value: "\(latestSummary.restBreaksCompleted)")
+                            LabeledContent("Tankhinweise gezeigt", value: "\(latestSummary.fuelRemindersShown)")
+                            LabeledContent("Tankhinweise gesprochen", value: "\(latestSummary.fuelRemindersAnnounced)")
+                            LabeledContent("Sprachansagen fehlgeschlagen", value: "\(latestSummary.speechDeliveryFailures)")
+                            LabeledContent("Letzte Ansage verpasst", value: "\(latestSummary.missedFinalCues)")
+                            if latestSummary.offlineRouteDepartures > 0 {
+                                LabeledContent("Offline-Abweichungen", value: "\(latestSummary.offlineRouteDepartures)")
+                            }
+                        }
                     } else {
                         LabeledContent("Letzte Fahrt", value: "Noch keine Daten")
                     }
