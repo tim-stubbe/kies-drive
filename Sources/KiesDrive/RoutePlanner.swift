@@ -527,6 +527,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var offlineDeviationWarningActive = false
     private var arrivalStrikes = 0
     private var arrivalCandidateSince: Date?
+    private var arrivalLastFixAt: Date?
     private var stationLoadGeneration = UUID()
     private var breakCandidateLoadGeneration = UUID()
     private var breakDetourLoadGeneration = UUID()
@@ -3641,6 +3642,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         resetDeviationTracking()
         arrivalStrikes = 0
         arrivalCandidateSince = nil
+        arrivalLastFixAt = nil
         lastAcceptedNavigationLocation = nil
         lastReliableGuidanceSpeedMps = nil
         lastReliableGuidanceSpeedAt = nil
@@ -3710,11 +3712,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return false
         }
         if NavigationArrivalPolicy.isArrivalFix(location, destination: coordinate) {
+            if !NavigationArrivalPolicy.continuesArrivalEvidence(
+                previousFix: arrivalLastFixAt, currentFix: location.timestamp
+            ) {
+                arrivalStrikes = 0
+                arrivalCandidateSince = nil
+            }
             if arrivalStrikes == 0 { arrivalCandidateSince = location.timestamp }
             arrivalStrikes += 1
+            arrivalLastFixAt = location.timestamp
         } else {
             arrivalStrikes = 0
             arrivalCandidateSince = nil
+            arrivalLastFixAt = nil
         }
         guard arrivalStrikes >= NavigationArrivalPolicy.requiredConsecutiveFixes,
               NavigationArrivalPolicy.hasSettled(
@@ -3723,6 +3733,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
         arrivalStrikes = 0
         arrivalCandidateSince = nil
+        arrivalLastFixAt = nil
         closeOutstandingManeuverDiagnostic(reason: .arrival)
         finishUsageSession()
         invalidateNavigationAsyncWork()

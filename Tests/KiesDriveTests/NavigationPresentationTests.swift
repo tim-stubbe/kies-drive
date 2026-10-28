@@ -4698,6 +4698,16 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(NavigationArrivalPolicy.hasSettled(
             since: firstFix, at: firstFix.addingTimeInterval(4)
         ))
+        XCTAssertFalse(NavigationArrivalPolicy.continuesArrivalEvidence(
+            previousFix: firstFix, currentFix: firstFix.addingTimeInterval(0.2)
+        ), "Duplicate or near-duplicate callbacks cannot count as independent fixes")
+        XCTAssertTrue(NavigationArrivalPolicy.continuesArrivalEvidence(
+            previousFix: firstFix, currentFix: firstFix.addingTimeInterval(1)
+        ))
+        XCTAssertFalse(NavigationArrivalPolicy.continuesArrivalEvidence(
+            previousFix: firstFix,
+            currentFix: firstFix.addingTimeInterval(NavigationArrivalPolicy.maximumFixInterval + 1)
+        ), "A long GPS gap must restart arrival confirmation")
     }
 
     func testAccountLoginResponseDecodesServerSession() throws {

@@ -2287,6 +2287,11 @@ enum NavigationGuidanceSpeedPolicy {
 enum NavigationArrivalPolicy {
     static let requiredConsecutiveFixes = 3
     static let requiredStableDuration: TimeInterval = 4
+    /// Repeated callbacks can contain the same cached Core Location sample.
+    /// They must not count as independent evidence that the car has arrived.
+    static let minimumFixInterval: TimeInterval = 1
+    /// A gap means we no longer know that the vehicle remained near the goal.
+    static let maximumFixInterval: TimeInterval = 8
     static let maximumRemainingRouteDistance: CLLocationDistance = 250
 
     static func mayCompleteTrip(hasOpenRequiredWaypoints: Bool,
@@ -2311,6 +2316,12 @@ enum NavigationArrivalPolicy {
         guard let firstFix else { return false }
         let duration = currentFix.timeIntervalSince(firstFix)
         return duration >= requiredStableDuration
+    }
+
+    static func continuesArrivalEvidence(previousFix: Date?, currentFix: Date) -> Bool {
+        guard let previousFix else { return true }
+        let interval = currentFix.timeIntervalSince(previousFix)
+        return interval >= minimumFixInterval && interval <= maximumFixInterval
     }
 }
 
