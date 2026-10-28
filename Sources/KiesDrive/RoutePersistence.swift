@@ -66,6 +66,45 @@ enum RouteWaypointVisitConfirmationPolicy {
 enum RouteWaypointPassedProgressPolicy {
     static let minimumLeadMetres: CLLocationDistance = 150
 
+    static func isSafelyBeyond(waypoint: RouteCorridorRestorePolicy.Match,
+                               current: RouteCorridorRestorePolicy.Match,
+                               corridor: [DriveCoordinate],
+                               minimumLead: CLLocationDistance = minimumLeadMetres) -> Bool {
+        guard corridor.indices.contains(waypoint.segmentIndex),
+              corridor.indices.contains(waypoint.segmentIndex + 1),
+              corridor.indices.contains(current.segmentIndex),
+              corridor.indices.contains(current.segmentIndex + 1),
+              current.progress > waypoint.progress else { return false }
+        let waypointSegmentLength = CLLocation(
+            latitude: corridor[waypoint.segmentIndex].latitude,
+            longitude: corridor[waypoint.segmentIndex].longitude
+        ).distance(from: CLLocation(
+            latitude: corridor[waypoint.segmentIndex + 1].latitude,
+            longitude: corridor[waypoint.segmentIndex + 1].longitude
+        ))
+        let currentSegmentLength = CLLocation(
+            latitude: corridor[current.segmentIndex].latitude,
+            longitude: corridor[current.segmentIndex].longitude
+        ).distance(from: CLLocation(
+            latitude: corridor[current.segmentIndex + 1].latitude,
+            longitude: corridor[current.segmentIndex + 1].longitude
+        ))
+        var distance = waypointSegmentLength * (1 - waypoint.fraction)
+        if current.segmentIndex > waypoint.segmentIndex + 1 {
+            for index in (waypoint.segmentIndex + 1)..<current.segmentIndex {
+                distance += CLLocation(
+                    latitude: corridor[index].latitude,
+                    longitude: corridor[index].longitude
+                ).distance(from: CLLocation(
+                    latitude: corridor[index + 1].latitude,
+                    longitude: corridor[index + 1].longitude
+                ))
+            }
+        }
+        distance += currentSegmentLength * current.fraction
+        return distance >= max(0, minimumLead)
+    }
+
     static func isSafelyBeyond(waypointIndex: Int, currentIndex: Int,
                                corridor: [DriveCoordinate],
                                minimumLead: CLLocationDistance = minimumLeadMetres) -> Bool {
@@ -141,6 +180,64 @@ enum RouteCorridorPolicy {
 }
 
 enum RouteCorridorRestorePolicy {
+    struct Match: Equatable {
+        let segmentIndex: Int
+        let fraction: Double
+        let distance: CLLocationDistance
+        let progress: Double
+    }
+
+    /// Map matches against line segments instead of sparse corridor vertices.
+    /// Long persisted trips intentionally use a small set of evenly spaced
+    /// anchors; a vehicle between anchors is still on the corridor.
+    static func matchAlongRoute(
+        for coordinate: DriveCoordinate,
+        in corridor: [DriveCoordinate],
+        previousProgress: Double? = nil,
+        preferredProgress: Double? = nil,
+        minimumProgress: Double? = nil,
+        backwardsAllowance: Double = 0.02,
+        toleranceMetres: CLLocationDistance = 75
+    ) -> Match? {
+        guard corridor.count > 1 else { return nil }
+        let point = MKMapPoint(coordinate.clLocationCoordinate)
+        let lowerProgress = max(
+            0,
+            min(1, minimumProgress ?? previousProgress ?? 0) - max(0, backwardsAllowance)
+        )
+        let segmentCount = corridor.count - 1
+        let firstSegment = min(segmentCount - 1, max(
+            0, Int((lowerProgress * Double(segmentCount)).rounded(.down))
+        ))
+        var candidates: [Match] = []
+        for index in firstSegment..<segmentCount {
+            let start = MKMapPoint(corridor[index].clLocationCoordinate)
+            let end = MKMapPoint(corridor[index + 1].clLocationCoordinate)
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let lengthSquared = dx * dx + dy * dy
+            let fraction = lengthSquared == 0 ? 0 : max(0, min(1,
+                ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
+            ))
+            let projection = MKMapPoint(x: start.x + fraction * dx, y: start.y + fraction * dy)
+            let progress = (Double(index) + fraction) / Double(segmentCount)
+            guard progress + 0.000_001 >= lowerProgress else { continue }
+            candidates.append(.init(
+                segmentIndex: index, fraction: fraction,
+                distance: point.distance(to: projection), progress: progress
+            ))
+        }
+        guard let minimum = candidates.map(\.distance).min(), minimum.isFinite else { return nil }
+        let nearBest = candidates.filter { $0.distance <= minimum + max(0, toleranceMetres) }
+        if let preferredProgress, preferredProgress.isFinite {
+            let preferred = max(lowerProgress, min(1, preferredProgress))
+            return nearBest.min {
+                abs($0.progress - preferred) < abs($1.progress - preferred)
+            }
+        }
+        return nearBest.min { $0.progress < $1.progress }
+    }
+
     /// At a crossing several corridor samples can be virtually equally close.
     /// Choosing the absolute nearest one is unstable with metre-level GPS
     /// noise, so restoration deliberately chooses the earliest near-best
@@ -596,9 +693,10 @@ extension ActiveRouteLock {
     /// empty when the current position is not plausibly inside the corridor.
     func passedWaypointIDs(at current: DriveCoordinate) -> [String] {
         guard let corridorPoints, corridorPoints.count > 2 else { return [] }
-        guard let currentMatch = RouteCorridorRestorePolicy.forwardNearBestMatch(
+        guard let currentMatch = RouteCorridorRestorePolicy.matchAlongRoute(
             for: current, in: corridorPoints, previousProgress: lastRouteProgress
-        ), currentMatch.distance <= max(corridorWidthMetres * 2, 5_000) else { return [] }
+        ), currentMatch.distance <= RouteLockRestorePreparationPolicy.maximumCheckpointAdvanceDistance
+        else { return [] }
 
         let visited = Set(visitedWaypointIDs ?? [])
         var passed: [String] = []
@@ -614,15 +712,16 @@ extension ActiveRouteLock {
                 continue
             }
             let preferredProgress = waypoint.insertionRouteProgress ?? previousWaypointProgress
-            guard let match = RouteCorridorRestorePolicy.nearBestMatch(
+            guard let match = RouteCorridorRestorePolicy.matchAlongRoute(
                 for: waypoint.coordinate, in: corridorPoints,
                 preferredProgress: preferredProgress,
-                minimumProgress: previousWaypointProgress
+                minimumProgress: previousWaypointProgress,
+                backwardsAllowance: 0
             ) else { break }
             previousWaypointProgress = max(
                 previousWaypointProgress ?? 0,
                 Self.progressImmediatelyAfter(
-                    Double(match.index) / Double(max(1, corridorPoints.count - 1)),
+                    match.progress,
                     corridorCount: corridorPoints.count
                 )
             )
@@ -634,8 +733,8 @@ extension ActiveRouteLock {
             // rule on the return leg.
             guard waypoint.mayAutoCompleteWhenPassed else { break }
             guard RouteWaypointPassedProgressPolicy.isSafelyBeyond(
-                waypointIndex: match.index,
-                currentIndex: currentMatch.index,
+                waypoint: match,
+                current: currentMatch,
                 corridor: corridorPoints
             ) else { break }
             // Keep the point active until the matched corridor has advanced a
@@ -802,7 +901,7 @@ enum RouteLockRestorePreparationPolicy {
     /// happens to be near its broad recovery envelope is not enough evidence
     /// to consume mandatory checkpoints during restore; otherwise a parallel
     /// road or an unrelated location can silently skip a locked segment.
-    static let maximumCheckpointAdvanceDistance: CLLocationDistance = 250
+    static let maximumCheckpointAdvanceDistance: CLLocationDistance = 350
 
     /// Commit mandatory checkpoints already passed before the asynchronous
     /// route request starts. The restore snapshot must then include this
@@ -811,7 +910,7 @@ enum RouteLockRestorePreparationPolicy {
     static func preparing(_ lock: ActiveRouteLock, at current: DriveCoordinate,
                           now: Date = Date()) -> ActiveRouteLock {
         guard let corridor = lock.corridorPoints,
-              let match = RouteCorridorRestorePolicy.forwardNearBestMatch(
+              let match = RouteCorridorRestorePolicy.matchAlongRoute(
                 for: current, in: corridor, previousProgress: lock.lastRouteProgress
               ), match.distance <= maximumCheckpointAdvanceDistance else { return lock }
         let newlyPassed = Set(lock.passedWaypointIDs(at: current))

@@ -1175,6 +1175,41 @@ final class RoutePersistenceTests: XCTestCase {
                        RouteCalculationConstraintSnapshot(lock))
     }
 
+    func testSparseLongTripCorridorMatchesRoadBetweenStoredAnchors() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let corridor = (0...5).map {
+            DriveCoordinate(latitude: Double($0), longitude: 8)
+        }
+        let current = DriveCoordinate(latitude: 2.5, longitude: 8)
+        let match = try XCTUnwrap(RouteCorridorRestorePolicy.matchAlongRoute(
+            for: current, in: corridor
+        ))
+
+        XCTAssertEqual(match.segmentIndex, 2)
+        XCTAssertEqual(match.fraction, 0.5, accuracy: 0.001)
+        XCTAssertLessThan(match.distance, 1)
+
+        let lock = ActiveRouteLock(
+            id: UUID(), title: "Urlaubsfahrt", destinationName: "Ziel",
+            destination: corridor[5],
+            waypoints: [.init(
+                id: "pass", name: "Pass", coordinate: corridor[1], required: true,
+                optionsAfter: .init(avoidTolls: false, avoidHighways: true),
+                kind: .routeConstraint, insertionRouteProgress: 0.2
+            )],
+            defaultOptions: .init(avoidTolls: false, avoidHighways: false),
+            corridorWidthMetres: 8_000, corridorPoints: corridor,
+            visitedWaypointIDs: [], status: .active, createdAt: now, updatedAt: now
+        )
+
+        XCTAssertEqual(lock.passedWaypointIDs(at: current), ["pass"])
+        XCTAssertEqual(
+            RouteLockRestorePreparationPolicy.preparing(lock, at: current).visitedWaypointIDs,
+            ["pass"],
+            "A valid fix between sparse route anchors must still restore past a completed route constraint"
+        )
+    }
+
     func testRestoreNeverAutoCompletesRealStopsAlreadyBehindCurrentPosition() {
         let lock = ActiveRouteLock(
             id: UUID(), title: "Nordfahrt", destinationName: "Ziel",

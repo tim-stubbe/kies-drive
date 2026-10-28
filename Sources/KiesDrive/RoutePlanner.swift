@@ -3895,14 +3895,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         persistOfflineCacheProgress(at: location.timestamp)
         guard let lock = routeLockStore.activeLock,
               let corridor = lock.corridorPoints, corridor.count > 2,
-              let match = RouteCorridorRestorePolicy.forwardNearBestMatch(
+              let match = RouteCorridorRestorePolicy.matchAlongRoute(
                 for: .init(latitude: location.coordinate.latitude,
                            longitude: location.coordinate.longitude),
                 in: corridor, previousProgress: lock.lastRouteProgress
               ),
-              match.distance <= max(lock.corridorWidthMetres * 2, 5_000)
+              match.distance <= RouteLockRestorePreparationPolicy.maximumCheckpointAdvanceDistance
         else { return }
-        let progress = Double(match.index) / Double(corridor.count - 1)
+        let progress = match.progress
         let previous = lock.lastRouteProgress ?? 0
         guard progress >= previous else { return }
         let now = location.timestamp
