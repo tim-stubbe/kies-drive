@@ -187,6 +187,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             map.mapType = CarPlayMapAppearancePolicy.mapType(
                 for: DriveSettings.shared.mapAppearance
             )
+            // Keep the road geometry and next-maneuver card readable at
+            // driving glance distance. Kies Drive's own route stops remain
+            // visible as annotations and searchable through the CarPlay list.
+            map.pointOfInterestFilter = .excludingAll
             map.userTrackingMode = .followWithHeading
             map.delegate = self
             controller.view.addSubview(map)

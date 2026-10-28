@@ -1741,11 +1741,30 @@ struct DriveContentView: View {
                 }
             )
         } else if showsNavigationUI {
-            mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
+            switch settings.mapAppearance {
+            case .standard:
+                mapBase.mapStyle(.standard(
+                    elevation: .realistic,
+                    pointsOfInterest: .excludingAll,
+                    showsTraffic: true
+                ))
+            case .hybrid:
+                mapBase.mapStyle(.hybrid(
+                    elevation: .realistic,
+                    pointsOfInterest: .excludingAll,
+                    showsTraffic: true
+                ))
+            }
         } else {
             switch settings.mapAppearance {
-            case .standard: mapBase.mapStyle(.standard(elevation: .realistic, showsTraffic: true))
-            case .hybrid: mapBase.mapStyle(.hybrid(elevation: .realistic, showsTraffic: true))
+            case .standard:
+                mapBase.mapStyle(.standard(
+                    elevation: .realistic, pointsOfInterest: .all, showsTraffic: true
+                ))
+            case .hybrid:
+                mapBase.mapStyle(.hybrid(
+                    elevation: .realistic, pointsOfInterest: .all, showsTraffic: true
+                ))
             }
         }
     }
