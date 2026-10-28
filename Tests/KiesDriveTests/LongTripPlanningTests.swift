@@ -1472,10 +1472,13 @@ final class LongTripPlanningTests: XCTestCase {
             state, tripID: tripID, at: start.addingTimeInterval(120),
             speedMetresPerSecond: 0
         )
-        state = DrivingRestPolicy.updated(
-            state, tripID: tripID, at: start.addingTimeInterval(1_321),
-            speedMetresPerSecond: 0
-        )
+        for minute in 3...22 {
+            state = DrivingRestPolicy.updated(
+                state, tripID: tripID,
+                at: start.addingTimeInterval(TimeInterval(minute * 60)),
+                speedMetresPerSecond: 0
+            )
+        }
         XCTAssertEqual(state.continuousDriving, 0)
         XCTAssertNotNil(state.stationarySince)
     }
@@ -1625,8 +1628,15 @@ final class LongTripPlanningTests: XCTestCase {
             existing, tripID: tripID, at: pause, speedMetresPerSecond: 0
         )
         XCTAssertEqual(state.stationarySince, pause)
+        for minute in 1...20 {
+            state = DrivingRestPolicy.updated(
+                state, tripID: tripID,
+                at: pause.addingTimeInterval(TimeInterval(minute * 60)),
+                speedMetresPerSecond: 0
+            )
+        }
         state = DrivingRestPolicy.updated(
-            state, tripID: tripID, at: pause.addingTimeInterval(20 * 60),
+            state, tripID: tripID, at: pause.addingTimeInterval(21 * 60),
             speedMetresPerSecond: 20
         )
         XCTAssertEqual(state.continuousDriving, 0)
@@ -1737,6 +1747,13 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(state.continuousDriving, 7_000)
         XCTAssertEqual(state.stationarySince, firstObservedStop)
 
+        for minute in 1...19 {
+            state = DrivingRestPolicy.updated(
+                state, tripID: tripID,
+                at: firstObservedStop.addingTimeInterval(TimeInterval(minute * 60)),
+                speedMetresPerSecond: 0
+            )
+        }
         state = DrivingRestPolicy.updated(
             state, tripID: tripID,
             at: firstObservedStop.addingTimeInterval(20 * 60 - 1),
@@ -1750,6 +1767,43 @@ final class LongTripPlanningTests: XCTestCase {
             speedMetresPerSecond: 0
         )
         XCTAssertEqual(state.continuousDriving, 0)
+    }
+
+    func testDrivingRestPolicyDoesNotExtendStationaryEvidenceAcrossLongGap() {
+        let tripID = UUID()
+        let start = Date(timeIntervalSince1970: 26_000)
+        let existing = DrivingRestState(
+            tripID: tripID, continuousDriving: 5_400,
+            lastSampleAt: start, stationarySince: start,
+            lastSampleWasMoving: false
+        )
+        let afterUnknownGap = start.addingTimeInterval(60 * 60)
+
+        let moving = DrivingRestPolicy.updated(
+            existing, tripID: tripID, at: afterUnknownGap,
+            speedMetresPerSecond: 20
+        )
+        XCTAssertEqual(moving.continuousDriving, 5_400,
+                       "A long gap cannot prove that a prior break stayed stationary")
+        XCTAssertNil(moving.stationarySince)
+
+        var stopped = DrivingRestPolicy.updated(
+            existing, tripID: tripID, at: afterUnknownGap,
+            speedMetresPerSecond: 0
+        )
+        XCTAssertEqual(stopped.continuousDriving, 5_400)
+        XCTAssertEqual(stopped.stationarySince, afterUnknownGap,
+                       "A new break starts at the first fresh stationary fix")
+
+        for minute in 1...20 {
+            stopped = DrivingRestPolicy.updated(
+                stopped, tripID: tripID,
+                at: afterUnknownGap.addingTimeInterval(TimeInterval(minute * 60)),
+                speedMetresPerSecond: 0
+            )
+        }
+        XCTAssertEqual(stopped.continuousDriving, 0,
+                       "Fresh, continuous stationary samples can still confirm a real break")
     }
 
     func testDrivingRestPolicyCountsProlongedStopAndGoAsDriving() {

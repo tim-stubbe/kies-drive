@@ -1255,14 +1255,22 @@ enum DrivingRestPolicy {
             state.continuousDriving += interval
         }
 
+        // A remembered stationary start proves a restorative break only while
+        // recent location samples keep confirming that the vehicle stayed
+        // still. After a long gap it may have driven and stopped again; elapsed
+        // wall time alone must never erase the accumulated fatigue clock.
+        let stationaryEvidenceIsContinuous = !wasMoving &&
+            interval <= maximumCountedSampleGap
+
         if isMoving {
-            if let stationarySince = state.stationarySince,
+            if stationaryEvidenceIsContinuous,
+               let stationarySince = state.stationarySince,
                date.timeIntervalSince(stationarySince) >= restResetDuration {
                 state.continuousDriving = 0
             }
             state.stationarySince = nil
         } else {
-            if state.stationarySince == nil {
+            if !stationaryEvidenceIsContinuous || state.stationarySince == nil {
                 // Missing samples are not proof of a break: the driver may
                 // have travelled throughout the gap and stopped only for this
                 // fix. Count rest only from the first observed stationary fix.
