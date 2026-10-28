@@ -1942,11 +1942,23 @@ enum RemainingRoutePlanningPolicy {
     static func rebasedCandidates(_ candidates: [BreakCandidate],
                                   distanceProgress: Double,
                                   timeProgress: Double) -> [BreakCandidate] {
-        let distanceStart = min(1, max(0, distanceProgress))
-        let timeStart = min(1, max(0, timeProgress))
+        // Without a trustworthy physical cursor, a previously saved stop
+        // might already be behind the driver. Do not revive it after restore.
+        guard distanceProgress.isFinite, (0...1).contains(distanceProgress) else {
+            return []
+        }
+        let distanceStart = distanceProgress
+        // Traffic ETA can temporarily be unavailable after app restoration;
+        // use physical progress for the time fallback instead of inventing a
+        // zero-time start that would move stops further down the trip.
+        let timeProgressIsUsable = timeProgress.isFinite && (0...1).contains(timeProgress)
+        let timeStart = timeProgressIsUsable ? timeProgress : distanceStart
         let distanceRemainder = max(0.000_001, 1 - distanceStart)
         let timeRemainder = max(0.000_001, 1 - timeStart)
         return candidates.compactMap { candidate in
+            guard candidate.progress.isFinite, (0...1).contains(candidate.progress) else {
+                return nil
+            }
             let candidateTime = candidate.timeProgress ?? candidate.progress
             // Physical route progress is authoritative for whether a place is
             // still ahead. Traffic can shorten the current ETA enough that a
@@ -1957,7 +1969,9 @@ enum RemainingRoutePlanningPolicy {
                 (candidate.progress - distanceStart) / distanceRemainder
             ))
             let rebasedTime: Double
-            if candidate.timeProgress != nil,
+            if timeProgressIsUsable,
+               let candidateTimeProgress = candidate.timeProgress,
+               candidateTimeProgress.isFinite, (0...1).contains(candidateTimeProgress),
                candidateTime > timeStart + 0.000_1 {
                 rebasedTime = min(1, max(0,
                     (candidateTime - timeStart) / timeRemainder
@@ -1971,7 +1985,9 @@ enum RemainingRoutePlanningPolicy {
             return BreakCandidate(
                 id: candidate.id, name: candidate.name, coordinate: candidate.coordinate,
                 progress: rebasedDistance,
-                installedRouteProgress: candidate.installedRouteProgress ?? candidate.progress,
+                installedRouteProgress: candidate.installedRouteProgress.flatMap {
+                    $0.isFinite && (0...1).contains($0) ? $0 : nil
+                } ?? candidate.progress,
                 timeProgress: rebasedTime,
                 detourMetres: candidate.detourMetres,
                 detourIsEstimated: candidate.detourIsEstimated,

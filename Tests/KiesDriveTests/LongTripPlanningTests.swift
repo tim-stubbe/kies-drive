@@ -2289,6 +2289,48 @@ final class LongTripPlanningTests: XCTestCase {
         ).isEmpty)
     }
 
+    func testRemainingRoutePlanningRejectsInvalidProgressWithoutRevivingOldStops() {
+        let candidates = [
+            BreakCandidate(id: "valid", name: "Voraus", coordinate: .init(),
+                           progress: 0.7, timeProgress: 0.8,
+                           detourMetres: 100, isOpen: true),
+            BreakCandidate(id: "invalid", name: "Ungültig", coordinate: .init(),
+                           progress: .nan, timeProgress: 0.8,
+                           detourMetres: 100, isOpen: true),
+        ]
+
+        XCTAssertTrue(RemainingRoutePlanningPolicy.rebasedCandidates(
+            candidates, distanceProgress: .nan, timeProgress: 0.4
+        ).isEmpty, "Unknown physical progress must not restore a possibly passed stop")
+        XCTAssertTrue(RemainingRoutePlanningPolicy.rebasedCandidates(
+            candidates, distanceProgress: .infinity, timeProgress: 0.4
+        ).isEmpty)
+
+        let rebased = RemainingRoutePlanningPolicy.rebasedCandidates(
+            candidates, distanceProgress: 0.4, timeProgress: .nan
+        )
+        XCTAssertEqual(rebased.map(\.id), ["valid"])
+        XCTAssertEqual(rebased[0].progress, 0.5, accuracy: 0.001)
+        XCTAssertEqual(rebased[0].timeProgress ?? -1, 0.5, accuracy: 0.001,
+                       "An unavailable ETA should follow the physical route position")
+    }
+
+    func testRemainingRoutePlanningSanitizesStoredStopProgressFields() {
+        let candidate = BreakCandidate(
+            id: "ahead", name: "Voraus", coordinate: .init(),
+            progress: 0.7, installedRouteProgress: .nan, timeProgress: .infinity,
+            detourMetres: 100, isOpen: true
+        )
+
+        let rebased = RemainingRoutePlanningPolicy.rebasedCandidates(
+            [candidate], distanceProgress: 0.4, timeProgress: 0.5
+        )
+
+        XCTAssertEqual(rebased.count, 1)
+        XCTAssertEqual(rebased[0].installedRouteProgress ?? -1, 0.7, accuracy: 0.001)
+        XCTAssertEqual(rebased[0].timeProgress ?? -1, 0.5, accuracy: 0.001)
+    }
+
     func testRemainingRouteFuelEstimateAccountsForDistanceAlreadyDriven() {
         let fraction = RemainingRoutePlanningPolicy.estimatedFuelFraction(
             departureFraction: 0.8, tankCapacityLitres: 50,
