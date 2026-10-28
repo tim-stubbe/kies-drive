@@ -165,6 +165,20 @@ final class NavigationPresentationTests: XCTestCase {
         )
     }
 
+    func testRouteWideAmenitySearchCannotStopAfterEarlyNearbyResults() {
+        XCTAssertTrue(NavigationSearchBatchPolicy.shouldFinishEarly(
+            uniqueResultCount: NavigationSearchBatchPolicy.usefulResultCount,
+            completedSearches: NavigationSearchBatchPolicy.minimumCompletedSearches,
+            totalSearches: 12
+        ))
+        XCTAssertFalse(NavigationSearchBatchPolicy.shouldFinishEarly(
+            allowsEarlyFinish: false,
+            uniqueResultCount: NavigationSearchBatchPolicy.usefulResultCount,
+            completedSearches: NavigationSearchBatchPolicy.minimumCompletedSearches,
+            totalSearches: 12
+        ), "Long-trip stop searches must cover later route regions even when the first areas return many results")
+    }
+
     func testRouteSearchExplainsWhyNoStopCanBeOffered() {
         XCTAssertEqual(
             RouteSearchEmptyResultPolicy.message(

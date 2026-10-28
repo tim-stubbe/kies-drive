@@ -5810,7 +5810,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 route: routeGeneration, currentRoute: self.routeCalculationGeneration,
                 request: generation, currentRequest: self.breakCandidateLoadGeneration
             )
-        })
+        }, allowsEarlyFinish: false)
         for item in mapSearchResults.items {
             let coordinate = item.placemark.coordinate
             matches["\(item.name ?? "Halt"):\(coordinate.latitude):\(coordinate.longitude)"] = item
@@ -5910,7 +5910,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                         toleranceMetres: 80
                     )
                 }
-                if allowsEarlyFinish && NavigationSearchBatchPolicy.shouldFinishEarly(
+                if NavigationSearchBatchPolicy.shouldFinishEarly(
+                    allowsEarlyFinish: allowsEarlyFinish,
                     uniqueResultCount: uniqueResultCount,
                     completedSearches: completedSearches,
                     totalSearches: searches.count

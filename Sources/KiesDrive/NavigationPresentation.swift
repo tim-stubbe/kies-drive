@@ -50,9 +50,10 @@ enum NavigationSearchBatchPolicy {
         return unique.count
     }
 
-    static func shouldFinishEarly(uniqueResultCount: Int, completedSearches: Int,
+    static func shouldFinishEarly(allowsEarlyFinish: Bool = true,
+                                  uniqueResultCount: Int, completedSearches: Int,
                                   totalSearches: Int) -> Bool {
-        totalSearches > completedSearches &&
+        allowsEarlyFinish && totalSearches > completedSearches &&
             completedSearches >= minimumCompletedSearches &&
             uniqueResultCount >= usefulResultCount
     }
