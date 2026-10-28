@@ -114,6 +114,19 @@ enum DestinationSearchBatchCompletionPolicy {
 }
 
 enum RouteSearchEmptyResultPolicy {
+    static func incompleteCoverageMessage(completed: Int, total: Int) -> String? {
+        guard total > 0, completed < total else { return nil }
+        return "Suche teilweise abgeschlossen (\(completed) von \(total) Bereichen). Es können weitere Treffer fehlen."
+    }
+
+    static func combinedMessage(emptyResultMessage: String?, completed: Int, total: Int) -> String? {
+        guard let partial = incompleteCoverageMessage(completed: completed, total: total) else {
+            return emptyResultMessage
+        }
+        guard let emptyResultMessage else { return partial }
+        return "\(emptyResultMessage) \(partial)"
+    }
+
     static func message(mapMatches: Int, corridorMatches: Int,
                         acceptableDetours: Int) -> String? {
         guard acceptableDetours == 0 else { return nil }

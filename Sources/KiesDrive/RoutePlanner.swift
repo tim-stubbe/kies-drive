@@ -19,6 +19,34 @@ private enum BreakDetourLoadOutcome {
     case superseded
 }
 
+private struct BoundedMapSearchResults {
+    let items: [MKMapItem]
+    let successfulSearchCount: Int
+    let totalSearchCount: Int
+}
+
+private enum MapSearchOutcome {
+    case success([MKMapItem])
+    case failure
+}
+
+private final class MapSearchTimeoutState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var timedOut = false
+
+    var didTimeOut: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return timedOut
+    }
+
+    func markTimedOut() {
+        lock.lock()
+        timedOut = true
+        lock.unlock()
+    }
+}
+
 private extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }
@@ -1670,7 +1698,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             return MKLocalSearch(request: request)
         }
         activeRouteSearches = searches
-        for item in await boundedMapSearchResults(searches, shouldContinue: { [weak self] in
+        let mapSearchResults = await boundedMapSearchResults(searches, shouldContinue: { [weak self] in
             guard let self else { return false }
             return RouteSearchCompletionPolicy.disposition(
                 request: generation, currentRequest: self.routeSearchGeneration,
@@ -1678,7 +1706,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 currentRouteGeneration: self.routeCalculationGeneration,
                 query: cleanQuery, currentQuery: self.routeSearchQuery
             ) == .publish
-        }, allowsEarlyFinish: false) {
+        }, allowsEarlyFinish: false)
+        for item in mapSearchResults.items {
             let c = item.placemark.coordinate
             // Overlapping search regions commonly return the same chain or
             // service-area POI with a few metres of coordinate drift. Merge
@@ -1852,10 +1881,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             .routeSearchCompleted,
             detail: "POI \(matches.count) · Korridor \(candidates.count) · Umweg geprüft \(shortlist.count) · zulässig \(routeSearchResults.count)"
         )
-        routeSearchMessage = RouteSearchEmptyResultPolicy.message(
-            mapMatches: matches.count,
-            corridorMatches: candidates.count,
-            acceptableDetours: routeSearchResults.count
+        routeSearchMessage = RouteSearchEmptyResultPolicy.combinedMessage(
+            emptyResultMessage: RouteSearchEmptyResultPolicy.message(
+                mapMatches: matches.count,
+                corridorMatches: candidates.count,
+                acceptableDetours: routeSearchResults.count
+            ),
+            completed: mapSearchResults.successfulSearchCount,
+            total: mapSearchResults.totalSearchCount
         )
         isSearchingAlongRoute = false
         return true
@@ -5771,13 +5804,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
         }
         activeAmenitySearches = searches
-        for item in await boundedMapSearchResults(searches, shouldContinue: { [weak self] in
+        let mapSearchResults = await boundedMapSearchResults(searches, shouldContinue: { [weak self] in
             guard let self else { return false }
             return RouteEnrichmentPublicationPolicy.isCurrent(
                 route: routeGeneration, currentRoute: self.routeCalculationGeneration,
                 request: generation, currentRequest: self.breakCandidateLoadGeneration
             )
-        }) {
+        })
+        for item in mapSearchResults.items {
             let coordinate = item.placemark.coordinate
             matches["\(item.name ?? "Halt"):\(coordinate.latitude):\(coordinate.longitude)"] = item
         }
@@ -5810,15 +5844,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private func boundedMapSearchResults(
         _ searches: [MKLocalSearch], shouldContinue: () -> Bool,
         allowsEarlyFinish: Bool = true
-    ) async -> [MKMapItem] {
-        guard !searches.isEmpty else { return [] }
-        let timeout = Task {
+    ) async -> BoundedMapSearchResults {
+        guard !searches.isEmpty else {
+            return .init(items: [], successfulSearchCount: 0, totalSearchCount: 0)
+        }
+        let timeoutState = MapSearchTimeoutState()
+        let timeout = Task { @MainActor in
             try? await Task.sleep(nanoseconds: NavigationSearchBatchPolicy.timeoutNanoseconds)
             guard !Task.isCancelled else { return }
+            timeoutState.markTimedOut()
             searches.forEach { $0.cancel() }
         }
         defer { timeout.cancel() }
-        return await withTaskGroup(of: [MKMapItem].self, returning: [MKMapItem].self) { group in
+        return await withTaskGroup(of: MapSearchOutcome.self, returning: BoundedMapSearchResults.self) { group in
             func mayContinue() -> Bool {
                 NavigationSearchBatchPolicy.shouldContinue(
                     isCurrentRequest: shouldContinue(), taskCancelled: Task.isCancelled
@@ -5826,14 +5864,17 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             }
             guard mayContinue() else {
                 searches.forEach { $0.cancel() }
-                return []
+                return .init(items: [], successfulSearchCount: 0, totalSearchCount: searches.count)
             }
             var nextSearchIndex = 0
             func enqueueNextSearch() {
-                guard nextSearchIndex < searches.count else { return }
+                guard nextSearchIndex < searches.count, !timeoutState.didTimeOut else { return }
                 let search = searches[nextSearchIndex]
                 nextSearchIndex += 1
-                group.addTask { (try? await search.start().mapItems) ?? [] }
+                group.addTask {
+                    do { return .success(try await search.start().mapItems) }
+                    catch { return .failure }
+                }
             }
             let initialSearchCount = min(
                 searches.count, NavigationSearchBatchPolicy.maximumConcurrentMapSearches
@@ -5841,13 +5882,22 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             for _ in 0..<initialSearchCount { enqueueNextSearch() }
             var results: [MKMapItem] = []
             var completedSearches = 0
-            while let items = await group.next() {
+            var successfulSearches = 0
+            while let outcome = await group.next() {
                 guard mayContinue() else {
                     searches.forEach { $0.cancel() }
                     group.cancelAll()
-                    return []
+                    return .init(items: [], successfulSearchCount: 0, totalSearchCount: searches.count)
                 }
                 completedSearches += 1
+                let items: [MKMapItem]
+                switch outcome {
+                case .success(let found):
+                    successfulSearches += 1
+                    items = found
+                case .failure:
+                    items = []
+                }
                 results.append(contentsOf: items)
                 let uniqueResultCount = NavigationSearchBatchPolicy.uniqueResultCount(
                     results
@@ -5877,10 +5927,11 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 } else {
                     searches.forEach { $0.cancel() }
                     group.cancelAll()
-                    return []
+                    return .init(items: [], successfulSearchCount: 0, totalSearchCount: searches.count)
                 }
             }
-            return results
+            return .init(items: results, successfulSearchCount: successfulSearches,
+                         totalSearchCount: searches.count)
         }
     }
 

@@ -189,6 +189,27 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testRouteSearchReportsIncompleteMapCoverageWithoutHidingUsefulResults() {
+        XCTAssertNil(RouteSearchEmptyResultPolicy.incompleteCoverageMessage(completed: 20, total: 20))
+        XCTAssertEqual(
+            RouteSearchEmptyResultPolicy.incompleteCoverageMessage(completed: 8, total: 20),
+            "Suche teilweise abgeschlossen (8 von 20 Bereichen). Es können weitere Treffer fehlen."
+        )
+        XCTAssertEqual(
+            RouteSearchEmptyResultPolicy.combinedMessage(
+                emptyResultMessage: nil, completed: 8, total: 20
+            ),
+            "Suche teilweise abgeschlossen (8 von 20 Bereichen). Es können weitere Treffer fehlen."
+        )
+        XCTAssertEqual(
+            RouteSearchEmptyResultPolicy.combinedMessage(
+                emptyResultMessage: "Keine passenden Orte entlang der verbleibenden Route gefunden.",
+                completed: 8, total: 20
+            ),
+            "Keine passenden Orte entlang der verbleibenden Route gefunden. Suche teilweise abgeschlossen (8 von 20 Bereichen). Es können weitere Treffer fehlen."
+        )
+    }
+
     func testEditedDestinationQueryCannotKeepOldCoordinateSelected() {
         XCTAssertTrue(DestinationQuerySelectionPolicy.stillRepresentsSelection(
             query: "  München Hauptbahnhof ",
