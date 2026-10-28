@@ -1870,7 +1870,7 @@ struct DriveContentView: View {
                 }
             }
             if !isShowingRouteOverview {
-                ForEach(Array(visibleFuelStations.prefix(showsNavigationUI ? 12 : 24))) { station in
+                ForEach(mapVisibleFuelStations) { station in
                     Annotation(station.brand.isEmpty ? station.name : station.brand, coordinate: station.coordinate) {
                         Button { selectedStation = station } label: {
                             VStack(spacing: 2) {
@@ -2029,6 +2029,16 @@ struct DriveContentView: View {
 
     private var visibleFuelStations: [FuelStation] {
         planner.actionableStations(from: location.location?.coordinate)
+    }
+
+    private var mapVisibleFuelStations: [FuelStation] {
+        let candidates = visibleFuelStations
+        let selectedIDs = Set(candidates.lazy
+            .filter { planner.isRouteStopSelected(id: $0.id) }
+            .map(\.id))
+        return FuelStationMapVisibilityPolicy.visibleStations(
+            candidates, selectedIDs: selectedIDs, navigating: showsNavigationUI
+        )
     }
 
     private var simulatorPlannedRoutePolyline: MKPolyline {

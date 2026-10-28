@@ -491,6 +491,30 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testMapPinsStaySparseAndKeepSelectedFuelStopsVisible() {
+        let stations = (0..<12).map { index in
+            FuelStation(
+                id: "station-\(index)", name: "Tankstelle \(index)",
+                brand: "", street: "", place: "", lat: 50,
+                lon: 8 + Double(index) * 0.01, price: 1.8,
+                open: true, distanceKm: Double(index)
+            )
+        }
+
+        let navigating = FuelStationMapVisibilityPolicy.visibleStations(
+            stations, selectedIDs: ["station-10"], navigating: true
+        )
+        XCTAssertEqual(navigating.map(\.id), [
+            "station-0", "station-1", "station-2", "station-3", "station-10"
+        ])
+
+        let planning = FuelStationMapVisibilityPolicy.visibleStations(
+            stations, selectedIDs: [], navigating: false
+        )
+        XCTAssertEqual(planning.count, FuelStationMapVisibilityPolicy.maximumWhilePlanning)
+        XCTAssertEqual(planning.map(\.id), stations.prefix(8).map(\.id))
+    }
+
     func testFuelStationQueriesScaleWithRemainingDistanceButStayBounded() {
         XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 20_000), 2)
         XCTAssertEqual(FuelStationQueryPolicy.sampleCount(remainingDistanceMetres: 400_000), 2)

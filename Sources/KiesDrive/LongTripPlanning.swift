@@ -696,6 +696,27 @@ enum FuelStationSelectionPolicy {
     }
 }
 
+/// Limits map annotations independently from the complete route-side list.
+/// Rendering every returned price pin at once is expensive on long routes and
+/// obscures the route itself. Keep the next useful stations visible while
+/// always retaining explicitly selected fuel stops so they can be removed.
+enum FuelStationMapVisibilityPolicy {
+    static let maximumUpcomingWhileNavigating = 4
+    static let maximumWhilePlanning = 8
+
+    static func visibleStations(_ stations: [FuelStation],
+                                selectedIDs: Set<String>,
+                                navigating: Bool) -> [FuelStation] {
+        let selected = stations.filter { selectedIDs.contains($0.id) }
+        let selectedIDSet = Set(selected.map(\.id))
+        let maximumUpcoming = navigating
+            ? maximumUpcomingWhileNavigating : maximumWhilePlanning
+        let upcoming = stations.filter { !selectedIDSet.contains($0.id) }
+            .prefix(maximumUpcoming)
+        return Array(upcoming) + selected
+    }
+}
+
 enum FuelStationDistributionPolicy {
     /// Converts an installed full-route position into the remaining journey's
     /// bucket space. The hard bucket count still caps map pins and provider
