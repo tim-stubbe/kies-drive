@@ -19,6 +19,19 @@ final class OfflineMapPackageTests: XCTestCase {
         ))
     }
 
+    func testStaleOfflineCoverageScanCannotRepublishAfterPackageReload() {
+        let request = UUID()
+        XCTAssertTrue(OfflineTileCoverageCachePolicy.mayStoreResult(
+            requestGeneration: request, currentGeneration: request, isCancelled: false
+        ))
+        XCTAssertFalse(OfflineTileCoverageCachePolicy.mayStoreResult(
+            requestGeneration: request, currentGeneration: UUID(), isCancelled: false
+        ))
+        XCTAssertFalse(OfflineTileCoverageCachePolicy.mayStoreResult(
+            requestGeneration: request, currentGeneration: request, isCancelled: true
+        ))
+    }
+
     func testAsynchronousCoveragePreflightValidatesTilesWithoutChangingResults() async throws {
         let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
         var requiredTiles = Set<OfflineTileCoordinatePolicy.Tile>()

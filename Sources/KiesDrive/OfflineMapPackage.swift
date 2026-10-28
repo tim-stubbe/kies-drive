@@ -200,6 +200,11 @@ enum OfflineTileCoverageCachePolicy {
     static func lifetime(tileCount: Int) -> TimeInterval {
         tileCount > 100 ? 60 : 2
     }
+
+    static func mayStoreResult(requestGeneration: UUID, currentGeneration: UUID,
+                               isCancelled: Bool) -> Bool {
+        !isCancelled && requestGeneration == currentGeneration
+    }
 }
 
 enum OfflineTileCoordinatePolicy {
@@ -388,6 +393,7 @@ final class OfflineMapPackageStore: ObservableObject {
         let checkedAt: Date
     }
     private var tileCoverageCache: [TileCoverageKey: TileCoverageEntry] = [:]
+    private var packageGeneration = UUID()
 
     init(fileManager: FileManager = .default, rootURL: URL? = nil,
          defaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
@@ -404,6 +410,7 @@ final class OfflineMapPackageStore: ObservableObject {
     }
 
     func reload() {
+        packageGeneration = UUID()
         tileCoverageCache.removeAll(keepingCapacity: true)
         try? fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         removeAbandonedImportStagingDirectories()
@@ -623,6 +630,7 @@ final class OfflineMapPackageStore: ObservableObject {
             ($0.z, $0.x, $0.y) < ($1.z, $1.x, $1.y)
         }
         let key = TileCoverageKey(packageID: package.id, tiles: orderedTiles)
+        let generation = packageGeneration
         let checkTime = now()
         if let cached = tileCoverageCache[key] {
             let age = checkTime.timeIntervalSince(cached.checkedAt)
@@ -652,7 +660,10 @@ final class OfflineMapPackageStore: ObservableObject {
         } onCancel: {
             worker.cancel()
         }
-        guard !Task.isCancelled else { return false }
+        guard OfflineTileCoverageCachePolicy.mayStoreResult(
+            requestGeneration: generation, currentGeneration: packageGeneration,
+            isCancelled: Task.isCancelled
+        ) else { return false }
         tileCoverageCache[key] = .init(result: result, checkedAt: now())
         return result
     }
