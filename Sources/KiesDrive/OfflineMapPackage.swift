@@ -258,8 +258,23 @@ enum OfflineTileFilePolicy {
                         fileManager: FileManager = .default) -> URL? {
         guard (manifest.minimumZoom...manifest.maximumZoom).contains(z),
               OfflineTileCoordinatePolicy.isValid(z: z, x: x, y: y) else { return nil }
-        let tilesRoot = packageDirectory.appendingPathComponent("tiles", isDirectory: true)
-            .resolvingSymlinksInPath().standardizedFileURL
+        guard let packageValues = try? packageDirectory.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ), packageValues.isDirectory == true, packageValues.isSymbolicLink != true else {
+            return nil
+        }
+        let packageRoot = packageDirectory.resolvingSymlinksInPath().standardizedFileURL
+        let unresolvedTilesRoot = packageDirectory
+            .appendingPathComponent("tiles", isDirectory: true).standardizedFileURL
+        guard let tilesValues = try? unresolvedTilesRoot.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ), tilesValues.isDirectory == true, tilesValues.isSymbolicLink != true else {
+            return nil
+        }
+        let tilesRoot = unresolvedTilesRoot.resolvingSymlinksInPath().standardizedFileURL
+        let packagePath = packageRoot.path.hasSuffix("/")
+            ? packageRoot.path : packageRoot.path + "/"
+        guard tilesRoot.path.hasPrefix(packagePath) else { return nil }
         let candidate = tilesRoot
             .appendingPathComponent(String(z), isDirectory: true)
             .appendingPathComponent(String(x), isDirectory: true)
@@ -559,8 +574,21 @@ final class OfflineMapPackageStore: ObservableObject {
     }
 
     private static func readPackage(at url: URL, fileManager: FileManager) throws -> InstalledOfflineMapPackage {
+        guard let packageValues = try? url.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ), packageValues.isDirectory == true, packageValues.isSymbolicLink != true else {
+            throw OfflineMapPackageError.invalidManifest
+        }
         let manifestURL = url.appendingPathComponent("manifest.json")
-        guard fileManager.fileExists(atPath: manifestURL.path) else { throw OfflineMapPackageError.missingManifest }
+        guard let manifestValues = try? manifestURL.resourceValues(
+            forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        ), manifestValues.isRegularFile == true, manifestValues.isSymbolicLink != true,
+              let manifestSize = manifestValues.fileSize, manifestSize <= 64 * 1_024 else {
+            if !fileManager.fileExists(atPath: manifestURL.path) {
+                throw OfflineMapPackageError.missingManifest
+            }
+            throw OfflineMapPackageError.invalidManifest
+        }
         let manifest = try JSONDecoder.offlineMaps.decode(OfflineMapManifest.self, from: Data(contentsOf: manifestURL))
         guard manifest.isValid else { throw OfflineMapPackageError.invalidManifest }
         let tilesURL = url.appendingPathComponent("tiles", isDirectory: true)

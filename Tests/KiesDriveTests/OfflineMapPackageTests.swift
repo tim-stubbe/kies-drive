@@ -560,6 +560,46 @@ final class OfflineMapPackageTests: XCTestCase {
         )
     }
 
+    func testRuntimeTileLookupRejectsTileRootReplacedBySymlink() throws {
+        try writeManifest(id: "runtime-linked-root")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let installed = try store.install(from: source)
+        let tileRoot = installed.directoryURL.appendingPathComponent("tiles", isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-outside-tiles-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try FileManager.default.moveItem(at: tileRoot, to: outside)
+        try FileManager.default.createSymbolicLink(
+            at: tileRoot, withDestinationURL: outside
+        )
+
+        XCTAssertNil(store.tileURL(z: 8, x: 136, y: 89, package: installed))
+        let tileCoordinate = try XCTUnwrap(
+            OfflineTileCoordinatePolicy.center(z: 8, x: 136, y: 89)
+        )
+        XCTAssertFalse(store.hasBaseTiles(covering: [tileCoordinate], package: installed))
+    }
+
+    func testImportRejectsSymlinkedManifest() throws {
+        let outsideManifest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("offline-manifest-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: outsideManifest) }
+        try writeManifest(id: "linked-manifest")
+        try FileManager.default.moveItem(
+            at: source.appendingPathComponent("manifest.json"), to: outsideManifest
+        )
+        try FileManager.default.createSymbolicLink(
+            at: source.appendingPathComponent("manifest.json"),
+            withDestinationURL: outsideManifest
+        )
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+
+        XCTAssertThrowsError(
+            try OfflineMapPackageStore(rootURL: root, defaults: defaults).install(from: source)
+        )
+    }
+
     private func validPNG() -> Data {
         Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
     }
