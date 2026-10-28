@@ -983,6 +983,35 @@ final class LongTripPlanningTests: XCTestCase {
         XCTAssertEqual(result.drivingTime, expected, accuracy: 1)
     }
 
+    func test150And200KmhComparisonChangesOnlyOnKnownUnlimitedSections() throws {
+        func results(unlimitedFraction: Double) throws -> (RouteScenarioResult, RouteScenarioResult) {
+            let route = RoutePlanningInput(
+                id: "speed-comparison", title: "Fahrt", distanceMetres: 600_000,
+                mapKitExpectedTravelTime: 6 * 3600,
+                unlimitedMotorwayFraction: unlimitedFraction,
+                typicalUnlimitedSpeedKmh: 130,
+                toll: .unknown(reason: "Test"), breakCandidates: []
+            )
+            let values = RouteComparison(
+                fuelModel: .init(), breakPlanner: .init()
+            ).compare(
+                routes: [route], scenarios: [.target(150), .target(200)], vehicle: .init()
+            ).results
+            return (
+                try XCTUnwrap(values.first { $0.scenario.targetSpeedKmh == 150 }),
+                try XCTUnwrap(values.first { $0.scenario.targetSpeedKmh == 200 })
+            )
+        }
+
+        let limited = try results(unlimitedFraction: 0)
+        XCTAssertEqual(limited.0.drivingTime, limited.1.drivingTime, accuracy: 0.01)
+        XCTAssertEqual(limited.0.fuel.litres, limited.1.fuel.litres, accuracy: 0.01)
+
+        let halfUnlimited = try results(unlimitedFraction: 0.5)
+        XCTAssertLessThan(halfUnlimited.1.drivingTime, halfUnlimited.0.drivingTime)
+        XCTAssertGreaterThan(halfUnlimited.1.fuel.litres, halfUnlimited.0.fuel.litres)
+    }
+
     func testSpeedScenarioAlwaysReservesRealisticTimeForLimitedRoads() {
         let timing = SpeedScenarioPolicy.timing(
             distanceMetres: 600_000,
