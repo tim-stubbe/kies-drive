@@ -1660,7 +1660,11 @@ enum ManeuverDiagnosticPolicy {
         // maneuver is behind us; speaking it now could send the driver back
         // onto the abandoned road. The regular announcement path will speak
         // the new current maneuver instead.
-        let immediateDistance = min(100, max(30, max(0, speedMetresPerSecond) * 2))
+        // A high motorway speed must not expand a late "now" cue to 100 m:
+        // the next GPS fix can already be on the road after the junction.
+        // Keep a small uncertainty allowance while bounding recovery to a
+        // genuinely immediate distance at every speed.
+        let immediateDistance = min(45, max(30, max(0, speedMetresPerSecond) * 2))
         guard previousDistance.isFinite, previousDistance >= 0,
               previousDistance <= immediateDistance else { return false }
         // An immediate cue can still be playing while the first GPS fix on

@@ -2295,6 +2295,14 @@ final class NavigationPresentationTests: XCTestCase {
             previousKey: "old", nextKey: "new", stages: [],
             previousDistance: 180, speedMetresPerSecond: 25
         ))
+        XCTAssertTrue(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "old", nextKey: "new", stages: [],
+            previousDistance: 45, speedMetresPerSecond: 55
+        ), "A cue can still be recovered inside the bounded junction window")
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
+            previousKey: "old", nextKey: "new", stages: [],
+            previousDistance: 46, speedMetresPerSecond: 55
+        ), "High speed must not turn a late instruction into a 100 m recovery window")
         XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: "old", nextKey: "new", stages: [],
             previousDistance: .infinity, speedMetresPerSecond: 25
