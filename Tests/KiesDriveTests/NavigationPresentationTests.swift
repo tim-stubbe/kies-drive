@@ -2341,6 +2341,15 @@ final class NavigationPresentationTests: XCTestCase {
             ),
             .none
         )
+        XCTAssertEqual(
+            NavigationFinalRoadTransitionPolicy.action(
+                previousKey: "last-turn", delivered: [.early], inFlight: [],
+                previousDistance: 24, speedMetresPerSecond: 14,
+                recoveredAfterLocationGap: false, voiceGuidance: false
+            ),
+            .closeMuted,
+            "Muted navigation should close the maneuver without reporting a missed cue"
+        )
     }
 
     func testOnlineAndOfflineManeuverSpeechShareDenseTurnWording() {
@@ -3424,6 +3433,9 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
             stages: [.early, .prepare], reason: .recoveryQueued
         ), "A queued recovery is judged by actual audio completion, not as immediately missed")
+        XCTAssertFalse(ManeuverDiagnosticPolicy.shouldRecordMissedFinalCue(
+            stages: [.early, .prepare], reason: .voiceGuidanceDisabled
+        ), "A deliberately muted route must not be counted as a missed spoken turn")
     }
 
     func testManeuverTransitionRecoversFinalCueOnlyOnceWhenGPSCrossesJunction() {

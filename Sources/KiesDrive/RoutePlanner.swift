@@ -3974,7 +3974,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             inFlight: inFlight,
             previousDistance: diagnosticManeuverDistance,
             speedMetresPerSecond: guidanceSpeedMps,
-            recoveredAfterLocationGap: recoveredAfterLocationGap
+            recoveredAfterLocationGap: recoveredAfterLocationGap,
+            voiceGuidance: voiceGuidance
         )
         switch action {
         case .none:
@@ -3983,6 +3984,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             closeOutstandingManeuverDiagnostic(reason: .recoveryQueued)
         case .closeAsMissed:
             closeOutstandingManeuverDiagnostic(reason: .routeTransition)
+        case .closeMuted:
+            closeOutstandingManeuverDiagnostic(reason: .voiceGuidanceDisabled)
         case .recoverNow:
             guard voiceGuidance, let previousKey,
                   let instruction = diagnosticManeuverInstruction else {

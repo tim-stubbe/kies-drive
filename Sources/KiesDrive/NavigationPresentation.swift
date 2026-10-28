@@ -1617,6 +1617,7 @@ enum ManeuverDiagnosticPolicy {
         case recoveryQueued
         case arrival
         case userStopped
+        case voiceGuidanceDisabled
     }
 
     static func missedFinalCue(stages: Set<NavigationAnnouncementStage>) -> Bool {
@@ -1632,7 +1633,8 @@ enum ManeuverDiagnosticPolicy {
 
     static func shouldRecordMissedFinalCue(stages: Set<NavigationAnnouncementStage>,
                                            reason: ClosureReason) -> Bool {
-        guard reason != .userStopped, reason != .recoveryQueued else { return false }
+        guard reason != .userStopped, reason != .recoveryQueued,
+              reason != .voiceGuidanceDisabled else { return false }
         return missedFinalCue(stages: stages)
     }
 
@@ -1679,18 +1681,23 @@ enum NavigationFinalRoadTransitionPolicy {
         case recoverNow
         case closeAsDelivered
         case closeAsMissed
+        case closeMuted
     }
 
     static func action(previousKey: String?, delivered: Set<NavigationAnnouncementStage>,
                        inFlight: Set<NavigationAnnouncementStage>,
                        previousDistance: CLLocationDistance?,
                        speedMetresPerSecond: Double,
-                       recoveredAfterLocationGap: Bool) -> Action {
+                       recoveredAfterLocationGap: Bool,
+                       voiceGuidance: Bool = true) -> Action {
         guard let previousKey else { return .none }
         let decisive = delivered.union(inFlight)
         if ManeuverDiagnosticPolicy.deliveredDecisiveCue(stages: decisive) {
             return .closeAsDelivered
         }
+        // A user who muted navigation should not receive a false "missed
+        // announcement" warning in the trip-quality summary.
+        guard voiceGuidance else { return .closeMuted }
         if ManeuverDiagnosticPolicy.shouldRecoverFinalCue(
             previousKey: previousKey,
             nextKey: "final-road",
