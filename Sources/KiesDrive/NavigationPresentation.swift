@@ -2,6 +2,33 @@ import Foundation
 import CoreLocation
 import MapKit
 
+enum NavigationDistancePresentationPolicy {
+    /// Keep route distances easy to scan in the driver's active locale while
+    /// retaining metric units throughout Kies Drive. Long holiday routes use
+    /// grouped whole kilometres (for example `1.170 km` in German), while
+    /// regional routes retain a decimal place for useful precision.
+    static func text(_ metres: CLLocationDistance, locale: Locale = .current) -> String {
+        guard metres.isFinite, metres >= 0 else { return "—" }
+        let roundedMetres = Int(metres.rounded())
+        guard roundedMetres < 1_000 else {
+            return kilometresText(Double(roundedMetres) / 1_000, locale: locale)
+        }
+        return "\(roundedMetres) m"
+    }
+
+    private static func kilometresText(_ kilometres: Double, locale: Locale) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = locale
+        formatter.usesGroupingSeparator = true
+        formatter.minimumFractionDigits = kilometres < 100 ? 1 : 0
+        formatter.maximumFractionDigits = kilometres < 100 ? 1 : 0
+        let value = formatter.string(from: NSNumber(value: kilometres))
+            ?? String(Int(kilometres.rounded()))
+        return "\(value) km"
+    }
+}
+
 enum NavigationIdleTimerPolicy {
     /// Navigation may keep the display awake only while guidance is running
     /// and the app is actually in the foreground. Browsing the map must keep

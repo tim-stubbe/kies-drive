@@ -4,6 +4,26 @@ import MapKit
 @testable import Kies_Drive
 
 final class NavigationPresentationTests: XCTestCase {
+    func testDistancePresentationUsesLocalizedMetricFormattingForTripScale() {
+        let german = Locale(identifier: "de_DE")
+        XCTAssertEqual(
+            NavigationDistancePresentationPolicy.text(1_170_000, locale: german),
+            "1.170 km"
+        )
+        XCTAssertEqual(
+            NavigationDistancePresentationPolicy.text(19_600, locale: german),
+            "19,6 km"
+        )
+        XCTAssertEqual(
+            NavigationDistancePresentationPolicy.text(999.6, locale: german),
+            "1,0 km"
+        )
+        XCTAssertEqual(
+            NavigationDistancePresentationPolicy.text(.nan, locale: german),
+            "—"
+        )
+    }
+
     func testIdleTimerIsDisabledOnlyForForegroundNavigation() {
         XCTAssertTrue(NavigationIdleTimerPolicy.shouldDisable(
             navigationActive: true, sceneActive: true

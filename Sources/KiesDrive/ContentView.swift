@@ -2251,7 +2251,9 @@ struct DriveContentView: View {
         }
     }
 
-    private func formatDistance(_ metres: Double) -> String { metres >= 1000 ? String(format: "%.1f km", metres / 1000) : "\(Int(metres)) m" }
+    private func formatDistance(_ metres: Double) -> String {
+        NavigationDistancePresentationPolicy.text(metres)
+    }
     private func formatTime(_ seconds: TimeInterval) -> String { let m = Int(seconds / 60); return m >= 60 ? "\(m / 60) Std. \(m % 60) Min." : "\(m) Min." }
     private func formatArrival(_ seconds: TimeInterval) -> String {
         Date().addingTimeInterval(seconds).formatted(date: .omitted, time: .shortened)
@@ -2725,7 +2727,7 @@ struct DriveSettingsView: View {
     }
 
     private func usageDistance(_ metres: CLLocationDistance) -> String {
-        String(format: "%.1f km", metres / 1_000)
+        NavigationDistancePresentationPolicy.text(metres)
     }
 
     private func usageDuration(_ interval: TimeInterval) -> String {
