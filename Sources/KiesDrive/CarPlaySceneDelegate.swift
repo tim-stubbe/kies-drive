@@ -330,6 +330,11 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate, 
             planner.$isRecalculating.removeDuplicates(),
             planner.$isManeuverGuidanceReliable.removeDuplicates()
         )
+            // A confirmed departure publishes unreliable guidance and then
+            // claims the reroute synchronously. Coalesce that short state
+            // transition so the head unit presents one accurate recovery
+            // alert instead of first claiming no recalculation is possible.
+            .debounce(for: .milliseconds(20), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] recalculating, guidanceReliable in
                 self?.presentRouteRecoveryStateIfNeeded(
