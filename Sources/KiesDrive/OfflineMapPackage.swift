@@ -242,6 +242,20 @@ enum OfflineTileCoordinatePolicy {
         return isValid(z: tile.z, x: tile.x, y: tile.y) ? tile : nil
     }
 
+    /// Coverage is only complete when every requested map point resolves to a
+    /// tile. `compactMap` silently dropping a malformed coordinate could
+    /// otherwise make a partially checked route look fully available offline.
+    static func tiles(containing coordinates: [CLLocationCoordinate2D],
+                      zoom: Int) -> Set<Tile>? {
+        guard !coordinates.isEmpty else { return nil }
+        var result = Set<Tile>()
+        for coordinate in coordinates {
+            guard let tile = tile(containing: coordinate, zoom: zoom) else { return nil }
+            result.insert(tile)
+        }
+        return result.isEmpty ? nil : result
+    }
+
     static func neighbourhood(containing coordinate: CLLocationCoordinate2D,
                               zoom: Int, radius: Int = 1) -> Set<Tile> {
         guard let centre = tile(containing: coordinate, zoom: zoom) else { return [] }
@@ -492,12 +506,9 @@ final class OfflineMapPackageStore: ObservableObject {
     /// truthfully cover this location or route overview.
     func hasBaseTiles(covering coordinates: [CLLocationCoordinate2D],
                       package: InstalledOfflineMapPackage) -> Bool {
-        let requiredTiles = Set(coordinates.compactMap {
-            OfflineTileCoordinatePolicy.tile(
-                containing: $0, zoom: package.manifest.minimumZoom
-            )
-        })
-        guard requiredTiles.count > 0, requiredTiles.count <= coordinates.count else { return false }
+        guard let requiredTiles = OfflineTileCoordinatePolicy.tiles(
+            containing: coordinates, zoom: package.manifest.minimumZoom
+        ) else { return false }
         return hasTiles(requiredTiles, package: package)
     }
 
@@ -549,12 +560,9 @@ final class OfflineMapPackageStore: ObservableObject {
     /// package identity and exact coverage key as the synchronous test path.
     func hasBaseTilesAsync(covering coordinates: [CLLocationCoordinate2D],
                            package: InstalledOfflineMapPackage) async -> Bool {
-        let requiredTiles = Set(coordinates.compactMap {
-            OfflineTileCoordinatePolicy.tile(
-                containing: $0, zoom: package.manifest.minimumZoom
-            )
-        })
-        guard requiredTiles.count > 0, requiredTiles.count <= coordinates.count else { return false }
+        guard let requiredTiles = OfflineTileCoordinatePolicy.tiles(
+            containing: coordinates, zoom: package.manifest.minimumZoom
+        ) else { return false }
         return await hasTilesAsync(requiredTiles, package: package)
     }
 

@@ -425,6 +425,25 @@ final class OfflineMapPackageTests: XCTestCase {
         XCTAssertFalse(store.hasBaseTiles(covering: [], package: package))
     }
 
+    func testBaseCoverageRejectsInvalidRouteCoordinateInsteadOfDroppingIt() async throws {
+        try writeManifest(id: "invalid-route-coordinate")
+        try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
+        let store = OfflineMapPackageStore(rootURL: root, defaults: defaults)
+        let package = try store.install(from: source)
+        let valid = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+        let invalid = CLLocationCoordinate2D(latitude: .nan, longitude: 8)
+
+        XCTAssertTrue(store.hasBaseTiles(covering: [valid], package: package))
+        XCTAssertFalse(store.hasBaseTiles(
+            covering: [valid, invalid], package: package
+        ), "One malformed route point must not be silently omitted from offline coverage")
+        let asyncCoverage = await store.hasBaseTilesAsync(
+            covering: [valid, invalid], package: package
+        )
+        XCTAssertFalse(asyncCoverage,
+                       "The background preflight must apply the same complete-coordinate rule")
+    }
+
     func testDrivingCoverageRequiresStreetLevelNeighbourhood() throws {
         try writeManifest(id: "driving-coverage")
         try validPNG().write(to: source.appendingPathComponent("tiles/8/136/89.png"))
