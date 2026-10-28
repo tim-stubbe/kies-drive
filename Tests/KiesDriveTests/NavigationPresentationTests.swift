@@ -3967,6 +3967,36 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertTrue(summary.recommendation.contains("Audiosystem"))
     }
 
+    func testDiagnosticSummaryExplainsAudioActivationFailureSeparately() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "Manöver-ID abc · Audioausgabe nicht verfügbar · now · Ausfahrt nehmen"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertTrue(summary.recommendation.contains("nicht aktivieren"))
+        XCTAssertTrue(summary.recommendation.contains("Audioausgabe"))
+    }
+
+    func testDiagnosticSummaryExplainsInterruptedSpeechSeparately() throws {
+        let events = [
+            DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),
+            DriveDiagnosticEvent(
+                kind: .speechDeliveryFailed,
+                detail: "Fahransage unerwartet vom Audiosystem abgebrochen · GPS ±8 m"
+            ),
+        ]
+
+        let summary = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: events))
+        XCTAssertEqual(summary.quality, .critical)
+        XCTAssertTrue(summary.recommendation.contains("unterbrochen"))
+        XCTAssertTrue(summary.recommendation.contains("Telefon- oder Siri-Unterbrechungen"))
+    }
+
     func testDiagnosticSummaryClearsSpeechFailureAfterSuccessfulRetry() throws {
         let events = [
             DriveDiagnosticEvent(kind: .navigationStarted, detail: "Fahrt"),

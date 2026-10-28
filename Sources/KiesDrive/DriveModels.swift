@@ -524,9 +524,9 @@ struct DriveDiagnosticSummary: Equatable {
         )
     }
 
-    private static func unresolvedSpeechFailures(
+    private static func unresolvedSpeechFailureEvents(
         in session: ArraySlice<DriveDiagnosticEvent>
-    ) -> Int {
+    ) -> [DriveDiagnosticEvent] {
         let indexed = Array(session)
         return indexed.indices.filter { index in
             let failure = indexed[index]
@@ -544,7 +544,19 @@ struct DriveDiagnosticSummary: Equatable {
                         later.kind == .fuelReminderAnnounced) &&
                     speechInstruction(in: later) == instruction
             }
-        }.count
+        }.map { indexed[$0] }
+    }
+
+    private static func speechFailureRecommendation(
+        for failures: [DriveDiagnosticEvent]
+    ) -> String {
+        if failures.contains(where: { $0.detail.localizedCaseInsensitiveContains("Audioausgabe nicht verfügbar") }) {
+            return "Kies Drive konnte den Audioausgang nicht aktivieren; Audioausgabe, Bluetooth-Verbindung und Lautstärke prüfen."
+        }
+        if failures.contains(where: { $0.detail.localizedCaseInsensitiveContains("unerwartet vom Audiosystem abgebrochen") }) {
+            return "Eine Fahransage wurde unterbrochen; Bluetooth-Verbindung und mögliche Telefon- oder Siri-Unterbrechungen prüfen."
+        }
+        return "Eine Fahransage wurde vom Audiosystem nicht bestätigt; Lautstärke und Bluetooth-Audioverbindung prüfen."
     }
 
     private static func normalizedRouteStopName(in event: DriveDiagnosticEvent) -> String? {
@@ -631,7 +643,8 @@ struct DriveDiagnosticSummary: Equatable {
         let rejectedBurst = maximumBurst(of: .locationRejected, in: session)
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
         let totalSpeechFailures = session.filter { $0.kind == .speechDeliveryFailed }.count
-        let speechFailures = unresolvedSpeechFailures(in: session)
+        let unresolvedSpeechEvents = unresolvedSpeechFailureEvents(in: session)
+        let speechFailures = unresolvedSpeechEvents.count
         let totalRouteStopFailures = session.filter { $0.kind == .routeStopFailed }.count
         let routeStopFailures = unresolvedRouteStopFailures(in: session)
         let restoreTimeline: [DriveDiagnosticEvent]
@@ -677,7 +690,7 @@ struct DriveDiagnosticSummary: Equatable {
             if missed > 0 {
                 recommendation = "Fahrhinweise prüfen; mindestens eine letzte Abbiegeansage fehlte."
             } else if speechFailures > 0 {
-                recommendation = "Die letzte Fahransage wurde vom Audiosystem nicht beendet; Bluetooth- und Lautstärkeeinstellungen prüfen."
+                recommendation = speechFailureRecommendation(for: unresolvedSpeechEvents)
             } else if offlineDepartures > 0 {
                 recommendation = "Die gespeicherte Route wurde verlassen und noch nicht online ersetzt."
             } else if routeRestoreFailures > 0 {
