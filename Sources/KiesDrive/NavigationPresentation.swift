@@ -3756,6 +3756,15 @@ struct OfflineGuidanceStep {
     let instruction: String
     let distance: CLLocationDistance
     let coordinates: [CLLocationCoordinate2D]
+    let legIndex: Int
+
+    init(instruction: String, distance: CLLocationDistance,
+         coordinates: [CLLocationCoordinate2D], legIndex: Int = 0) {
+        self.instruction = instruction
+        self.distance = distance
+        self.coordinates = coordinates
+        self.legIndex = legIndex
+    }
 }
 
 enum OfflineGuidanceResumePolicy {

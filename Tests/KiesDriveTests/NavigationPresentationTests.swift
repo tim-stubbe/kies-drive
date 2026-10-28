@@ -2546,6 +2546,52 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(progress.followingManeuverInstruction, "Links halten")
     }
 
+    func testOfflineGuidanceStepProjectionIsReusedForProgressAndRebuiltForNewGeometry() {
+        let firstRoute = CachedRoute(
+            destinationName: "Hochheim", destinationCoordinate: nil,
+            geometryIdentity: "geometry-a",
+            legs: [.init(
+                distance: 1_000, travelTime: 90,
+                steps: [.init(
+                    instructions: "Rechts abbiegen", distance: 1_000,
+                    coordinates: [.init(latitude: 50, longitude: 8),
+                                  .init(latitude: 50.01, longitude: 8)]
+                )],
+                coordinates: nil
+            )],
+            stations: [], savedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        var cache = OfflineGuidanceStepProjectionCache()
+
+        let firstProjection = cache.steps(for: firstRoute)
+        XCTAssertEqual(firstProjection.map(\.instruction), ["Rechts abbiegen"])
+        XCTAssertEqual(cache.projectionCount, 1)
+
+        _ = cache.steps(for: firstRoute.updatingNavigationProgress(0.4))
+        XCTAssertEqual(cache.projectionCount, 1,
+                       "A progress-only persistence update must reuse projected geometry")
+
+        let secondRoute = CachedRoute(
+            destinationName: "Hochheim", destinationCoordinate: nil,
+            geometryIdentity: "geometry-b",
+            legs: [.init(
+                distance: 2_000, travelTime: 180,
+                steps: [.init(
+                    instructions: "Links abbiegen", distance: 2_000,
+                    coordinates: [.init(latitude: 51, longitude: 9),
+                                  .init(latitude: 51.02, longitude: 9)]
+                )],
+                coordinates: nil
+            )],
+            stations: [], savedAt: Date(timeIntervalSince1970: 2_000)
+        )
+        let secondProjection = cache.steps(for: secondRoute)
+        XCTAssertEqual(secondProjection.map(\.instruction), ["Links abbiegen"])
+        XCTAssertEqual(secondProjection.first?.coordinates.first?.latitude, 51)
+        XCTAssertEqual(cache.projectionCount, 2,
+                       "A route geometry change must replace the cached maneuver steps")
+    }
+
     func testOfflineGuidanceRecoversAcrossLongGapBeyondEightySteps() throws {
         let coordinates = (0...100).map { index in
             CLLocationCoordinate2D(latitude: 50 + Double(index) * 0.001, longitude: 8)

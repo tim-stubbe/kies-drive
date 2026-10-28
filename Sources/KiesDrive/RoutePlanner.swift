@@ -256,6 +256,41 @@ enum OfflineRouteGeometryIdentityPolicy {
     }
 }
 
+/// Reuses the decoded per-step geometry while offline guidance processes GPS
+/// fixes. Progress checkpoints rewrite route metadata frequently, but they do
+/// not change the geometry or maneuver instructions and should not rebuild the
+/// coordinate arrays on every location callback.
+struct OfflineGuidanceStepProjectionCache {
+    private(set) var projectionCount = 0
+    private var sourceIdentity: String?
+    private var projectedSteps: [OfflineGuidanceStep] = []
+
+    mutating func steps(for route: CachedRoute) -> [OfflineGuidanceStep] {
+        let geometryIdentity = route.geometryIdentity ?? "legacy"
+        // Include the write timestamp as a second guard. The persisted
+        // fingerprint intentionally samples route geometry; a fresh cache
+        // write must rebuild even if a small shape change kept that sampled
+        // fingerprint unchanged. Progress-only copies retain savedAt.
+        let identity = "\(geometryIdentity):\(route.savedAt.timeIntervalSinceReferenceDate.bitPattern):\(route.legs.count)"
+        guard identity != sourceIdentity else { return projectedSteps }
+
+        projectedSteps = route.legs.enumerated().flatMap { legIndex, leg in
+            leg.steps.compactMap { step -> OfflineGuidanceStep? in
+                guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
+                return .init(
+                    instruction: step.instructions,
+                    distance: step.distance,
+                    coordinates: coordinates.map(\.clLocationCoordinate),
+                    legIndex: legIndex
+                )
+            }
+        }
+        sourceIdentity = identity
+        projectionCount += 1
+        return projectedSteps
+    }
+}
+
 struct OfflineRouteCacheStore {
     let fileURL: URL
     private var backupURL: URL { fileURL.appendingPathExtension("backup") }
@@ -430,6 +465,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     private var comparisonSpeedLimits: [SpeedLimitResult] = []
 
     private let synthesizer = AVSpeechSynthesizer()
+    private var offlineGuidanceStepProjectionCache = OfflineGuidanceStepProjectionCache()
     private var activeUtterance: AVSpeechUtterance?
     private var activeSpeechPriority: NavigationSpeechPriority?
     private var audioSessionInterrupted = false
@@ -3275,16 +3311,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                        recoveredAfterLocationGap: Bool,
                                        allowsFullRecovery: Bool) {
         guard let cache = offlineRoute else { return }
-        let guidanceEntries = cache.legs.enumerated().flatMap { legIndex, leg in
-            leg.steps.compactMap { step -> (legIndex: Int, step: OfflineGuidanceStep)? in
-                guard let coordinates = step.coordinates, coordinates.count > 1 else { return nil }
-                return (legIndex, .init(
-                    instruction: step.instructions, distance: step.distance,
-                    coordinates: coordinates.map(\.clLocationCoordinate)
-                ))
-            }
-        }
-        let steps = guidanceEntries.map(\.step)
+        let steps = offlineGuidanceStepProjectionCache.steps(for: cache)
         guard let progress = OfflineGuidanceEngine.progress(
             at: location.coordinate, currentIndex: navigationStepCursor, steps: steps,
             transitionRadius: max(8, location.horizontalAccuracy * 1.5),
@@ -3453,7 +3480,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         nextManeuverDistance = progress.distanceToManeuver
         upcomingManeuverInstructions = progress.upcomingInstructions
         remainingDistanceMetres = progress.remainingDistance
-        if let entry = guidanceEntries[safe: progress.currentStepIndex],
+        if let entry = steps[safe: progress.currentStepIndex],
            let estimate = OfflineRouteRemainingTimePolicy.estimate(
             totalRemainingDistance: progress.remainingDistance,
             currentLegIndex: entry.legIndex,
