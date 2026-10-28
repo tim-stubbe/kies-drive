@@ -211,6 +211,9 @@ struct DriveContentView: View {
                 } else if planner.isNavigating && location.authorization == .authorizedWhenInUse {
                     backgroundLocationPermissionCard
                 }
+                if planner.isNavigating, let message = location.locationFailureMessage {
+                    locationFailureCard(message)
+                }
                 if let message = offlineMapFallbackMessage {
                     offlineMapFallbackCard(message)
                 }
@@ -380,6 +383,25 @@ struct DriveContentView: View {
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .environment(\.colorScheme, .light)
         .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private func locationFailureCard(_ message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "location.slash.fill")
+                .font(.title2).foregroundStyle(Color.kiesBrass)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("GPS-Signal unterbrochen").font(.subheadline.bold())
+                Text(message).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(14)
+        .foregroundStyle(Color.kiesForest)
+        .background(Color.kiesIvory.opacity(0.97),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .environment(\.colorScheme, .light)
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+        .accessibilityElement(children: .combine)
     }
 
     private var mobileRouteDetails: some View {
@@ -2576,7 +2598,7 @@ struct DriveSettingsView: View {
                             LabeledContent("Automatisch behoben", value: "\(latestSummary.resolvedRouteIssues)")
                         }
                         if latestSummary.quality != .good {
-                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.routeRestoreFailures) fehlgeschlagene Wiederherstellung(en), \(latestSummary.routeStopFailures) nicht berechenbare Zwischenstopps, \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
+                            Text("Offen: \(latestSummary.rerouteFailures) fehlgeschlagene Neuberechnung(en), \(latestSummary.routeRestoreFailures) fehlgeschlagene Wiederherstellung(en), \(latestSummary.routeStopFailures) nicht berechenbare Zwischenstopps, \(latestSummary.locationServiceFailures) GPS-Dienstfehler, \(latestSummary.rejectedLocations) verworfene GPS-Messung(en), \(latestSummary.missedFinalCues) verpasste Endansage(n), \(latestSummary.speechDeliveryFailures) Audiofehler, \(latestSummary.offlineRouteDepartures) Offline-Abweichung(en).")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         LabeledContent("Ereignisse dieser Fahrt", value: "\(latestSummary.eventCount)")
@@ -2585,6 +2607,7 @@ struct DriveSettingsView: View {
                         LabeledContent("Wiederherstellung fehlgeschlagen", value: "\(latestSummary.routeRestoreFailures)")
                         LabeledContent("Zwischenstopp fehlgeschlagen", value: "\(latestSummary.routeStopFailures)")
                         LabeledContent("GPS-Ausreißer verworfen", value: "\(latestSummary.rejectedLocations)")
+                        LabeledContent("GPS-Dienstfehler offen", value: "\(latestSummary.locationServiceFailures)")
                         LabeledContent("GPS-Unterbrechungen", value: "\(latestSummary.recoveredLocationGaps)")
                         LabeledContent("Ziel sicher erkannt", value: "\(latestSummary.arrivals)")
                         LabeledContent("Gesprochene Manöver", value: "\(latestSummary.maneuverAnnouncements)")

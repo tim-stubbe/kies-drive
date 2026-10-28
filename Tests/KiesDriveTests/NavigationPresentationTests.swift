@@ -551,6 +551,26 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.notDetermined))
     }
 
+    func testLocationFailuresHaveActionableMessagesAndRateLimitedDiagnostics() {
+        XCTAssertTrue(NavigationLocationFailurePolicy.message(errorCode: 1)
+            .contains("Einstellungen"))
+        XCTAssertTrue(NavigationLocationFailurePolicy.message(errorCode: 0)
+            .contains("GPS-Signal"))
+        XCTAssertTrue(NavigationLocationFailurePolicy.message(errorCode: 999)
+            .contains("Standort vorübergehend"))
+
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(NavigationLocationFailurePolicy.shouldRecord(
+            lastRecordedAt: nil, now: now
+        ))
+        XCTAssertFalse(NavigationLocationFailurePolicy.shouldRecord(
+            lastRecordedAt: now, now: now.addingTimeInterval(59)
+        ))
+        XCTAssertTrue(NavigationLocationFailurePolicy.shouldRecord(
+            lastRecordedAt: now, now: now.addingTimeInterval(60)
+        ))
+    }
+
     func testBatchedLocationsAreProcessedChronologicallyWithoutExactDuplicates() {
         let base = Date(timeIntervalSince1970: 1_000)
         func location(_ seconds: TimeInterval, latitude: Double,
@@ -3618,6 +3638,31 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(summary.missedFinalCues, 1)
         XCTAssertEqual(summary.quality, .critical)
         XCTAssertEqual(bounded.last?.kind, .arrivalReached)
+    }
+
+    func testUnresolvedLocationServiceFailureIsVisibleAndRecoveryClearsIt() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let failed = DriveDiagnosticEvent(
+            kind: .locationServiceFailure, date: start.addingTimeInterval(1),
+            detail: "Core Location Fehlercode 1"
+        )
+        let unresolved = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: [
+            .init(kind: .navigationStarted, date: start, detail: "Urlaubsfahrt"),
+            failed,
+        ]))
+        XCTAssertEqual(unresolved.locationServiceFailures, 1)
+        XCTAssertEqual(unresolved.quality, .critical)
+        XCTAssertTrue(unresolved.recommendation.contains("Standortdienst"))
+
+        let recovered = try XCTUnwrap(DriveDiagnosticSummary.latestSession(in: [
+            .init(kind: .navigationStarted, date: start, detail: "Urlaubsfahrt"),
+            failed,
+            .init(kind: .locationServiceRecovered, date: start.addingTimeInterval(2),
+                  detail: "Gültige Standortmessung wieder empfangen"),
+        ]))
+        XCTAssertEqual(recovered.locationServiceFailures, 0)
+        XCTAssertEqual(recovered.resolvedRouteIssues, 1)
+        XCTAssertEqual(recovered.quality, .good)
     }
 
     func testDiagnosticReportIsReadableAndContainsNoInventedLocationTrail() {

@@ -283,6 +283,7 @@ enum DriveDiagnosticKind: String, Codable, Hashable {
     case routeCalculated, navigationStarted, rerouteRequested, rerouteSucceeded, rerouteFailed, routeRejoined
     case routeRestoreSucceeded, routeRestoreFailed
     case navigationStopped, arrivalReached, locationRejected, locationGapRecovered
+    case locationServiceFailure, locationServiceRecovered
     case maneuverAnnounced, maneuverFinalCueMissed
     case offlineRouteDeparture, offlineRouteRejoined, speechDeliveryFailed
     case breakReminderShown, breakReminderAnnounced, fuelReminderShown, fuelReminderAnnounced
@@ -381,6 +382,7 @@ enum DriveDiagnosticStore {
     private static let priorityKinds: Set<DriveDiagnosticKind> = [
         .rerouteRequested, .rerouteSucceeded, .rerouteFailed, .routeRejoined,
         .routeRestoreFailed,
+        .locationServiceFailure,
         .maneuverFinalCueMissed, .speechDeliveryFailed,
         .offlineRouteDeparture, .offlineRouteRejoined,
     ]
@@ -470,6 +472,7 @@ struct DriveDiagnosticSummary: Equatable {
     let rerouteRequests: Int
     let rerouteFailures: Int
     let rejectedLocations: Int
+    let locationServiceFailures: Int
     let recoveredLocationGaps: Int
     let arrivals: Int
     let maneuverAnnouncements: Int
@@ -612,6 +615,18 @@ struct DriveDiagnosticSummary: Equatable {
         let totalOfflineDepartures = session.filter { $0.kind == .offlineRouteDeparture }.count
         let failures = unresolvedReroutes.filter { $0.kind == .rerouteFailed }.count
         let rejected = session.filter { $0.kind == .locationRejected }.count
+        let totalLocationServiceFailures = session.filter {
+            $0.kind == .locationServiceFailure
+        }.count
+        let lastLocationServiceRecovery = session.lastIndex {
+            $0.kind == .locationServiceRecovered
+        }
+        let unresolvedLocationServiceEvents = lastLocationServiceRecovery.map {
+            session[session.index(after: $0)...]
+        } ?? session[session.startIndex...]
+        let locationServiceFailures = unresolvedLocationServiceEvents.filter {
+            $0.kind == .locationServiceFailure
+        }.count
         let recoveredLocationGaps = session.filter { $0.kind == .locationGapRecovered }.count
         let rejectedBurst = maximumBurst(of: .locationRejected, in: session)
         let missed = session.filter { $0.kind == .maneuverFinalCueMissed }.count
@@ -651,11 +666,12 @@ struct DriveDiagnosticSummary: Equatable {
             max(0, totalOfflineDepartures - offlineDepartures) +
             max(0, totalSpeechFailures - speechFailures) +
             max(0, totalRouteStopFailures - routeStopFailures) +
-            max(0, totalRestoreFailures - routeRestoreFailures)
+            max(0, totalRestoreFailures - routeRestoreFailures) +
+            max(0, totalLocationServiceFailures - locationServiceFailures)
         let reroutes = session.filter { $0.kind == .rerouteRequested }.count
         let quality: Quality
         let recommendation: String
-        if failures > 0 || routeRestoreFailures > 0 || missed > 0 ||
+        if failures > 0 || routeRestoreFailures > 0 || locationServiceFailures > 0 || missed > 0 ||
             offlineDepartures > 0 || speechFailures > 0 {
             quality = .critical
             if missed > 0 {
@@ -666,6 +682,8 @@ struct DriveDiagnosticSummary: Equatable {
                 recommendation = "Die gespeicherte Route wurde verlassen und noch nicht online ersetzt."
             } else if routeRestoreFailures > 0 {
                 recommendation = "Die gespeicherte Reise konnte noch nicht fortgesetzt werden; Verbindung und Offlinekarte prüfen."
+            } else if locationServiceFailures > 0 {
+                recommendation = "Der Standortdienst meldet einen Fehler; Berechtigung und GPS-Empfang prüfen."
             } else {
                 recommendation = "Die letzte Neuberechnung ist noch fehlgeschlagen; die alte Route blieb aktiv."
             }
@@ -697,6 +715,7 @@ struct DriveDiagnosticSummary: Equatable {
         return .init(quality: quality, eventCount: diagnosticEventCount,
                      rerouteRequests: reroutes,
                      rerouteFailures: failures, rejectedLocations: rejected,
+                     locationServiceFailures: locationServiceFailures,
                      recoveredLocationGaps: recoveredLocationGaps,
                      arrivals: arrivals, maneuverAnnouncements: maneuvers,
                      breakRemindersShown: shownBreaks,

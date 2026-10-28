@@ -2026,6 +2026,23 @@ enum NavigationLocationAuthorizationPolicy {
     }
 }
 
+enum NavigationLocationFailurePolicy {
+    static func message(errorCode: Int) -> String {
+        switch errorCode {
+        case 1: "Standortzugriff fehlt. Prüfe die Kies-Drive-Berechtigung in den Einstellungen."
+        case 0: "GPS-Signal gerade nicht verfügbar. Kies Drive wartet auf eine neue Position."
+        default: "Standort vorübergehend nicht verfügbar. Kies Drive wartet auf eine neue Position."
+        }
+    }
+
+    static func shouldRecord(lastRecordedAt: Date?, now: Date,
+                             minimumInterval: TimeInterval = 60) -> Bool {
+        guard let lastRecordedAt else { return true }
+        let elapsed = now.timeIntervalSince(lastRecordedAt)
+        return elapsed < 0 || elapsed >= max(0, minimumInterval)
+    }
+}
+
 /// Shared plausibility rules for motion values reported by Core Location.
 /// A position can be good enough to advance along a route while its speed or
 /// course is still unusable (for example directly after leaving a tunnel).

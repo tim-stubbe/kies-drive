@@ -28,9 +28,11 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     @Published var location: CLLocation?
     @Published var heading: CLHeading?
     @Published var authorization: CLAuthorizationStatus = .notDetermined
+    @Published private(set) var locationFailureMessage: String?
     private let manager = CLLocationManager()
     private var started = false
     private var navigationActive = false
+    private var lastLocationFailureDiagnosticAt: [Int: Date] = [:]
 
     override init() {
         super.init()
@@ -142,6 +144,16 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // fix when every sample is bad; a lone coarse tail must not make the
         // map, remote status and trip restore jump away from valid guidance.
         location = latest
+        if locationFailureMessage != nil {
+            locationFailureMessage = nil
+            lastLocationFailureDiagnosticAt.removeAll(keepingCapacity: true)
+            if RoutePlanner.shared.isNavigating {
+                DriveDiagnosticStore.append(
+                    .locationServiceRecovered,
+                    detail: "Gültige Standortmessung wieder empfangen"
+                )
+            }
+        }
 
         // Navigation progress must be driven by Core Location itself, not by
         // a SwiftUI `onReceive` callback. SwiftUI view updates are not a
@@ -183,6 +195,23 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
             await planner.restoreActiveTripIfNeeded(from: latest.coordinate, settings: .shared)
             await DriveRemoteBridge.shared.sync(location: latest)
         }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let nsError = error as NSError
+        let code = (error as? CLError)?.code.rawValue ??
+            (nsError.domain == kCLErrorDomain ? nsError.code : -1)
+        let now = Date()
+        locationFailureMessage = NavigationLocationFailurePolicy.message(errorCode: code)
+        guard RoutePlanner.shared.isNavigating,
+              NavigationLocationFailurePolicy.shouldRecord(
+                lastRecordedAt: lastLocationFailureDiagnosticAt[code], now: now
+              ) else { return }
+        lastLocationFailureDiagnosticAt[code] = now
+        DriveDiagnosticStore.append(
+            .locationServiceFailure,
+            detail: "Core Location Fehlercode \(code)"
+        )
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
