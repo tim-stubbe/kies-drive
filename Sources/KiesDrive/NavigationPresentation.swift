@@ -3242,6 +3242,9 @@ enum OfflineRouteGuidanceEligibilityPolicy {
 }
 
 enum RouteSearchPolicy {
+    static let maximumAlongRouteSearchPoints = 20
+    static let maximumSearchRegionSpanMetres: CLLocationDistance = 150_000
+
     struct DetourAnchors {
         let entry: CLLocationCoordinate2D
         let exit: CLLocationCoordinate2D
@@ -3338,7 +3341,21 @@ enum RouteSearchPolicy {
         }
         let intervals = max(1, searchPointCount - 1)
         let overlappingRegionSpan = distance / Double(intervals) * 1.2
-        return min(150_000, max(15_000, overlappingRegionSpan))
+        return min(maximumSearchRegionSpanMetres, max(15_000, overlappingRegionSpan))
+    }
+
+    /// Adds enough bounded MapKit search centers to overlap across long routes.
+    /// A fixed five-point grid left large gaps between regions on holiday trips.
+    static func searchPointCount(routeCoordinates: [CLLocationCoordinate2D]) -> Int {
+        guard routeCoordinates.count > 1 else { return 1 }
+        let distance = zip(routeCoordinates, routeCoordinates.dropFirst()).reduce(0.0) {
+            $0 + CLLocation(latitude: $1.0.latitude, longitude: $1.0.longitude)
+                .distance(from: CLLocation(latitude: $1.1.latitude, longitude: $1.1.longitude))
+        }
+        guard distance.isFinite, distance > 0 else { return 2 }
+        let maximumCenterSpacing = maximumSearchRegionSpanMetres / 1.2
+        let intervals = Int(ceil(distance / maximumCenterSpacing))
+        return min(maximumAlongRouteSearchPoints, max(2, intervals + 1))
     }
 
     /// A stop that needs more than 20 km of additional driving is not an

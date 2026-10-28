@@ -5583,6 +5583,29 @@ final class NavigationPresentationTests: XCTestCase {
                              "Adjacent MapKit search regions must overlap")
     }
 
+    func testAlongRouteSearchAddsBoundedCoverageForLongTrips() {
+        func equatorialRoute(longitude: Double) -> [CLLocationCoordinate2D] {
+            [
+                .init(latitude: 0, longitude: 0),
+                .init(latitude: 0, longitude: longitude),
+            ]
+        }
+
+        XCTAssertEqual(RouteSearchPolicy.searchPointCount(
+            routeCoordinates: equatorialRoute(longitude: 1)
+        ), 2)
+        XCTAssertEqual(RouteSearchPolicy.searchPointCount(
+            routeCoordinates: equatorialRoute(longitude: 1.8)
+        ), 3)
+        XCTAssertEqual(RouteSearchPolicy.searchPointCount(
+            routeCoordinates: equatorialRoute(longitude: 9)
+        ), 10)
+        XCTAssertEqual(RouteSearchPolicy.searchPointCount(
+            routeCoordinates: equatorialRoute(longitude: 25)
+        ), RouteSearchPolicy.maximumAlongRouteSearchPoints)
+        XCTAssertEqual(RouteSearchPolicy.maximumAlongRouteSearchPoints, 20)
+    }
+
     func testRouteSearchBatchLimitsRemainSmallAndBounded() {
         XCTAssertEqual(NavigationSearchBatchPolicy.timeoutNanoseconds, 8_000_000_000)
         XCTAssertEqual(NavigationSearchBatchPolicy.maximumConcurrentMapSearches, 3)

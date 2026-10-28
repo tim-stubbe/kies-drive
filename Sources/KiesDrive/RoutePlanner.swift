@@ -1656,7 +1656,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         )
         let searchPoints = evenlySpaced(
             remainingCoordinates,
-            maximum: NavigationSearchBatchPolicy.maximumConcurrentRouteSearches
+            maximum: RouteSearchPolicy.searchPointCount(routeCoordinates: remainingCoordinates)
         )
         let searchRegionSpan = RouteSearchPolicy.searchRegionSpanMetres(
             routeCoordinates: remainingCoordinates, searchPointCount: searchPoints.count
@@ -1678,7 +1678,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 currentRouteGeneration: self.routeCalculationGeneration,
                 query: cleanQuery, currentQuery: self.routeSearchQuery
             ) == .publish
-        }) {
+        }, allowsEarlyFinish: false) {
             let c = item.placemark.coordinate
             // Overlapping search regions commonly return the same chain or
             // service-area POI with a few metres of coordinate drift. Merge
@@ -5808,7 +5808,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// batch after a short deadline so route search, break planning and their
     /// loading indicators always return control to the driver.
     private func boundedMapSearchResults(
-        _ searches: [MKLocalSearch], shouldContinue: () -> Bool
+        _ searches: [MKLocalSearch], shouldContinue: () -> Bool,
+        allowsEarlyFinish: Bool = true
     ) async -> [MKMapItem] {
         guard !searches.isEmpty else { return [] }
         let timeout = Task {
@@ -5859,7 +5860,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                         toleranceMetres: 80
                     )
                 }
-                if NavigationSearchBatchPolicy.shouldFinishEarly(
+                if allowsEarlyFinish && NavigationSearchBatchPolicy.shouldFinishEarly(
                     uniqueResultCount: uniqueResultCount,
                     completedSearches: completedSearches,
                     totalSearches: searches.count
