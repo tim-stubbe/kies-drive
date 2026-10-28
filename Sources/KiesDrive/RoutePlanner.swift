@@ -2931,7 +2931,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             current: currentSpeed,
             previous: lastReliableGuidanceSpeedMps,
             previousAt: lastReliableGuidanceSpeedAt,
-            now: location.timestamp
+            now: location.timestamp,
+            fallbackMetresPerSecond: guidanceSpeedFallback(
+                at: location.coordinate, settings: settings
+            )
         )
         if currentSpeed != nil {
             // Keep the filtered guidance speed, rather than the raw fix, so
@@ -4497,7 +4500,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,
             previousAt: lastReliableGuidanceSpeedAt,
-            now: location.timestamp
+            now: location.timestamp,
+            fallbackMetresPerSecond: guidanceSpeedFallback(
+                at: location.coordinate, settings: settings
+            )
         )
         if isUsingOfflineGuidance {
             guard let progress = currentOfflineGuidanceProgress(at: location) else { return }
@@ -4970,7 +4976,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             current: NavigationMotionPolicy.reliableSpeed(for: location),
             previous: lastReliableGuidanceSpeedMps,
             previousAt: lastReliableGuidanceSpeedAt,
-            now: location.timestamp
+            now: location.timestamp,
+            fallbackMetresPerSecond: guidanceSpeedFallback(
+                at: location.coordinate, settings: DriveSettings.shared
+            )
         )
         guard NavigationAnnouncementStage.stage(
             distance: progress.distance, speedKmh: speed * 3.6,
@@ -5361,6 +5370,16 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         RouteEnrichmentPublicationPolicy.isCurrent(
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: loadGeneration, currentRequest: comparisonSpeedLimitLoadGeneration
+        )
+    }
+
+    private func guidanceSpeedFallback(at coordinate: CLLocationCoordinate2D,
+                                       settings: DriveSettings) -> Double {
+        let limit = currentSpeedLimit(near: coordinate)
+        return NavigationGuidanceSpeedPolicy.fallback(
+            speedLimitKmh: limit?.maxspeed,
+            unlimited: limit?.unlimited ?? false,
+            targetSpeedKmh: settings.targetSpeedKmh
         )
     }
 

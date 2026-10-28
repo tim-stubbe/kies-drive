@@ -1267,6 +1267,35 @@ final class NavigationPresentationTests: XCTestCase {
         ), 22, accuracy: 0.01)
     }
 
+    func testGuidanceSpeedFallbackAdaptsToLimitAndUnlimitedMotorway() {
+        XCTAssertEqual(
+            NavigationGuidanceSpeedPolicy.fallback(
+                speedLimitKmh: 50, unlimited: false, targetSpeedKmh: 200
+            ),
+            50 / 3.6, accuracy: 0.01,
+            "A known urban limit remains the fallback for missing GPS speed"
+        )
+        XCTAssertEqual(
+            NavigationGuidanceSpeedPolicy.fallback(
+                speedLimitKmh: nil, unlimited: true, targetSpeedKmh: 150
+            ),
+            150 / 3.6, accuracy: 0.01,
+            "An unrestricted road uses the driver's configured cruising speed"
+        )
+        XCTAssertEqual(
+            NavigationGuidanceSpeedPolicy.fallback(
+                speedLimitKmh: nil, unlimited: false, targetSpeedKmh: 150
+            ),
+            NavigationGuidanceSpeedPolicy.unknownLimitFallbackMetresPerSecond,
+            accuracy: 0.01,
+            "Missing road data must not collapse motorway guidance to 50 km/h"
+        )
+        XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(
+            current: nil, previous: nil, previousAt: nil, now: Date(),
+            fallbackMetresPerSecond: 150 / 3.6
+        ), 150 / 3.6, accuracy: 0.01)
+    }
+
     func testGuidanceSpeedDoesNotCollapseOnAbruptMotorwaySlowdown() {
         let measuredAt = Date(timeIntervalSince1970: 1_000)
         XCTAssertEqual(NavigationGuidanceSpeedPolicy.effective(

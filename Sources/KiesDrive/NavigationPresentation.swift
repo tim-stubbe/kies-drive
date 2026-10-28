@@ -2237,10 +2237,25 @@ enum NavigationFollowCameraPolicy {
 enum NavigationGuidanceSpeedPolicy {
     static let retention: TimeInterval = 20
     static let fallbackMetresPerSecond = 13.9 // roughly 50 km/h
+    static let unknownLimitFallbackMetresPerSecond = 100 / 3.6
     static let maximumGuidanceDeceleration = 3.0
 
+    static func fallback(speedLimitKmh: Int?, unlimited: Bool,
+                         targetSpeedKmh: Double) -> Double {
+        if unlimited {
+            let target = targetSpeedKmh.isFinite
+                ? min(220, max(80, targetSpeedKmh)) : 150
+            return target / 3.6
+        }
+        if let speedLimitKmh, speedLimitKmh > 0 {
+            return Double(min(220, max(20, speedLimitKmh))) / 3.6
+        }
+        return unknownLimitFallbackMetresPerSecond
+    }
+
     static func effective(current: Double?, previous: Double?, previousAt: Date?,
-                          now: Date) -> Double {
+                          now: Date,
+                          fallbackMetresPerSecond: Double = fallbackMetresPerSecond) -> Double {
         if let current {
             guard let previous, let previousAt else { return current }
             let elapsed = now.timeIntervalSince(previousAt)
@@ -2259,6 +2274,9 @@ enum NavigationGuidanceSpeedPolicy {
            now.timeIntervalSince(previousAt) >= 0,
            now.timeIntervalSince(previousAt) <= retention {
             return previous
+        }
+        guard fallbackMetresPerSecond.isFinite, fallbackMetresPerSecond > 0 else {
+            return Self.fallbackMetresPerSecond
         }
         return fallbackMetresPerSecond
     }
