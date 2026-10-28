@@ -1849,6 +1849,41 @@ enum NavigationLocationGapPolicy {
     }
 }
 
+/// A route request can take long enough for a moving vehicle to leave its
+/// original origin behind. Rebase one in-flight navigation calculation from a
+/// fresh, accurate fix when that drift is large enough to affect the route.
+enum NavigationRerouteOriginPolicy {
+    static let maximumRefreshCount = 1
+    static let maximumFixAge: TimeInterval = 20
+    static let acceptedTimestampLead: TimeInterval = 5
+    static let minimumDrift: CLLocationDistance = 250
+    static let speedLookahead: TimeInterval = 8
+
+    static func shouldRefresh(requestedOrigin: CLLocationCoordinate2D,
+                              calculationStartedAt: Date,
+                              latestLocation: CLLocation?,
+                              navigationSessionActive: Bool,
+                              refreshCount: Int,
+                              now: Date = Date()) -> Bool {
+        guard navigationSessionActive,
+              refreshCount < maximumRefreshCount,
+              let latestLocation,
+              latestLocation.horizontalAccuracy >= 0,
+              latestLocation.horizontalAccuracy <= 65,
+              latestLocation.timestamp.timeIntervalSince(calculationStartedAt) >=
+                -acceptedTimestampLead else { return false }
+        let age = now.timeIntervalSince(latestLocation.timestamp)
+        guard age.isFinite, age >= 0, age <= maximumFixAge else { return false }
+        let speed = NavigationMotionPolicy.reliableSpeed(for: latestLocation) ??
+            NavigationGuidanceSpeedPolicy.fallbackMetresPerSecond
+        let requiredDrift = max(minimumDrift, speed * speedLookahead)
+        let drift = latestLocation.distance(from: CLLocation(
+            latitude: requestedOrigin.latitude, longitude: requestedOrigin.longitude
+        ))
+        return drift.isFinite && drift >= requiredDrift
+    }
+}
+
 /// Live navigation state changes on every accepted GPS fix, but encoding and
 /// writing several UserDefaults payloads at that same cadence can stall map
 /// rendering on long drives. A short checkpoint interval retains useful crash

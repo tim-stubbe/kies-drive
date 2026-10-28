@@ -2397,7 +2397,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                    navigationSession: UUID? = nil,
                    navigationWork: UUID? = nil,
                    newlyReachedWaypointID: String? = nil,
-                   allowsCheckpointProgressFromStart: Bool = true) async -> Bool {
+                   allowsCheckpointProgressFromStart: Bool = true,
+                   rerouteOriginRefreshCount: Int = 0) async -> Bool {
         guard let destination else { return false }
         if NavigationRerouteSupersessionPolicy.shouldInvalidateAutomaticReroute(
             isRecalculating: isRecalculating,
@@ -2570,6 +2571,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                     from: latestLocation.coordinate, settings: settings,
                     showLoading: showLoading, navigationSession: navigationSession,
                     navigationWork: navigationWork
+                )
+            }
+            if NavigationRerouteOriginPolicy.shouldRefresh(
+                requestedOrigin: start,
+                calculationStartedAt: calculationStartedAt,
+                latestLocation: isNavigating ? lastAcceptedNavigationLocation : nil,
+                navigationSessionActive: navigationSession != nil,
+                refreshCount: rerouteOriginRefreshCount
+            ), let latestLocation = lastAcceptedNavigationLocation {
+                // Never install a route whose origin is already far behind a
+                // moving driver. One bounded refresh keeps long MapKit
+                // responses useful without allowing continuous GPS updates to
+                // starve the calculation by restarting it indefinitely.
+                return await calculate(
+                    from: latestLocation.coordinate, settings: settings,
+                    showLoading: showLoading, navigationSession: navigationSession,
+                    navigationWork: navigationWork,
+                    newlyReachedWaypointID: newlyReachedWaypointID,
+                    allowsCheckpointProgressFromStart: allowsCheckpointProgressFromStart,
+                    rerouteOriginRefreshCount: rerouteOriginRefreshCount + 1
                 )
             }
             // Commit route and trip progress together. A superseded request

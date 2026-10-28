@@ -1513,6 +1513,81 @@ final class NavigationPresentationTests: XCTestCase {
         ))
     }
 
+    func testInFlightRerouteRebasesOnlyFromFreshAccurateMeaningfulMovement() {
+        let now = Date(timeIntervalSince1970: 30_000)
+        let startedAt = now.addingTimeInterval(-2)
+        let origin = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        func fix(latitude: Double, age: TimeInterval = 0,
+                 accuracy: CLLocationAccuracy = 5,
+                 speed: CLLocationSpeed = 20) -> CLLocation {
+            CLLocation(
+                coordinate: .init(latitude: latitude, longitude: 8), altitude: 0,
+                horizontalAccuracy: accuracy, verticalAccuracy: 5,
+                course: 0, courseAccuracy: 5, speed: speed, speedAccuracy: 1,
+                timestamp: now.addingTimeInterval(-age)
+            )
+        }
+
+        XCTAssertTrue(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: startedAt,
+            latestLocation: fix(latitude: 50.003), navigationSessionActive: true,
+            refreshCount: 0, now: now
+        ))
+        XCTAssertFalse(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: startedAt,
+            latestLocation: fix(latitude: 50.001), navigationSessionActive: true,
+            refreshCount: 0, now: now
+        ), "Small GPS drift must not restart a valid route calculation")
+        XCTAssertFalse(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: startedAt,
+            latestLocation: fix(latitude: 50.01, accuracy: 80),
+            navigationSessionActive: true, refreshCount: 0, now: now
+        ), "A coarse fix must not move the route origin")
+        XCTAssertFalse(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: startedAt,
+            latestLocation: fix(latitude: 50.01, age: 25),
+            navigationSessionActive: true, refreshCount: 0, now: now
+        ), "A stale fix must not become the new route origin")
+        XCTAssertFalse(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: startedAt,
+            latestLocation: fix(latitude: 50.01), navigationSessionActive: true,
+            refreshCount: 1, now: now
+        ), "One calculation may rebase at most once")
+        XCTAssertFalse(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: startedAt,
+            latestLocation: fix(latitude: 50.01), navigationSessionActive: false,
+            refreshCount: 0, now: now
+        ), "Route previews do not rebase from unrelated live location")
+    }
+
+    func testFastRerouteOriginRefreshUsesDrivingSpeedToMeasureDrift() {
+        let now = Date(timeIntervalSince1970: 31_000)
+        let origin = CLLocationCoordinate2D(latitude: 50, longitude: 8)
+        let fastFix = CLLocation(
+            coordinate: .init(latitude: 50.003, longitude: 8), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5,
+            course: 0, courseAccuracy: 5, speed: 55, speedAccuracy: 1,
+            timestamp: now
+        )
+
+        XCTAssertFalse(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: now.addingTimeInterval(-2),
+            latestLocation: fastFix, navigationSessionActive: true,
+            refreshCount: 0, now: now
+        ), "At motorway speed the refresh threshold must leave enough time for the request")
+        let fartherFastFix = CLLocation(
+            coordinate: .init(latitude: 50.006, longitude: 8), altitude: 0,
+            horizontalAccuracy: 5, verticalAccuracy: 5,
+            course: 0, courseAccuracy: 5, speed: 55, speedAccuracy: 1,
+            timestamp: now
+        )
+        XCTAssertTrue(NavigationRerouteOriginPolicy.shouldRefresh(
+            requestedOrigin: origin, calculationStartedAt: now.addingTimeInterval(-2),
+            latestLocation: fartherFastFix, navigationSessionActive: true,
+            refreshCount: 0, now: now
+        ))
+    }
+
     func testFailedRerouteRetriesFromMeaningfullyNewDrivingPosition() {
         let attemptedAt = Date(timeIntervalSince1970: 20_000)
         XCTAssertFalse(NavigationRerouteRetryPolicy.mayRetry(
