@@ -1455,6 +1455,22 @@ struct DriveContentView: View {
     }
     #endif
 
+    /// A deliberate map focus (for example a selected fuel station) suspends
+    /// vehicle following. Otherwise the next GPS callback immediately moves
+    /// the camera away from the place the driver just asked to inspect.
+    private func focusMap(on coordinate: CLLocationCoordinate2D,
+                          spanMetres: CLLocationDistance) {
+        if planner.isNavigating {
+            isFollowingLocation = false
+            isShowingRouteOverview = false
+        }
+        position = .region(.init(
+            center: coordinate,
+            latitudinalMeters: spanMetres,
+            longitudinalMeters: spanMetres
+        ))
+    }
+
     private func showCompleteRoute() {
         #if os(iOS)
         UISelectionFeedbackGenerator().selectionChanged()
@@ -1687,7 +1703,10 @@ struct DriveContentView: View {
                 ForEach(visibleFuelStations) { station in
                     let isVia = planner.isRouteStopSelected(id: station.id)
                     HStack {
-                        Button { selectedStation = station; position = .region(.init(center: station.coordinate, latitudinalMeters: 8_000, longitudinalMeters: 8_000)) } label: {
+                        Button {
+                            selectedStation = station
+                            focusMap(on: station.coordinate, spanMetres: 8_000)
+                        } label: {
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(station.brand.isEmpty ? station.name : station.brand)
