@@ -386,6 +386,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     @Published var remainingTravelTime: TimeInterval = 0
     @Published var hasArrived = false
     @Published var breakReminderText: String?
+    @Published private(set) var breakCandidateSearchMessage: String?
     @Published var fuelReminderText: String?
     /// One authoritative alert stream for CarPlay. Break and fuel state still
     /// remain separate for the detailed phone UI, but a head unit must never
@@ -670,6 +671,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         stations = []
         stationPricesAreCached = false
         amenityBreakCandidates = []
+        breakCandidateSearchMessage = nil
         speedLimitPoints = []
         speedLimits = []
         comparisonSpeedLimitPoints = []
@@ -857,6 +859,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         stationPricesAreCached = false
         viaStations = []
         amenityBreakCandidates = []
+        breakCandidateSearchMessage = nil
         measuredBreakDetours = [:]
         speedLimitPoints = []
         speedLimits = []
@@ -2507,6 +2510,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             stations = []
             stationPricesAreCached = false
             amenityBreakCandidates = []
+            breakCandidateSearchMessage = nil
             speedLimitPoints = []
             speedLimits = []
             comparisonSpeedLimitPoints = []
@@ -5763,6 +5767,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     /// Finds real rest areas and motorway service locations near the route so
     /// break planning is not limited to petrol stations.
     private func loadBreakAmenities() async {
+        breakCandidateSearchMessage = nil
         guard !legs.isEmpty else { amenityBreakCandidates = []; return }
         let routeGeneration = routeCalculationGeneration
         let generation = UUID()
@@ -5819,6 +5824,10 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             route: routeGeneration, currentRoute: routeCalculationGeneration,
             request: generation, currentRequest: breakCandidateLoadGeneration
         ) else { return }
+        breakCandidateSearchMessage = BreakAmenitySearchPolicy.incompleteCoverageMessage(
+            completedSearches: mapSearchResults.successfulSearchCount,
+            totalSearches: mapSearchResults.totalSearchCount
+        )
         activeAmenitySearches = []
         guard routeCoordinates.count > 1 else { amenityBreakCandidates = []; return }
         let candidates = matches.values.compactMap { item -> BreakCandidate? in

@@ -179,6 +179,18 @@ final class NavigationPresentationTests: XCTestCase {
         ), "Long-trip stop searches must cover later route regions even when the first areas return many results")
     }
 
+    func testBreakAmenitySearchExplainsTimeoutCoverage() {
+        XCTAssertNil(BreakAmenitySearchPolicy.incompleteCoverageMessage(
+            completedSearches: 12, totalSearches: 12
+        ))
+        XCTAssertEqual(
+            BreakAmenitySearchPolicy.incompleteCoverageMessage(
+                completedSearches: 5, totalSearches: 12
+            ),
+            "Pausenorte nur teilweise geprüft (5 von 12 Suchbereichen). Weitere passende Orte können fehlen."
+        )
+    }
+
     func testRouteSearchExplainsWhyNoStopCanBeOffered() {
         XCTAssertEqual(
             RouteSearchEmptyResultPolicy.message(

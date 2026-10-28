@@ -861,6 +861,12 @@ enum RouteTravelTimeProgress {
 }
 
 enum BreakAmenitySearchPolicy {
+    static func incompleteCoverageMessage(completedSearches: Int,
+                                          totalSearches: Int) -> String? {
+        guard totalSearches > 0, completedSearches < totalSearches else { return nil }
+        return "Pausenorte nur teilweise geprüft (\(completedSearches) von \(totalSearches) Suchbereichen). Weitere passende Orte können fehlen."
+    }
+
     static func distanceProgresses(
         drivingTime: TimeInterval,
         alreadyDrivenSinceBreak: TimeInterval,

@@ -1626,6 +1626,11 @@ struct DriveContentView: View {
                         }
                         comparisonSummary(plan)
                         Text(plan.note).font(.caption).foregroundStyle(.secondary)
+                        if let message = planner.breakCandidateSearchMessage {
+                            Label(message, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
                 Section("Fahrhinweise") {
