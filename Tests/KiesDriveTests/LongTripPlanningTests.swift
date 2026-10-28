@@ -735,6 +735,26 @@ final class LongTripPlanningTests: XCTestCase {
         ))
     }
 
+    func testTollComparisonPreservesScopedSegmentRulesAndVariesInheritedSegments() {
+        XCTAssertTrue(TollComparisonSegmentPolicy.hasVariableSegment(
+            defaultAvoidsTolls: false,
+            segmentPreferences: [false, true, false]
+        ))
+        XCTAssertFalse(TollComparisonSegmentPolicy.hasVariableSegment(
+            defaultAvoidsTolls: false,
+            segmentPreferences: [true, true]
+        ), "If every segment has a fixed toll rule, there is no honest opposite variant")
+        XCTAssertTrue(TollComparisonSegmentPolicy.comparisonPreference(
+            defaultAvoidsTolls: false, segmentPreference: true
+        ), "A scoped no-toll segment must stay no-toll in both variants")
+        XCTAssertTrue(TollComparisonSegmentPolicy.comparisonPreference(
+            defaultAvoidsTolls: false, segmentPreference: false
+        ), "An inherited standard-toll segment can switch in the no-toll variant")
+        XCTAssertFalse(TollComparisonSegmentPolicy.comparisonPreference(
+            defaultAvoidsTolls: true, segmentPreference: false
+        ), "A scoped standard-toll segment must survive a globally toll-free variant")
+    }
+
     func testGeometricallyDifferentTollAlternativeSurvivesSimilarEta() {
         XCTAssertFalse(RouteAlternativeInclusionPolicy.shouldInclude(
             distanceDifferenceMetres: 80,

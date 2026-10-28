@@ -235,6 +235,24 @@ enum TollVariantRoutePolicy {
     }
 }
 
+enum TollComparisonSegmentPolicy {
+    /// A segment-specific toll rule remains fixed in both route variants.
+    /// Segments that simply inherit the trip default may switch between the
+    /// current preference and its opposite for a meaningful comparison.
+    static func hasVariableSegment(defaultAvoidsTolls: Bool,
+                                   segmentPreferences: [Bool?]) -> Bool {
+        segmentPreferences.contains { $0 == nil || $0 == defaultAvoidsTolls }
+    }
+
+    static func comparisonPreference(defaultAvoidsTolls: Bool,
+                                     segmentPreference: Bool?) -> Bool {
+        if let segmentPreference, segmentPreference != defaultAvoidsTolls {
+            return segmentPreference
+        }
+        return !defaultAvoidsTolls
+    }
+}
+
 enum RouteAlternativeInclusionPolicy {
     /// Opposite toll variants may have nearly identical distance and ETA while
     /// using different roads. Keep those alternatives visible when their

@@ -398,7 +398,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     var isMatchingOfflinePosition: Bool {
         isUsingOfflineGuidance && offlineNeedsInitialPositionMatch
     }
-    private var comparisonRoute: MKRoute?
+    private var comparisonRoutes: [MKRoute] = []
     private var researchedStandardToll: TollCost = .unknown(reason: "Mautrecherche läuft noch.")
     private var researchedAvoidingToll: TollCost = .unknown(reason: "Mautfreie Route wird geprüft.")
     private var tollLookupSnapshots: [Bool: TollLookupSnapshot] = [:]
@@ -638,7 +638,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
 
     func selectAlternative(at index: Int, settings: DriveSettings) {
         guard alternatives.indices.contains(index), !isNavigating,
-              selectedAlternativeIndex != index else { return }
+              selectedAlternativeIndex != index, let selectedDestination = destination else { return }
         // An alternative is a new authoritative geometry, even though origin
         // and destination stay the same. Invalidate every asynchronous
         // enrichment tied to the previously selected polyline before
@@ -660,7 +660,18 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             coordinates: sample(selectedRoute.polyline, maximum: 2),
             fallback: selectedRoute.polyline.coordinate
         )
+        let selectedLock = routeLockStore.activeLock
+        let selectedConstraintSnapshot = RouteCalculationConstraintSnapshot(selectedLock)
+        let selectedVisited = Set(selectedLock?.visitedWaypointIDs ?? [])
+        let selectedOptions = selectedLock.map {
+            RouteWaypointOptionsPolicy.currentOptions(
+                defaultOptions: $0.defaultOptions,
+                waypoints: $0.waypoints,
+                visitedIDs: selectedVisited
+            )
+        }
         legs = [selectedRoute]
+        comparisonRoutes = []
         liveRouteConstraintIdentity = routeLockStore.activeLock.map {
             OfflineRouteConstraintIdentityPolicy.identity(for: $0)
         }
@@ -691,9 +702,19 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 fuel: settings.fuel, settings: settings, reloadAmenities: true
             )
             async let speedLimits: Void = self.loadSpeedLimits()
-            async let tollCost: Void = self.loadTollCost(from: selectedOrigin, settings: settings)
-            _ = await (stopPlanning, speedLimits, tollCost)
+            let startItem = MKMapItem(placemark: MKPlacemark(coordinate: selectedOrigin))
+            let comparison = try? await self.computeTollComparisonRoutes(
+                from: startItem, to: selectedDestination, settings: settings,
+                source: .direct, lock: selectedLock, lockedWaypoints: [],
+                currentOptions: selectedOptions, transientStations: []
+            )
             guard selectionGeneration == self.routeCalculationGeneration else { return }
+            guard selectedConstraintSnapshot ==
+                    RouteCalculationConstraintSnapshot(self.routeLockStore.activeLock) else { return }
+            self.comparisonRoutes = comparison ?? []
+            async let comparisonLimits: Void = self.loadComparisonSpeedLimits()
+            async let tollCost: Void = self.loadTollCost(from: selectedOrigin, settings: settings)
+            _ = await (stopPlanning, speedLimits, comparisonLimits, tollCost)
             self.buildLongTripPlan(settings: settings)
             self.cacheForOffline(preservingProgress: true)
         }
@@ -854,7 +875,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         liveRouteDestinationCoordinate = nil
         liveRouteConstraintIdentity = nil
         alternatives = []
-        comparisonRoute = nil
+        comparisonRoutes = []
         stations = []
         stationPricesAreCached = false
         viaStations = []
@@ -2433,7 +2454,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 computedLegs = newLegs.compactMap { $0 }
                 computedAlternatives = []
                 computedComparison = nil
-                shouldLoadComparison = false
+                shouldLoadComparison = true
             }
             guard calculationGeneration == routeCalculationGeneration,
                   constraintSnapshot == RouteCalculationConstraintSnapshot(
@@ -2501,7 +2522,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                 avoidHighways: settings.avoidHighways
             )
             alternatives = computedAlternatives
-            comparisonRoute = computedComparison
+            comparisonRoutes = computedComparison.map { [$0] } ?? []
             // Enrichment belongs to the geometry that produced it. Preserve
             // the old data while MapKit is still calculating, but discard it
             // at the same commit boundary as the replacement route. Otherwise
@@ -2557,25 +2578,30 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             // this replacement calculation intentionally ran in background.
             isLoading = false
             if shouldLoadComparison {
+                let comparisonLockSnapshot = constraintSnapshot
+                let comparisonViaStations = viaStations
+                let comparisonViaStationIDs = comparisonViaStations.map(\.id)
+                let comparisonSource = waypointSource
+                let comparisonWaypoints = lockedWaypoints
+                let comparisonOptions = currentLockedOptions
                 Task { [weak self] in
                     guard let self else { return }
-                    let comparison = try? await self.computeRoutes(
+                    let comparison = try? await self.computeTollComparisonRoutes(
                         from: startItem, to: destination, settings: settings,
-                        alternates: false,
-                        avoidTollsOverride: !(currentLockedOptions?.avoidTolls ?? settings.avoidTolls),
-                        lockedOptions: currentLockedOptions
-                    ).first
-                    let activeLock = self.routeLockStore.activeLock
-                    let visited = Set(activeLock?.visitedWaypointIDs ?? [])
-                    let hasOpenRequiredWaypoints = activeLock?.waypoints.contains {
-                        $0.required && !visited.contains($0.id)
-                    } ?? false
+                        source: comparisonSource, lock: lock,
+                        lockedWaypoints: comparisonWaypoints,
+                        currentOptions: comparisonOptions,
+                        transientStations: comparisonViaStations
+                    )
+                    let constraintsUnchanged = comparisonLockSnapshot ==
+                        RouteCalculationConstraintSnapshot(self.routeLockStore.activeLock)
                     guard RouteComparisonPublicationPolicy.mayPublish(
                         requestRoute: calculationGeneration,
                         currentRoute: self.routeCalculationGeneration,
-                        stillEligible: self.viaStations.isEmpty && !hasOpenRequiredWaypoints
+                        stillEligible: constraintsUnchanged &&
+                            self.viaStations.map(\.id) == comparisonViaStationIDs
                     ) else { return }
-                    self.comparisonRoute = comparison
+                    self.comparisonRoutes = comparison ?? []
                     self.buildLongTripPlan(settings: settings)
                     await self.loadComparisonSpeedLimits()
                     guard calculationGeneration == self.routeCalculationGeneration else { return }
@@ -3109,7 +3135,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             liveRouteDestinationCoordinate = nil
             liveRouteConstraintIdentity = nil
             alternatives = []
-            comparisonRoute = nil
+            comparisonRoutes = []
         }
         resetLiveNavigationProgress()
         errorMessage = nil
@@ -5113,9 +5139,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let generation = UUID()
         speedLimitLoadGeneration = generation
         let points = legs.flatMap { sample($0.polyline, maximum: 80) }
-        let comparisonPoints = comparisonRoute.map {
-            sample($0.polyline, maximum: 80)
-        } ?? []
+        let comparisonPoints = sampledRoutePoints(comparisonRoutes, maximum: 80)
         var limits: [SpeedLimitResult] = []
         var loadedComparisonLimits: [SpeedLimitResult] = []
         var loadWasSuperseded = false
@@ -5185,7 +5209,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
     }
 
     private func loadComparisonSpeedLimits() async {
-        guard let comparisonRoute else {
+        guard !comparisonRoutes.isEmpty else {
             comparisonSpeedLimitPoints = []
             comparisonSpeedLimits = []
             return
@@ -5193,7 +5217,7 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let routeGeneration = routeCalculationGeneration
         let generation = UUID()
         comparisonSpeedLimitLoadGeneration = generation
-        let points = sample(comparisonRoute.polyline, maximum: 80)
+        let points = sampledRoutePoints(comparisonRoutes, maximum: 80)
         var limits: [SpeedLimitResult] = []
         var loadWasSuperseded = false
         await withTaskGroup(of: SpeedLimitLoadOutcome.self) { group in
@@ -5289,9 +5313,91 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                                          width: lock.corridorWidthMetres) }
     }
 
+    /// Builds the opposite toll variant with exactly the same stop order and
+    /// highway rules as the installed route. Segment toll rules that differ
+    /// from the trip default stay fixed; only inherited segments are varied.
+    private func computeTollComparisonRoutes(
+        from startItem: MKMapItem,
+        to destination: MKMapItem,
+        settings: DriveSettings,
+        source: RouteWaypointRoutingPolicy.Source,
+        lock: ActiveRouteLock?,
+        lockedWaypoints: [LockedWaypoint],
+        currentOptions: LockedRouteOptions?,
+        transientStations: [FuelStation]
+    ) async throws -> [MKRoute]? {
+        let routeDefaultAvoidsTolls = lock?.defaultOptions.avoidTolls ?? settings.avoidTolls
+        let waypoints: [MKMapItem]
+        switch source {
+        case .direct:
+            waypoints = []
+        case .persistedLock:
+            waypoints = lockedWaypoints.map { waypoint in
+                let item = MKMapItem(placemark: MKPlacemark(
+                    coordinate: waypoint.coordinate.clLocationCoordinate
+                ))
+                item.name = waypoint.name
+                return item
+            }
+        case .transientStations:
+            waypoints = transientStations.map { station in
+                let item = MKMapItem(placemark: MKPlacemark(coordinate: station.coordinate))
+                item.name = station.brand.isEmpty ? station.name : station.brand
+                return item
+            }
+        }
+        let stops = [startItem] + waypoints + [destination]
+        let segmentOptions: [LockedRouteOptions?] = stops.indices.dropLast().map { index in
+            if index == 0 { return currentOptions }
+            guard source == .persistedLock else { return nil }
+            return lockedWaypoints[safe: index - 1]?.optionsAfter ?? lock?.defaultOptions
+        }
+        guard TollComparisonSegmentPolicy.hasVariableSegment(
+            defaultAvoidsTolls: routeDefaultAvoidsTolls,
+            segmentPreferences: segmentOptions.map { $0?.avoidTolls }
+        ) else { return nil }
+
+        var routes = [MKRoute?](repeating: nil, count: stops.count - 1)
+        for batch in NavigationMultiLegRoutingPolicy.batches(legCount: routes.count) {
+            let calculated = try await withThrowingTaskGroup(
+                of: (Int, MKRoute).self,
+                returning: [(Int, MKRoute)].self
+            ) { group in
+                for index in batch {
+                    let from = stops[index]
+                    let to = stops[index + 1]
+                    let options = segmentOptions[index]
+                    let comparisonPreference = TollComparisonSegmentPolicy.comparisonPreference(
+                        defaultAvoidsTolls: routeDefaultAvoidsTolls,
+                        segmentPreference: options?.avoidTolls
+                    )
+                    group.addTask { @MainActor [weak self] in
+                        guard let self,
+                              let route = try await self.computeRoutes(
+                                from: from, to: to, settings: settings,
+                                alternates: false,
+                                avoidTollsOverride: comparisonPreference,
+                                lockedOptions: options
+                              ).first else {
+                            throw DriveAPIError.invalidData
+                        }
+                        return (index, route)
+                    }
+                }
+                var values: [(Int, MKRoute)] = []
+                for try await value in group { values.append(value) }
+                return values
+            }
+            for (index, route) in calculated { routes[index] = route }
+        }
+        guard routes.allSatisfy({ $0 != nil }) else { throw DriveAPIError.invalidData }
+        return routes.compactMap { $0 }
+    }
+
     private func buildLongTripPlan(settings: DriveSettings) {
         guard !legs.isEmpty else { longTripPlan = nil; return }
-        let mainRouteAvoidsTolls = installedDefaultRouteOptions?.avoidTolls ?? settings.avoidTolls
+        let mainRouteAvoidsTolls = routeLockStore.activeLock?.defaultOptions.avoidTolls
+            ?? settings.avoidTolls
         let isRemainingRoutePlan = isNavigating && remainingDistanceMetres > 0 && totalDistance > 0
         let mainDistance = isRemainingRoutePlan ? remainingDistanceMetres : totalDistance
         let mainTime = isRemainingRoutePlan ? remainingTravelTime : totalTravelTime
@@ -5319,12 +5425,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             breakCandidates: candidates,
             installedRouteStartProgress: distanceProgress
         )]
-        if !isRemainingRoutePlan, let comparisonRoute,
+        let comparisonDistance = comparisonRoutes.reduce(0) { $0 + $1.distance }
+        let comparisonTime = comparisonRoutes.reduce(0) { $0 + $1.expectedTravelTime }
+        if !isRemainingRoutePlan, !comparisonRoutes.isEmpty,
            RouteAlternativeInclusionPolicy.shouldInclude(
-               distanceDifferenceMetres: comparisonRoute.distance - mainDistance,
-               timeDifference: comparisonRoute.expectedTravelTime - mainTime,
+               distanceDifferenceMetres: comparisonDistance - mainDistance,
+               timeDifference: comparisonTime - mainTime,
                maximumGeometrySeparationMetres: maximumRouteSeparation(
-                   primary: legs, comparison: comparisonRoute
+                   primary: legs, comparison: comparisonRoutes
                )
            ) {
             let comparisonUnlimitedFraction = SpeedScenarioPolicy.unlimitedDistanceFraction(
@@ -5334,12 +5442,12 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             inputs.append(.init(
                 id: mainRouteAvoidsTolls ? "standard" : "toll-avoiding",
                 title: mainRouteAvoidsTolls ? "Schnellste Route" : "Maut vermeiden",
-                distanceMetres: comparisonRoute.distance,
-                mapKitExpectedTravelTime: comparisonRoute.expectedTravelTime,
+                distanceMetres: comparisonDistance,
+                mapKitExpectedTravelTime: comparisonTime,
                 unlimitedMotorwayFraction: comparisonUnlimitedFraction,
                 typicalUnlimitedSpeedKmh: 130,
                 toll: mainRouteAvoidsTolls ? researchedStandardToll : researchedAvoidingToll,
-                breakCandidates: breakCandidates(along: [comparisonRoute])
+                breakCandidates: breakCandidates(along: comparisonRoutes)
             ))
         }
         let currentFuelFraction: Double
@@ -5376,13 +5484,26 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                      preferredStopCandidateIDs: preferredStopCandidateIDs)
     }
 
+    private func sampledRoutePoints(_ routes: [MKRoute], maximum: Int)
+        -> [CLLocationCoordinate2D] {
+        guard !routes.isEmpty, maximum > 0 else { return [] }
+        let perLeg = max(2, maximum / routes.count)
+        return evenlySpaced(
+            routes.flatMap { sample($0.polyline, maximum: perLeg) }, maximum: maximum
+        )
+    }
+
     private func maximumRouteSeparation(primary: [MKRoute],
-                                        comparison: MKRoute) -> CLLocationDistance {
-        let primarySamples = primary.flatMap { sample($0.polyline, maximum: 48) }
-        let comparisonSamples = sample(comparison.polyline, maximum: 48)
+                                        comparison: [MKRoute]) -> CLLocationDistance {
+        guard !primary.isEmpty, !comparison.isEmpty else { return 0 }
+        let primarySamples = sampledRoutePoints(primary, maximum: 48)
+        let comparisonSamples = sampledRoutePoints(comparison, maximum: 48)
         let primaryPolylines = primary.map(\.polyline)
-        let primaryToComparison = primarySamples.map {
-            Self.distance(from: $0, to: comparison.polyline)
+        let comparisonPolylines = comparison.map(\.polyline)
+        let primaryToComparison = primarySamples.map { coordinate in
+            comparisonPolylines.map { polyline in
+                Self.distance(from: coordinate, to: polyline)
+            }.min() ?? 0
         }.max() ?? 0
         let comparisonToPrimary = comparisonSamples.map { coordinate in
             primaryPolylines.map { Self.distance(from: coordinate, to: $0) }.min() ?? 0
@@ -5405,6 +5526,9 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         let openTollWaypoints = lock?.waypoints.filter {
             $0.required && !visited.contains($0.id) && $0.isTollEvidenceAnchor
         } ?? []
+        let openRequiredWaypoints = lock?.waypoints.filter {
+            $0.required && !visited.contains($0.id)
+        } ?? []
         let via = openTollWaypoints.map {
             TollWaypointEvidencePolicy.label(name: $0.name, optionsAfter: $0.optionsAfter)
         }
@@ -5426,27 +5550,31 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
         var results: [TollLookupBatchItem] = []
         var requests: [(avoidTolls: Bool, routeIdentity: String,
                         routeHints: [String], distanceKilometres: Double)] = []
-        let mainRouteAvoidsTolls = installedDefaultRouteOptions?.avoidTolls ?? settings.avoidTolls
+        let mainRouteAvoidsTolls = routeLockStore.activeLock?.defaultOptions.avoidTolls
+            ?? settings.avoidTolls
         let requestedVariants = TollLookupBatchPolicy.requestedVariants(
             mainRouteAvoidsTolls: mainRouteAvoidsTolls,
-            comparisonAvailable: comparisonRoute != nil
+            comparisonAvailable: !comparisonRoutes.isEmpty
         )
         for avoidTolls in [false, true] where requestedVariants.contains(avoidTolls) {
             let usesComparison = TollVariantRoutePolicy.usesComparisonRoute(
                 requestAvoidsTolls: avoidTolls,
                 mainRouteAvoidsTolls: mainRouteAvoidsTolls,
-                comparisonAvailable: comparisonRoute != nil
+                comparisonAvailable: !comparisonRoutes.isEmpty
             )
-            let variantRoutes = usesComparison ? comparisonRoute.map { [$0] } ?? [] : legs
+            let variantRoutes = usesComparison ? comparisonRoutes : legs
             let variantDistance = variantRoutes.reduce(0) { $0 + $1.distance }
             let routeHints = TollRouteHintPolicy.hints(
                 from: variantRoutes.flatMap { $0.steps.map(\.instructions) }
             )
-            let variantAnchors = variantRoutes.flatMap { sample($0.polyline, maximum: 12) }
+            let variantAnchors = sampledRoutePoints(variantRoutes, maximum: 12)
             let routeIdentity = TollRouteIdentityPolicy.identity(
                 destination: destinationCoordinate,
-                via: openTollWaypoints.map(\.coordinate),
-                constraintOptions: openTollWaypoints.map(\.optionsAfter),
+                via: openRequiredWaypoints.map(\.coordinate) + viaStations.map {
+                    DriveCoordinate(latitude: $0.coordinate.latitude,
+                                    longitude: $0.coordinate.longitude)
+                },
+                constraintOptions: openRequiredWaypoints.map(\.optionsAfter),
                 distanceMetres: variantDistance,
                 routeAnchors: variantAnchors
             ) + (avoidTolls ? "|avoid" : "|standard")
