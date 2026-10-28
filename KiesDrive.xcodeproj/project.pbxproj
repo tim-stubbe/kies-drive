@@ -237,7 +237,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					0B60F400CE82F4429EEDBA63 = {
-						DevelopmentTeam = ZC6VGG4S4X;
+						DevelopmentTeam = NGBW8LC6RA;
 						ProvisioningStyle = Automatic;
 					};
 					DFAA45459FD88332F6283340 = {
@@ -438,7 +438,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZC6VGG4S4X;
+				DEVELOPMENT_TEAM = NGBW8LC6RA;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Sources/KiesDrive/Info-iOS-PersonalTeam.plist";
 				KIES_DRIVE_SERVER_URL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive";
@@ -462,7 +462,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZC6VGG4S4X;
+				DEVELOPMENT_TEAM = NGBW8LC6RA;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Sources/KiesDrive/Info-iOS-PersonalTeam.plist";
 				KIES_DRIVE_SERVER_URL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive";

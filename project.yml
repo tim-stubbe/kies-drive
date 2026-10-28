@@ -30,7 +30,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         KIES_DRIVE_SERVER_URL: "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive"
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: ZC6VGG4S4X
+        DEVELOPMENT_TEAM: NGBW8LC6RA
   KiesDriveMac:
     type: application
     platform: macOS
