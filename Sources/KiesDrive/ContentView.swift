@@ -2812,26 +2812,50 @@ private struct AccountWelcomeView: View {
                             }
 
                             #if os(iOS)
-                            TextField("E-Mail-Adresse", text: $email)
+                            TextField(
+                                "E-Mail-Adresse", text: $email,
+                                prompt: Text("E-Mail-Adresse")
+                                    .foregroundColor(Color.kiesForest.opacity(0.62))
+                            )
                                 .textContentType(.emailAddress).textInputAutocapitalization(.never)
                                 .keyboardType(.emailAddress)
                             #else
-                            TextField("E-Mail-Adresse", text: $email)
+                            TextField(
+                                "E-Mail-Adresse", text: $email,
+                                prompt: Text("E-Mail-Adresse")
+                                    .foregroundColor(Color.kiesForest.opacity(0.62))
+                            )
                                 .textContentType(.emailAddress)
                             #endif
-                            SecureField("Passwort (mindestens 12 Zeichen)", text: $password)
+                            SecureField(
+                                "Passwort (mindestens 12 Zeichen)", text: $password,
+                                prompt: Text("Passwort (mindestens 12 Zeichen)")
+                                    .foregroundColor(Color.kiesForest.opacity(0.62))
+                            )
                                 .textContentType(mode == .login ? .password : .newPassword)
                             if mode == .register {
-                                SecureField("Passwort wiederholen", text: $passwordConfirmation)
+                                SecureField(
+                                    "Passwort wiederholen", text: $passwordConfirmation,
+                                    prompt: Text("Passwort wiederholen")
+                                        .foregroundColor(Color.kiesForest.opacity(0.62))
+                                )
                                     .textContentType(.newPassword)
                             }
                             if mode == .login && needsTwoFactor {
                                 #if os(iOS)
-                                TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
+                                TextField(
+                                    "Authenticator- oder Wiederherstellungscode", text: $totpCode,
+                                    prompt: Text("Authenticator- oder Wiederherstellungscode")
+                                        .foregroundColor(Color.kiesForest.opacity(0.62))
+                                )
                                     .textContentType(.oneTimeCode).textInputAutocapitalization(.characters)
                                     .keyboardType(.asciiCapable)
                                 #else
-                                TextField("Authenticator- oder Wiederherstellungscode", text: $totpCode)
+                                TextField(
+                                    "Authenticator- oder Wiederherstellungscode", text: $totpCode,
+                                    prompt: Text("Authenticator- oder Wiederherstellungscode")
+                                        .foregroundColor(Color.kiesForest.opacity(0.62))
+                                )
                                     .textContentType(.oneTimeCode)
                                 #endif
                             }
@@ -2840,11 +2864,22 @@ private struct AccountWelcomeView: View {
 
                             Button(action: submit) {
                                 Group {
-                                    if isWorking { ProgressView().tint(.white) }
-                                    else { Text(mode.rawValue).fontWeight(.semibold) }
-                                }.frame(maxWidth: .infinity).frame(height: 24)
+                                    if isWorking {
+                                        ProgressView().tint(Color.kiesIvory)
+                                    } else {
+                                        Text(mode.rawValue).fontWeight(.semibold)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 24)
+                                .foregroundStyle(canSubmit ? Color.kiesIvory : Color.kiesForest)
+                                .padding(.vertical, 12)
+                                .background(
+                                    canSubmit ? Color.kiesForest : Color.kiesForest.opacity(0.16),
+                                    in: Capsule()
+                                )
                             }
-                            .buttonStyle(.borderedProminent).tint(Color.kiesForest)
+                            .buttonStyle(.plain)
                             .disabled(!canSubmit)
 
                             if mode == .login {
@@ -2865,7 +2900,7 @@ private struct AccountWelcomeView: View {
 
                             if mode == .register {
                                 Text("Wir senden dir anschließend einen Bestätigungslink per E-Mail. Öffne ihn auf diesem Gerät – Kies Drive übernimmt den bestätigten Account automatisch.")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(Color.kiesForest.opacity(0.78))
                             }
                         }
                     }
