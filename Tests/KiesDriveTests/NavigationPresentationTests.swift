@@ -2565,6 +2565,8 @@ final class NavigationPresentationTests: XCTestCase {
 
         let firstProjection = cache.steps(for: firstRoute)
         XCTAssertEqual(firstProjection.map(\.instruction), ["Rechts abbiegen"])
+        XCTAssertEqual(firstProjection.first?.mapPoints.first?.coordinate.latitude ?? 0,
+                       50, accuracy: 0.0001)
         XCTAssertEqual(cache.projectionCount, 1)
 
         _ = cache.steps(for: firstRoute.updatingNavigationProgress(0.4))
@@ -2588,6 +2590,8 @@ final class NavigationPresentationTests: XCTestCase {
         let secondProjection = cache.steps(for: secondRoute)
         XCTAssertEqual(secondProjection.map(\.instruction), ["Links abbiegen"])
         XCTAssertEqual(secondProjection.first?.coordinates.first?.latitude, 51)
+        XCTAssertEqual(secondProjection.first?.mapPoints.first?.coordinate.latitude ?? 0,
+                       51, accuracy: 0.0001)
         XCTAssertEqual(cache.projectionCount, 2,
                        "A route geometry change must replace the cached maneuver steps")
     }

@@ -3756,6 +3756,9 @@ struct OfflineGuidanceStep {
     let instruction: String
     let distance: CLLocationDistance
     let coordinates: [CLLocationCoordinate2D]
+    /// Preprojected route vertices avoid allocating MapKit points on each GPS
+    /// fix. The coordinates remain available for direction wording and debug.
+    let mapPoints: [MKMapPoint]
     let legIndex: Int
 
     init(instruction: String, distance: CLLocationDistance,
@@ -3763,6 +3766,7 @@ struct OfflineGuidanceStep {
         self.instruction = instruction
         self.distance = distance
         self.coordinates = coordinates
+        self.mapPoints = coordinates.map(MKMapPoint.init)
         self.legIndex = legIndex
     }
 }
@@ -3868,7 +3872,7 @@ enum OfflineGuidanceEngine {
             )
         for index in evaluationIndices {
             metrics[index] = geometryMetric(
-                from: coordinate, on: steps[index].coordinates,
+                from: coordinate, on: steps[index].mapPoints,
                 stepDistance: steps[index].distance, courseDegrees: courseDegrees,
                 hasManeuverInstruction: !steps[index].instruction
                     .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -3919,11 +3923,11 @@ enum OfflineGuidanceEngine {
     }
 
     private static func geometryMetric(from coordinate: CLLocationCoordinate2D,
-                                       on coordinates: [CLLocationCoordinate2D],
+                                       on route: [MKMapPoint],
                                        stepDistance: CLLocationDistance,
                                        courseDegrees: Double?,
                                        hasManeuverInstruction: Bool = false) -> NavigationStepMetric {
-        guard coordinates.count > 1 else {
+        guard route.count > 1 else {
             return .init(distanceFromRoute: .greatestFiniteMagnitude,
                          remainingOnStep: .greatestFiniteMagnitude,
                          stepDistance: stepDistance,
@@ -3931,7 +3935,6 @@ enum OfflineGuidanceEngine {
                          hasManeuverInstruction: hasManeuverInstruction)
         }
         let point = MKMapPoint(coordinate)
-        let route = coordinates.map(MKMapPoint.init)
         var best = (index: 0, projection: route[0], distance: CLLocationDistance.greatestFiniteMagnitude)
         for index in route.indices.dropLast() {
             let projected = segmentProjection(point, route[index], route[index + 1])
@@ -3947,7 +3950,7 @@ enum OfflineGuidanceEngine {
         }
         let difference = courseDegrees.flatMap { course in
             NavigationCourseMatchingPolicy.bearing(
-                from: coordinates[best.index], to: coordinates[best.index + 1]
+                from: route[best.index].coordinate, to: route[best.index + 1].coordinate
             ).flatMap {
                 NavigationCourseMatchingPolicy.angularDifference(
                     courseDegrees: course, routeCourseDegrees: $0
