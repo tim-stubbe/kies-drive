@@ -1658,15 +1658,15 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             remainingCoordinates,
             maximum: NavigationSearchBatchPolicy.maximumConcurrentRouteSearches
         )
-        let searchRadius = RouteSearchPolicy.searchRadiusMetres(
+        let searchRegionSpan = RouteSearchPolicy.searchRegionSpanMetres(
             routeCoordinates: remainingCoordinates, searchPointCount: searchPoints.count
         )
         var matches: [String: MKMapItem] = [:]
         let searches = searchPoints.map { point -> MKLocalSearch in
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = cleanQuery
-            request.region = .init(center: point, latitudinalMeters: searchRadius,
-                                   longitudinalMeters: searchRadius)
+            request.region = .init(center: point, latitudinalMeters: searchRegionSpan,
+                                   longitudinalMeters: searchRegionSpan)
             return MKLocalSearch(request: request)
         }
         activeRouteSearches = searches

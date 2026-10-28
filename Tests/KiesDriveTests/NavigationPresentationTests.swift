@@ -5555,15 +5555,32 @@ final class NavigationPresentationTests: XCTestCase {
             CLLocationCoordinate2D(latitude: 45, longitude: 8),
             CLLocationCoordinate2D(latitude: 55, longitude: 8),
         ]
-        XCTAssertEqual(RouteSearchPolicy.searchRadiusMetres(
+        XCTAssertEqual(RouteSearchPolicy.searchRegionSpanMetres(
             routeCoordinates: short, searchPointCount: 5
         ), 15_000, accuracy: 1)
-        XCTAssertGreaterThan(RouteSearchPolicy.searchRadiusMetres(
+        XCTAssertGreaterThan(RouteSearchPolicy.searchRegionSpanMetres(
             routeCoordinates: long, searchPointCount: 5
         ), 100_000)
-        XCTAssertLessThanOrEqual(RouteSearchPolicy.searchRadiusMetres(
+        XCTAssertLessThanOrEqual(RouteSearchPolicy.searchRegionSpanMetres(
             routeCoordinates: long, searchPointCount: 5
         ), 150_000)
+    }
+
+    func testRouteSearchRegionsOverlapAcrossRegionalRoutes() {
+        let route = (0...18).map {
+            CLLocationCoordinate2D(latitude: 50 + Double($0) * 0.05, longitude: 8)
+        }
+        let routeDistance = zip(route, route.dropFirst()).reduce(0.0) {
+            $0 + CLLocation(latitude: $1.0.latitude, longitude: $1.0.longitude)
+                .distance(from: CLLocation(latitude: $1.1.latitude, longitude: $1.1.longitude))
+        }
+        let regionSpan = RouteSearchPolicy.searchRegionSpanMetres(
+            routeCoordinates: route, searchPointCount: 5
+        )
+
+        XCTAssertEqual(regionSpan, routeDistance / 4 * 1.2, accuracy: 5)
+        XCTAssertGreaterThan(regionSpan, routeDistance / 4,
+                             "Adjacent MapKit search regions must overlap")
     }
 
     func testRouteSearchBatchLimitsRemainSmallAndBounded() {
