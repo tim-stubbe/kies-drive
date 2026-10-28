@@ -396,6 +396,36 @@ final class LongTripPlanningTests: XCTestCase {
                                            "candidate-9", "candidate-12", "candidate-15"])
     }
 
+    func testBreakCandidateValidationRejectsMalformedProviderGeometryAndProgress() {
+        func candidate(
+            coordinate: CLLocationCoordinate2D = .init(latitude: 50, longitude: 8),
+            progress: Double = 0.5,
+            installedRouteProgress: Double? = nil,
+            timeProgress: Double? = nil,
+            detourMetres: Double = 100
+        ) -> BreakCandidate {
+            .init(
+                id: "provider-stop", name: "Rastplatz", coordinate: coordinate,
+                progress: progress, installedRouteProgress: installedRouteProgress,
+                timeProgress: timeProgress, detourMetres: detourMetres, isOpen: nil
+            )
+        }
+
+        XCTAssertTrue(BreakCandidateValidationPolicy.isUsable(candidate()))
+        XCTAssertFalse(BreakCandidateValidationPolicy.isUsable(candidate(
+            coordinate: .init(latitude: .nan, longitude: 8)
+        )))
+        XCTAssertFalse(BreakCandidateValidationPolicy.isUsable(candidate(
+            coordinate: .init(latitude: 91, longitude: 8)
+        )))
+        XCTAssertFalse(BreakCandidateValidationPolicy.isUsable(candidate(progress: .infinity)))
+        XCTAssertFalse(BreakCandidateValidationPolicy.isUsable(candidate(
+            installedRouteProgress: 1.01
+        )))
+        XCTAssertFalse(BreakCandidateValidationPolicy.isUsable(candidate(timeProgress: -0.01)))
+        XCTAssertFalse(BreakCandidateValidationPolicy.isUsable(candidate(detourMetres: .infinity)))
+    }
+
     func testBreakCandidateShortlistRedistributesAcrossRemainingJourney() {
         let candidates = (0..<6).map { index in
             let progress = 0.52 + Double(index) * 0.09
