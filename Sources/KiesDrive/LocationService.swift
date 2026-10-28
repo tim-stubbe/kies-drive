@@ -9,13 +9,18 @@ struct NavigationLocationRuntimeConfiguration: Equatable {
 }
 
 enum NavigationLocationRuntimePolicy {
-    static func configuration(navigationActive: Bool) -> NavigationLocationRuntimeConfiguration {
+    static func configuration(navigationActive: Bool,
+                              persistentTripActive: Bool = false)
+        -> NavigationLocationRuntimeConfiguration {
         .init(
             desiredAccuracy: navigationActive
                 ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyNearestTenMeters,
-            distanceFilter: navigationActive ? 8 : 25,
-            allowsBackgroundUpdates: navigationActive,
-            pausesAutomatically: !navigationActive
+            distanceFilter: navigationActive ? 8 : (persistentTripActive ? kCLDistanceFilterNone : 25),
+            // A locked trip survives a deliberate pause. Keep background
+            // fixes so long stationary breaks and route restoration continue
+            // while the screen is locked. Ordinary browsing stops.
+            allowsBackgroundUpdates: navigationActive || persistentTripActive,
+            pausesAutomatically: !navigationActive && !persistentTripActive
         )
     }
 }
@@ -32,6 +37,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     private let manager = CLLocationManager()
     private var started = false
     private var navigationActive = false
+    private var persistentTripActive = false
     private var lastLocationFailureDiagnosticAt: [Int: Date] = [:]
 
     override init() {
@@ -78,12 +84,33 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         #if os(iOS)
         if NavigationLocationAuthorizationPolicy.shouldRequestAlways(
             navigationActive: active,
+            persistentTripActive: persistentTripActive,
             hasWhenInUseAuthorization: manager.authorizationStatus == .authorizedWhenInUse
         ) {
             manager.requestAlwaysAuthorization()
         }
-        manager.allowsBackgroundLocationUpdates = active
-        manager.pausesLocationUpdatesAutomatically = !active
+        manager.allowsBackgroundLocationUpdates = active || persistentTripActive
+        manager.pausesLocationUpdatesAutomatically = !active && !persistentTripActive
+        #endif
+    }
+
+    /// A route lock intentionally outlives active guidance. Retain lower
+    /// priority fixes in the background to observe real rest and restore the
+    /// route if driving resumes while the screen is locked.
+    func setPersistentTripActive(_ active: Bool) {
+        persistentTripActive = active
+        applyRuntimeConfiguration()
+        #if os(iOS)
+        if NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: navigationActive,
+            persistentTripActive: active,
+            hasWhenInUseAuthorization: manager.authorizationStatus == .authorizedWhenInUse
+        ) {
+            manager.requestAlwaysAuthorization()
+        }
+        manager.allowsBackgroundLocationUpdates = navigationActive || active
+        manager.pausesLocationUpdatesAutomatically = !navigationActive && !active
+        if active { manager.startUpdatingLocation() }
         #endif
     }
 
@@ -102,7 +129,8 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
 
     private func applyRuntimeConfiguration() {
         let configuration = NavigationLocationRuntimePolicy.configuration(
-            navigationActive: navigationActive
+            navigationActive: navigationActive,
+            persistentTripActive: persistentTripActive
         )
         manager.desiredAccuracy = configuration.desiredAccuracy
         manager.distanceFilter = configuration.distanceFilter
@@ -125,6 +153,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         // background-mode configuration.
         if NavigationLocationAuthorizationPolicy.shouldRequestAlways(
             navigationActive: navigationActive,
+            persistentTripActive: persistentTripActive,
             hasWhenInUseAuthorization: authorization == .authorizedWhenInUse
         ) {
             manager.requestAlwaysAuthorization()

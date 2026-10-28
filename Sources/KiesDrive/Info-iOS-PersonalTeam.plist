@@ -10,7 +10,7 @@
 <key>KiesDriveServerURL</key><string>$(KIES_DRIVE_SERVER_URL)</string>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>kiesdrive</string></array></dict></array>
 <key>NSLocationWhenInUseUsageDescription</key><string>Kies Drive benötigt deinen Standort für Routen, Navigation und Tankstellen entlang des Weges.</string>
-<key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>Kies Drive benötigt deinen Standort auch bei gesperrtem Bildschirm, damit Navigation und Ansagen weiterlaufen.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key><string>Kies Drive benötigt deinen Standort während einer aktiven Reise auch bei gesperrtem Bildschirm, damit Navigation, Pausenerkennung und Wiederaufnahme zuverlässig funktionieren.</string>
 <key>UIBackgroundModes</key><array><string>location</string></array>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
 <key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string></dict>

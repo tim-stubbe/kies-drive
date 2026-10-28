@@ -383,7 +383,14 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             LocationService.shared.setNavigationActive(isNavigating)
         }
     }
-    @Published var activeRouteLock: ActiveRouteLock?
+    @Published var activeRouteLock: ActiveRouteLock? {
+        didSet {
+            guard activeRouteLock?.id != oldValue?.id else { return }
+            // Location continuity follows the persisted trip, even when a
+            // user deliberately pauses guidance for a meal or rest stop.
+            LocationService.shared.setPersistentTripActive(activeRouteLock != nil)
+        }
+    }
     @Published var routeSearchQuery = ""
     @Published var routeSearchResults: [RouteSearchResult] = []
     @Published var routeSearchMessage: String?

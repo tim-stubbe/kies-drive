@@ -593,6 +593,14 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertFalse(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
             navigationActive: true, hasWhenInUseAuthorization: false
         ))
+        XCTAssertTrue(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: false, persistentTripActive: true,
+            hasWhenInUseAuthorization: true
+        ))
+        XCTAssertFalse(NavigationLocationAuthorizationPolicy.shouldRequestAlways(
+            navigationActive: false, persistentTripActive: true,
+            hasWhenInUseAuthorization: false
+        ))
         XCTAssertTrue(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.denied))
         XCTAssertTrue(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.restricted))
         XCTAssertFalse(NavigationLocationAuthorizationPolicy.requiresSystemSettings(.notDetermined))
@@ -3430,6 +3438,14 @@ final class NavigationPresentationTests: XCTestCase {
         XCTAssertEqual(navigating.distanceFilter, 8)
         XCTAssertTrue(navigating.allowsBackgroundUpdates)
         XCTAssertFalse(navigating.pausesAutomatically)
+
+        let pausedTrip = NavigationLocationRuntimePolicy.configuration(
+            navigationActive: false, persistentTripActive: true
+        )
+        XCTAssertEqual(pausedTrip.desiredAccuracy, kCLLocationAccuracyNearestTenMeters)
+        XCTAssertEqual(pausedTrip.distanceFilter, kCLDistanceFilterNone)
+        XCTAssertTrue(pausedTrip.allowsBackgroundUpdates)
+        XCTAssertFalse(pausedTrip.pausesAutomatically)
     }
 
     func testRemoteLocationRefreshChecksAreRateLimitedButRecoverFromClockChanges() {

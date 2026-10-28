@@ -2027,12 +2027,12 @@ enum RouteOverviewMapRectPolicy {
 
 enum NavigationLocationAuthorizationPolicy {
     /// iOS commonly answers the first "Always" request with When-In-Use.
-    /// Ask for the background upgrade only when guidance actually begins, so
-    /// the prompt is relevant and locked-screen/CarPlay navigation can keep
-    /// receiving fixes.
+    /// Ask for the background upgrade only while guidance or a persisted trip
+    /// is active, so a paused long-trip can observe rest and restore safely.
     static func shouldRequestAlways(navigationActive: Bool,
+                                    persistentTripActive: Bool = false,
                                     hasWhenInUseAuthorization: Bool) -> Bool {
-        navigationActive && hasWhenInUseAuthorization
+        (navigationActive || persistentTripActive) && hasWhenInUseAuthorization
     }
 
     static func requiresSystemSettings(_ authorization: CLAuthorizationStatus) -> Bool {
