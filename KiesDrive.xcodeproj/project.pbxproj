@@ -399,6 +399,23 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		094368B2DA2E078AB272E261 /* CarPlayDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.KiesDriveTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Contents/MacOS/Kies Drive";
+			};
+			name = CarPlayDebug;
+		};
 		099FCED9DA1BF299DBAED416 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -520,6 +537,62 @@
 			};
 			name = Release;
 		};
+		6504A6F03AAA5DBE3570C076 /* CarPlayRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = CarPlayRelease;
+		};
 		6BD281D7B1B7474402ACAF25 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -544,6 +617,69 @@
 			};
 			name = Debug;
 		};
+		85291A902EDA74E0CCCAD0B2 /* CarPlayDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = CarPlayDebug;
+		};
 		9352EE4D3E66D1801EDA2F66 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -560,6 +696,23 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Contents/MacOS/Kies Drive";
 			};
 			name = Release;
+		};
+		9A8C2CF54FD7E98F71AE90FE /* CarPlayRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.KiesDriveTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Contents/MacOS/Kies Drive";
+			};
+			name = CarPlayRelease;
 		};
 		A36BE4366700EF6FE9DDEFBA /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -581,6 +734,73 @@
 			};
 			name = Debug;
 		};
+		B1FE0789E0A6E1BAE279A289 /* CarPlayDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/KiesDrive/KiesDriveiOS.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NGBW8LC6RA;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Sources/KiesDrive/Info-iOS-PersonalTeam.plist";
+				KIES_DRIVE_SERVER_URL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.ios.dev;
+				PRODUCT_NAME = "Kies Drive";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = CarPlayDebug;
+		};
+		B44250BA0789861FF48113AE /* CarPlayRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.KiesDriveiOSTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Kies Drive";
+			};
+			name = CarPlayRelease;
+		};
+		C0FF5BFAE30EA378C77BDF35 /* CarPlayRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/KiesDrive/KiesDriveiOS.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = NGBW8LC6RA;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Sources/KiesDrive/Info-iOS-PersonalTeam.plist";
+				KIES_DRIVE_SERVER_URL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.ios.dev;
+				PRODUCT_NAME = "Kies Drive";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = CarPlayRelease;
+		};
 		C8BC92AC9603237CB598F4B7 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -597,6 +817,63 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Kies Drive";
 			};
 			name = Release;
+		};
+		CB1BE0C23A0D3AAE4F5B43F2 /* CarPlayDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Sources/KiesDrive/Info-macOS.plist";
+				KIES_DRIVE_SERVER_URL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.macos;
+				PRODUCT_NAME = "Kies Drive";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = CarPlayDebug;
+		};
+		D0E10D5C0AF1A859BCB6E33D /* CarPlayDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.KiesDriveiOSTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kies Drive.app/Kies Drive";
+			};
+			name = CarPlayDebug;
+		};
+		D31678630DBE99CA9C21FCA9 /* CarPlayRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Sources/KiesDrive/Info-macOS.plist";
+				KIES_DRIVE_SERVER_URL = "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.kies.drive.macos;
+				PRODUCT_NAME = "Kies Drive";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = CarPlayRelease;
 		};
 		D55109341ADF7A134BFF7991 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -680,6 +957,8 @@
 		4AFEA1ACB858E38CB0557DE0 /* Build configuration list for PBXProject "KiesDrive" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				85291A902EDA74E0CCCAD0B2 /* CarPlayDebug */,
+				6504A6F03AAA5DBE3570C076 /* CarPlayRelease */,
 				099FCED9DA1BF299DBAED416 /* Debug */,
 				ED6237444EC27D7A33C07C7F /* Release */,
 			);
@@ -689,6 +968,8 @@
 		6114A93E9303A21C492C9795 /* Build configuration list for PBXNativeTarget "KiesDriveMac" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				CB1BE0C23A0D3AAE4F5B43F2 /* CarPlayDebug */,
+				D31678630DBE99CA9C21FCA9 /* CarPlayRelease */,
 				A36BE4366700EF6FE9DDEFBA /* Debug */,
 				D55109341ADF7A134BFF7991 /* Release */,
 			);
@@ -698,6 +979,8 @@
 		A826A8F0D268028C64436091 /* Build configuration list for PBXNativeTarget "KiesDriveTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				094368B2DA2E078AB272E261 /* CarPlayDebug */,
+				9A8C2CF54FD7E98F71AE90FE /* CarPlayRelease */,
 				0EE4C1D15FB88445C4F299F0 /* Debug */,
 				9352EE4D3E66D1801EDA2F66 /* Release */,
 			);
@@ -707,6 +990,8 @@
 		BE2B89983786C89BD930FD6D /* Build configuration list for PBXNativeTarget "KiesDriveiOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				B1FE0789E0A6E1BAE279A289 /* CarPlayDebug */,
+				C0FF5BFAE30EA378C77BDF35 /* CarPlayRelease */,
 				6BD281D7B1B7474402ACAF25 /* Debug */,
 				63A8647F23176DAC581E4575 /* Release */,
 			);
@@ -716,6 +1001,8 @@
 		ED69C27900FA1C34919ACDFF /* Build configuration list for PBXNativeTarget "KiesDriveiOSTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				D0E10D5C0AF1A859BCB6E33D /* CarPlayDebug */,
+				B44250BA0789861FF48113AE /* CarPlayRelease */,
 				441D813882FF5C3F5102F583 /* Debug */,
 				C8BC92AC9603237CB598F4B7 /* Release */,
 			);

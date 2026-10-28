@@ -4,6 +4,12 @@ options:
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
+  defaultConfig: Debug
+configs:
+  Debug: debug
+  Release: release
+  CarPlayDebug: debug
+  CarPlayRelease: release
 packages:
   KiesDriveCorePackage:
     path: .
@@ -31,6 +37,9 @@ targets:
         KIES_DRIVE_SERVER_URL: "https://truenas-scale.tail8d3a5d.ts.net:10000/kies-drive"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: NGBW8LC6RA
+      configs:
+        CarPlay:
+          CODE_SIGN_ENTITLEMENTS: Sources/KiesDrive/KiesDriveiOS.entitlements
   KiesDriveMac:
     type: application
     platform: macOS
@@ -81,6 +90,23 @@ schemes:
         KiesDriveiOS: all
     test:
       targets: [KiesDriveiOSTests]
+  KiesDriveiOSCarPlay:
+    build:
+      targets:
+        KiesDriveiOS: all
+    run:
+      config: CarPlayDebug
+    test:
+      config: CarPlayDebug
+      targets: [KiesDriveiOSTests]
+    profile:
+      config: CarPlayRelease
+    analyze:
+      config: CarPlayDebug
+    archive:
+      config: CarPlayRelease
+    management:
+      orderHint: 2
   KiesDriveMac:
     build:
       targets:

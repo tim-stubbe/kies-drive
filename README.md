@@ -27,11 +27,14 @@ nur noch optionale Zusatzdienste wie Jarvis und Tankpreise.
 
 Kies Drive contains a native CarPlay navigation scene with its own MapKit map,
 vehicle following, route overview, turn guidance, travel estimates, route-lock
-restoration and route-stop selection. The entitlement template is stored in
-`Sources/KiesDrive/KiesDriveiOS.entitlements`. Enable it as the target's Code
-Signing Entitlements after Apple has granted the team the CarPlay navigation
-capability; keeping it detached lets ordinary development builds continue to
-install before that approval.
+restoration and route-stop selection. The normal `KiesDriveiOS` scheme remains
+available for everyday iPhone development and installation. The separate
+`KiesDriveiOSCarPlay` scheme applies
+`Sources/KiesDrive/KiesDriveiOS.entitlements` to its `CarPlayDebug` and
+`CarPlayRelease` build configurations. Apple must grant the team the CarPlay
+navigation capability before that build can be signed for a physical CarPlay
+head unit; the CarPlay-enabled simulator build can be used to exercise the
+scene beforehand.
 - Öffentliche Konten: Registrierung, E-Mail-Bestätigung, Argon2id-Passwortschutz
   und optionale Authenticator-2FA mit einmaligen Wiederherstellungscodes.
   Sitzungen werden in der App automatisch im Apple-Schlüsselbund verwaltet;
