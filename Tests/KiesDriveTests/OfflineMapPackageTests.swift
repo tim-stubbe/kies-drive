@@ -19,6 +19,56 @@ final class OfflineMapPackageTests: XCTestCase {
         ))
     }
 
+    func testAsynchronousCoveragePreflightValidatesTilesWithoutChangingResults() async throws {
+        let coordinate = CLLocationCoordinate2D(latitude: 47.5, longitude: 11.95)
+        var requiredTiles = Set<OfflineTileCoordinatePolicy.Tile>()
+        for zoom in 8...14 {
+            requiredTiles.insert(try XCTUnwrap(
+                OfflineTileCoordinatePolicy.tile(containing: coordinate, zoom: zoom)
+            ))
+        }
+        let navigationTiles = OfflineTileCoordinatePolicy.neighbourhood(
+            containing: coordinate, zoom: 14
+        )
+        requiredTiles.formUnion(navigationTiles)
+        for tile in requiredTiles {
+            let directory = source.appendingPathComponent(
+                "tiles/\(tile.z)/\(tile.x)", isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try validPNG().write(to: directory.appendingPathComponent("\(tile.y).png"))
+        }
+        try writeManifest(id: "async-coverage")
+        var checkTime = Date(timeIntervalSince1970: 1_000)
+        let store = OfflineMapPackageStore(
+            rootURL: root, defaults: defaults, now: { checkTime }
+        )
+        let package = try store.install(from: source)
+
+        let hasBase = await store.hasBaseTilesAsync(covering: [coordinate], package: package)
+        let hasZoomPyramid = await store.hasZoomPyramidTilesAsync(
+            covering: [coordinate], package: package
+        )
+        let hasNavigation = await store.hasNavigationTilesAsync(
+            along: [coordinate], package: package
+        )
+        XCTAssertTrue(hasBase)
+        XCTAssertTrue(hasZoomPyramid)
+        XCTAssertTrue(hasNavigation)
+
+        let removed = try XCTUnwrap(navigationTiles.first)
+        let removedURL = try XCTUnwrap(store.tileURL(
+            z: removed.z, x: removed.x, y: removed.y, package: package
+        ))
+        try FileManager.default.removeItem(at: removedURL)
+        checkTime.addTimeInterval(3)
+        let stillCovered = await store.hasNavigationTilesAsync(
+            along: [coordinate], package: package
+        )
+        XCTAssertFalse(stillCovered,
+                       "Background validation must still notice a tile removed after cache expiry")
+    }
+
     private var root: URL!
     private var source: URL!
     private var defaults: UserDefaults!

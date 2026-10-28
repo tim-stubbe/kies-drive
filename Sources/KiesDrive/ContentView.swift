@@ -32,6 +32,11 @@ struct DriveContentView: View {
     @State private var favorites = DriveFavoriteStore.load()
     @State private var recentDestinations = RecentDestinationStore.load()
     @State private var restConfirmationError: String?
+    @State private var offlineCoverageRequestKey = ""
+    @State private var offlineCoveragePackageID: String?
+    @State private var offlineCoverageIsAvailable = false
+    @State private var offlineCoverageIsChecking = false
+    @State private var offlineCoverageGeneration = UUID()
 
     private var isSimulatorNavigationPreview: Bool {
         #if targetEnvironment(simulator)
@@ -167,6 +172,9 @@ struct DriveContentView: View {
         .onAppear {
             location.start()
         }
+        .task(id: offlineCoverageRequestSignature) {
+            await refreshOfflineMapCoverage(for: offlineCoverageRequestSignature)
+        }
         .sheet(isPresented: $showSettings) { DriveSettingsView(planner: planner) }
         .sheet(isPresented: $showJarvis) { JarvisDriveView(route: planner.route, destination: planner.destination) }
     }
@@ -256,6 +264,9 @@ struct DriveContentView: View {
             }
             didCenterInitialLocation = true
             #endif
+        }
+        .task(id: offlineCoverageRequestSignature) {
+            await refreshOfflineMapCoverage(for: offlineCoverageRequestSignature)
         }
         .onChange(of: scenePhase) { _, phase in
             UIApplication.shared.isIdleTimerDisabled = NavigationIdleTimerPolicy.shouldDisable(
@@ -1704,7 +1715,58 @@ struct DriveContentView: View {
     }
 
     private var applicableOfflinePackage: InstalledOfflineMapPackage? {
-        guard let package = offlineMaps.activePackage else { return nil }
+        guard offlineCoverageRequestKey == offlineCoverageRequestSignature,
+              !offlineCoverageIsChecking,
+              offlineCoverageIsAvailable,
+              let package = offlineMaps.activePackage,
+              offlineCoveragePackageID == package.id else { return nil }
+        return package
+    }
+
+    /// The key changes only when the package, route geometry, map mode, or
+    /// current street-level tile changes. GPS movement within the same tile
+    /// therefore does not restart a large route preflight every location fix.
+    private var offlineCoverageRequestSignature: String {
+        let package = offlineMaps.activePackage
+        let locationTile = package.flatMap { package in
+            location.location.flatMap { location in
+                OfflineTileCoordinatePolicy.tile(
+                    containing: location.coordinate,
+                    zoom: min(package.manifest.maximumZoom,
+                              max(package.manifest.minimumZoom, 14))
+                )
+            }
+        }.map { "\($0.z)/\($0.x)/\($0.y)" } ?? "no-location-tile"
+        let routeSignature = visibleRoutePolylines.map { polyline -> String in
+            let rect = polyline.boundingMapRect
+            let first = polyline.pointCount > 0 ? polyline.points()[0].coordinate : .init()
+            let last = polyline.pointCount > 0
+                ? polyline.points()[polyline.pointCount - 1].coordinate : .init()
+            return "\(polyline.pointCount):\(rect.origin.x):\(rect.origin.y):\(rect.size.width):\(rect.size.height):\(first.latitude):\(first.longitude):\(last.latitude):\(last.longitude)"
+        }.joined(separator: "|")
+        let mode = isShowingRouteOverview ? "overview" : (planner.isNavigating ? "follow" : "browse")
+        let routeProgressBucket = planner.isNavigating && planner.totalDistance.isFinite
+            ? Int((min(1, max(0, planner.currentInstalledRouteProgress)) *
+                    max(0, planner.totalDistance) / 500).rounded(.down))
+            : 0
+        return "\(package?.id ?? "none")|\(mode)|\(locationTile)|\(routeProgressBucket)|\(routeSignature)"
+    }
+
+    @MainActor
+    private func refreshOfflineMapCoverage(for requestKey: String) async {
+        let generation = UUID()
+        offlineCoverageGeneration = generation
+        offlineCoverageRequestKey = requestKey
+        offlineCoveragePackageID = nil
+        offlineCoverageIsAvailable = false
+        offlineCoverageIsChecking = true
+        defer {
+            if generation == offlineCoverageGeneration {
+                offlineCoverageIsChecking = false
+            }
+        }
+        guard let package = offlineMaps.activePackage else { return }
+        offlineCoveragePackageID = package.id
         let needsRouteCoverage = isShowingRouteOverview || location.location == nil
         let routeCoordinates = needsRouteCoverage ? visibleRouteCoordinates : []
         guard OfflineMapCoveragePolicy.canUse(
@@ -1712,27 +1774,31 @@ struct DriveContentView: View {
             currentCoordinate: location.location?.coordinate,
             routeCoordinates: routeCoordinates,
             showsRouteOverview: isShowingRouteOverview
-        ) else { return nil }
+        ) else { return }
         let requiredCoordinates = needsRouteCoverage
             ? routeCoordinates
             : [location.location?.coordinate].compactMap { $0 }
-        guard !requiredCoordinates.isEmpty,
-              offlineMaps.hasBaseTiles(covering: requiredCoordinates, package: package),
-              offlineMaps.hasZoomPyramidTiles(
-                covering: OfflineRouteCorridorCoveragePolicy.coordinates(
-                    along: requiredCoordinates, maximumSamples: 240
-                ),
-                package: package
-              ) else {
-            return nil
-        }
+        guard !requiredCoordinates.isEmpty else { return }
+        async let baseTiles = offlineMaps.hasBaseTilesAsync(
+            covering: requiredCoordinates, package: package
+        )
+        async let zoomPyramid = offlineMaps.hasZoomPyramidTilesAsync(
+            covering: OfflineRouteCorridorCoveragePolicy.coordinates(
+                along: requiredCoordinates, maximumSamples: 240
+            ),
+            package: package
+        )
+        let (hasBaseTiles, hasZoomPyramid) = await (baseTiles, zoomPyramid)
+        guard !Task.isCancelled, generation == offlineCoverageGeneration,
+              requestKey == offlineCoverageRequestSignature,
+              hasBaseTiles, hasZoomPyramid else { return }
         if needsRouteCoverage, !routeCoordinates.isEmpty {
             let corridor = OfflineRouteCorridorCoveragePolicy.coordinates(
                 along: routeCoordinates
             )
-            guard offlineMaps.hasNavigationTiles(along: corridor, package: package) else {
-                return nil
-            }
+            guard await offlineMaps.hasNavigationTilesAsync(along: corridor, package: package),
+                  !Task.isCancelled, generation == offlineCoverageGeneration,
+                  requestKey == offlineCoverageRequestSignature else { return }
         }
         if !needsRouteCoverage, let coordinate = location.location?.coordinate {
             let lookahead = OfflineRouteLookaheadPolicy.coordinates(
@@ -1740,16 +1806,23 @@ struct DriveContentView: View {
                 routeProgress: planner.isNavigating
                     ? planner.currentInstalledRouteProgress : nil
             )
-            if !offlineMaps.hasNavigationTiles(along: lookahead, package: package) {
-                return nil
-            }
+            guard await offlineMaps.hasNavigationTilesAsync(along: lookahead, package: package),
+                  !Task.isCancelled, generation == offlineCoverageGeneration,
+                  requestKey == offlineCoverageRequestSignature else { return }
         }
-        return package
+        guard !Task.isCancelled, generation == offlineCoverageGeneration,
+              requestKey == offlineCoverageRequestSignature,
+              offlineMaps.activePackage?.id == package.id else { return }
+        offlineCoveragePackageID = package.id
+        offlineCoverageIsAvailable = true
     }
 
     private var offlineMapFallbackMessage: String? {
         guard let package = offlineMaps.activePackage,
-              applicableOfflinePackage == nil else { return nil }
+              offlineCoverageRequestKey == offlineCoverageRequestSignature,
+              !offlineCoverageIsChecking,
+              offlineCoveragePackageID == package.id,
+              !offlineCoverageIsAvailable else { return nil }
         let routeCoordinates = visibleRouteCoordinates
         let state = OfflineMapCoveragePolicy.state(
             bounds: package.manifest.bounds,

@@ -3,7 +3,7 @@ import Combine
 import CoreLocation
 import ImageIO
 
-struct OfflineMapBounds: Codable, Equatable {
+struct OfflineMapBounds: Codable, Equatable, Sendable {
     let north: Double
     let south: Double
     let east: Double
@@ -203,7 +203,7 @@ enum OfflineTileCoverageCachePolicy {
 }
 
 enum OfflineTileCoordinatePolicy {
-    struct Tile: Hashable {
+    struct Tile: Hashable, Sendable {
         let z: Int
         let x: Int
         let y: Int
@@ -317,7 +317,7 @@ enum OfflineTileFilePolicy {
     }
 }
 
-struct OfflineMapManifest: Codable, Identifiable, Equatable {
+struct OfflineMapManifest: Codable, Identifiable, Equatable, Sendable {
     static let supportedFormat = "raster-xyz-v1"
 
     let id: String
@@ -339,7 +339,7 @@ struct OfflineMapManifest: Codable, Identifiable, Equatable {
     }
 }
 
-struct InstalledOfflineMapPackage: Identifiable, Equatable {
+struct InstalledOfflineMapPackage: Identifiable, Equatable, Sendable {
     let manifest: OfflineMapManifest
     let directoryURL: URL
     let byteCount: Int64
@@ -536,6 +536,50 @@ final class OfflineMapPackageStore: ObservableObject {
         return hasTiles(requiredTiles, package: package)
     }
 
+    /// UI callers use asynchronous preflight so validating a long route never
+    /// performs thousands of synchronous file-system lookups while SwiftUI is
+    /// building the map. The tile set is still cached by the same immutable
+    /// package identity and exact coverage key as the synchronous test path.
+    func hasBaseTilesAsync(covering coordinates: [CLLocationCoordinate2D],
+                           package: InstalledOfflineMapPackage) async -> Bool {
+        let requiredTiles = Set(coordinates.compactMap {
+            OfflineTileCoordinatePolicy.tile(
+                containing: $0, zoom: package.manifest.minimumZoom
+            )
+        })
+        guard requiredTiles.count > 0, requiredTiles.count <= coordinates.count else { return false }
+        return await hasTilesAsync(requiredTiles, package: package)
+    }
+
+    func hasZoomPyramidTilesAsync(covering coordinates: [CLLocationCoordinate2D],
+                                  package: InstalledOfflineMapPackage) async -> Bool {
+        guard !coordinates.isEmpty else { return false }
+        let streetZoom = min(package.manifest.maximumZoom,
+                             max(package.manifest.minimumZoom, 14))
+        var requiredTiles = Set<OfflineTileCoordinatePolicy.Tile>()
+        for zoom in package.manifest.minimumZoom...streetZoom {
+            for coordinate in coordinates {
+                guard let tile = OfflineTileCoordinatePolicy.tile(
+                    containing: coordinate, zoom: zoom
+                ) else { return false }
+                requiredTiles.insert(tile)
+            }
+        }
+        guard !requiredTiles.isEmpty else { return false }
+        return await hasTilesAsync(requiredTiles, package: package)
+    }
+
+    func hasNavigationTilesAsync(along coordinates: [CLLocationCoordinate2D],
+                                 package: InstalledOfflineMapPackage) async -> Bool {
+        let zoom = min(package.manifest.maximumZoom,
+                       max(package.manifest.minimumZoom, 14))
+        let requiredTiles = coordinates.reduce(into: Set<OfflineTileCoordinatePolicy.Tile>()) {
+            $0.formUnion(OfflineTileCoordinatePolicy.neighbourhood(containing: $1, zoom: zoom))
+        }
+        guard !requiredTiles.isEmpty else { return false }
+        return await hasTilesAsync(requiredTiles, package: package)
+    }
+
     private func hasTiles(_ requiredTiles: Set<OfflineTileCoordinatePolicy.Tile>,
                           package: InstalledOfflineMapPackage) -> Bool {
         let orderedTiles = requiredTiles.sorted {
@@ -570,6 +614,46 @@ final class OfflineMapPackageStore: ObservableObject {
                 : OfflineTileFilePolicy.hasValidPNGHeader(at: url)
         }
         tileCoverageCache[key] = .init(result: result, checkedAt: checkTime)
+        return result
+    }
+
+    private func hasTilesAsync(_ requiredTiles: Set<OfflineTileCoordinatePolicy.Tile>,
+                               package: InstalledOfflineMapPackage) async -> Bool {
+        let orderedTiles = requiredTiles.sorted {
+            ($0.z, $0.x, $0.y) < ($1.z, $1.x, $1.y)
+        }
+        let key = TileCoverageKey(packageID: package.id, tiles: orderedTiles)
+        let checkTime = now()
+        if let cached = tileCoverageCache[key] {
+            let age = checkTime.timeIntervalSince(cached.checkedAt)
+            if age >= 0, age < OfflineTileCoverageCachePolicy.lifetime(
+                tileCount: orderedTiles.count
+            ) {
+                return cached.result
+            }
+        }
+        let directory = package.directoryURL
+        let manifest = package.manifest
+        let verifiesCompleteImages = orderedTiles.count <= 100
+        let worker = Task.detached(priority: .utility) {
+            orderedTiles.allSatisfy { tile in
+                guard !Task.isCancelled,
+                      let url = OfflineTileFilePolicy.tileURL(
+                        z: tile.z, x: tile.x, y: tile.y,
+                        packageDirectory: directory, manifest: manifest
+                      ) else { return false }
+                return verifiesCompleteImages
+                    ? OfflineTileFilePolicy.validatedPNGData(at: url) != nil
+                    : OfflineTileFilePolicy.hasValidPNGHeader(at: url)
+            }
+        }
+        let result = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        guard !Task.isCancelled else { return false }
+        tileCoverageCache[key] = .init(result: result, checkedAt: now())
         return result
     }
 
