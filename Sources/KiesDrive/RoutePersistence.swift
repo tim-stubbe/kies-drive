@@ -273,6 +273,28 @@ struct LockedWaypoint: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+enum RouteWaypointInsertionProgressPolicy {
+    /// Converts the installed multi-leg route into one progress space. A stop
+    /// selected from route search uses this local geometry, so existing future
+    /// waypoints must be ordered in the same space instead of comparing it to
+    /// their historical progress on the original trip corridor.
+    static func progressByWaypointID(waypointIDs: [String],
+                                    legDistances: [Double]) -> [String: Double]? {
+        guard Set(waypointIDs).count == waypointIDs.count,
+              legDistances.count == waypointIDs.count + 1,
+              legDistances.allSatisfy({ $0.isFinite && $0 >= 0 }) else { return nil }
+        let total = legDistances.reduce(0, +)
+        guard total.isFinite, total > 0 else { return nil }
+        var travelled = 0.0
+        var result: [String: Double] = [:]
+        for (index, id) in waypointIDs.enumerated() {
+            travelled += legDistances[index]
+            result[id] = min(1, max(0, travelled / total))
+        }
+        return result
+    }
+}
+
 enum RouteStopSelectionPolicy {
     static func contains(stopID: String, transientStationIDs: [String],
                          lockedWaypoints: [LockedWaypoint]) -> Bool {
@@ -532,13 +554,25 @@ extension ActiveRouteLock {
     /// silently bypass a locked Slovenia or mountain-pass constraint.
     mutating func insertWaypoint(_ waypoint: LockedWaypoint,
                                  knownProgress: Double? = nil,
-                                 progress: (DriveCoordinate) -> Double) {
+                                 progress: (DriveCoordinate) -> Double,
+                                 orderedProgress: ((LockedWaypoint) -> Double?)? = nil) {
         guard !waypoints.contains(where: { $0.id == waypoint.id }) else { return }
         let insertionProgress = knownProgress ?? progress(waypoint.coordinate)
-        let index = waypoints.firstIndex {
-            ($0.insertionRouteProgress ?? progress($0.coordinate)) > insertionProgress
-        }
-            ?? waypoints.endIndex
+        // Visited constraints define the active segment and must remain as a
+        // prefix. Among future points, prefer progress measured on the current
+        // installed legs; the persisted value belongs to the original trip
+        // geometry and may be in a different coordinate space after reroutes.
+        let visited = Set(visitedWaypointIDs ?? [])
+        let futureStart = waypoints.firstIndex {
+            $0.required && !visited.contains($0.id)
+        } ?? waypoints.endIndex
+        let index = waypoints.indices.dropFirst(futureStart).first { index in
+            let existing = waypoints[index]
+            let existingProgress = orderedProgress?(existing)
+                ?? existing.insertionRouteProgress
+                ?? progress(existing.coordinate)
+            return existingProgress > insertionProgress
+        } ?? waypoints.endIndex
         let inheritedOptions = index == 0
             ? defaultOptions
             : (waypoints[index - 1].optionsAfter ?? defaultOptions)

@@ -672,6 +672,54 @@ final class RoutePersistenceTests: XCTestCase {
         XCTAssertEqual(lock.waypoints.first { $0.id == "fuel" }?.insertionRouteProgress, 0.55)
     }
 
+    func testReroutedStopUsesInstalledProgressToKeepWaypointRuleOrder() {
+        let now = Date(timeIntervalSince1970: 1)
+        let avoidHighways = LockedRouteOptions(avoidTolls: false, avoidHighways: true)
+        var lock = ActiveRouteLock(
+            id: UUID(), title: "Trip", destinationName: "Home",
+            destination: .init(latitude: 0, longitude: 100),
+            waypoints: [
+                .init(id: "passed", name: "Passed", coordinate: .init(latitude: 0, longitude: 20),
+                      required: true, optionsAfter: avoidHighways, kind: .routeConstraint,
+                      insertionRouteProgress: 0.2),
+                .init(id: "next", name: "Next required point", coordinate: .init(latitude: 0, longitude: 80),
+                      required: true, optionsAfter: nil, kind: .routeConstraint,
+                      insertionRouteProgress: 0.4),
+            ],
+            defaultOptions: .init(avoidTolls: true, avoidHighways: false),
+            corridorWidthMetres: 5_000, corridorPoints: nil,
+            visitedWaypointIDs: ["passed"],
+            status: .active, createdAt: now, updatedAt: now
+        )
+
+        lock.insertWaypoint(
+            .init(id: "new-stop", name: "New stop", coordinate: .init(latitude: 0, longitude: 60),
+                  required: true, optionsAfter: nil, kind: .userStop),
+            knownProgress: 0.6,
+            progress: { $0.longitude / 100 },
+            orderedProgress: { $0.id == "next" ? 0.85 : nil }
+        )
+
+        XCTAssertEqual(lock.waypoints.map(\.id), ["passed", "new-stop", "next"])
+        XCTAssertEqual(lock.waypoints.first { $0.id == "new-stop" }?.optionsAfter, avoidHighways,
+                       "An inserted stop before the next required point must inherit the active segment rules")
+    }
+
+    func testInstalledWaypointProgressMapsOrderedMultiLegEndpoints() {
+        XCTAssertEqual(
+            RouteWaypointInsertionProgressPolicy.progressByWaypointID(
+                waypointIDs: ["first", "second"], legDistances: [40, 30, 30]
+            ),
+            ["first": 0.4, "second": 0.7]
+        )
+        XCTAssertNil(RouteWaypointInsertionProgressPolicy.progressByWaypointID(
+            waypointIDs: ["duplicate", "duplicate"], legDistances: [30, 30, 40]
+        ))
+        XCTAssertNil(RouteWaypointInsertionProgressPolicy.progressByWaypointID(
+            waypointIDs: ["first", "second"], legDistances: [30, .infinity, 40]
+        ))
+    }
+
     func testEquivalentRouteStopDetectionHandlesSearchDriftWithoutBlockingNearbyPlaces() {
         let now = Date(timeIntervalSince1970: 1)
         let lock = ActiveRouteLock(

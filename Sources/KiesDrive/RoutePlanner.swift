@@ -2301,7 +2301,24 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
                                       kind: LockedWaypoint.Kind = .userStop) {
         guard var lock = routeLockStore.activeLock,
               !lock.waypoints.contains(where: { $0.id == id }) else { return }
-        let routeCoordinates = legs.flatMap { sample($0.polyline, maximum: 240) }
+        let routeLegCoordinates = legs.map { sample($0.polyline, maximum: 180) }
+        let routeCoordinates = routeLegCoordinates.flatMap { $0 }
+        let visitedWaypointIDs = Set(lock.visitedWaypointIDs ?? [])
+        let pendingWaypoints = lock.waypoints.filter {
+            $0.required && !visitedWaypointIDs.contains($0.id)
+        }
+        let legDistances = routeLegCoordinates.map { coordinates in
+            zip(coordinates, coordinates.dropFirst()).reduce(0.0) { distance, pair in
+                distance + CLLocation(
+                    latitude: pair.0.latitude, longitude: pair.0.longitude
+                ).distance(from: CLLocation(
+                    latitude: pair.1.latitude, longitude: pair.1.longitude
+                ))
+            }
+        }
+        let localProgressByWaypoint = RouteWaypointInsertionProgressPolicy.progressByWaypointID(
+            waypointIDs: pendingWaypoints.map(\.id), legDistances: legDistances
+        )
         func progress(_ coordinate: CLLocationCoordinate2D) -> Double {
             RouteGeometryProgress.nearestProgress(of: coordinate, on: routeCoordinates)?.progress ?? 1
         }
@@ -2309,7 +2326,8 @@ final class RoutePlanner: NSObject, ObservableObject, @preconcurrency AVSpeechSy
             id: id, name: name,
             coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
             required: true, optionsAfter: nil, kind: kind
-        ), knownProgress: knownProgress, progress: { progress($0.clLocationCoordinate) })
+        ), knownProgress: knownProgress, progress: { progress($0.clLocationCoordinate) },
+           orderedProgress: { localProgressByWaypoint?[$0.id] })
         routeLockStore.save(lock)
         activeRouteLock = lock
     }
